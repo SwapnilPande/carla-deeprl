@@ -13,7 +13,7 @@ The agent also responds to traffic lights. """
 from enum import Enum
 import math
 import carla
-from environment.carla_9_4.agents.tools.misc import is_within_distance_ahead, is_within_distance_ahead_v2, compute_magnitude_angle
+from environment.carla_interfaces.agents.tools.misc import is_within_distance_ahead, is_within_distance_ahead_v2, compute_magnitude_angle
 
 
 class AgentState(Enum):
@@ -39,7 +39,7 @@ class Agent(object):
         self._proximity_threshold = proximity_threshold  # meters
         self._vehicle_proximity_threshold = vehicle_proximity_threshold
 
-        # Setting _traffic_light_proximity_threshold using the argument proximity_threshold 
+        # Setting _traffic_light_proximity_threshold using the argument proximity_threshold
         # as the current codebase uses that to pass in the value
         self._traffic_light_proximity_threshold = proximity_threshold
         self._local_planner = None
@@ -172,7 +172,7 @@ class Agent(object):
 
         # New traffic light waypoint computation logic
         return self._find_nearest_traffic_light(lights_list)
-        
+
     def _find_nearest_traffic_light_europe_style(self, lights_list):
         """
         This method is specialized to check European style traffic lights.
@@ -327,7 +327,7 @@ class Agent(object):
                     self._last_traffic_light = None
 
         return (None, -1, None)
- 
+
     def _is_vehicle_hazard(self, vehicle_list):
         """
         Check if a given vehicle is an obstacle in our way. To this end we take

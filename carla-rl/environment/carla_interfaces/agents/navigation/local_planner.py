@@ -13,8 +13,8 @@ from collections import deque
 import random
 
 import carla
-from environment.carla_9_4.agents.navigation.controller import VehiclePIDController
-from environment.carla_9_4.agents.tools.misc import distance_vehicle, draw_waypoints
+from environment.carla_interfaces.agents.navigation.controller import VehiclePIDController
+from environment.carla_interfaces.agents.tools.misc import distance_vehicle, draw_waypoints
 
 
 class RoadOption(Enum):
@@ -108,13 +108,13 @@ class LocalPlanner(object):
             'K_D': 0.01,
             'K_I': 1.4,
             'dt': self._dt}
-        
+
         args_longitudinal_dict = {
             'K_P': 0.1,
             'K_D': 0.0005,
             'K_I': 0.4,
             'dt': 1/10.0}
-        
+
         # args_longitudinal_dict = {
         #     'K_P': 1.0,
         #     'K_D': 0,

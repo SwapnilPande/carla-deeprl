@@ -4,12 +4,12 @@ import random
 import time
 
 # Need to change the imports to contain env flag
-import environment.carla_9_4.scenarios as scenarios
-from environment.carla_9_4.agents.navigation.agent import Agent
-import environment.carla_9_4.sensors as sensors
-import environment.carla_9_4.controller as controller
-from environment.carla_9_4.config import DISCRETE_ACTIONS
-from environment.carla_9_4 import env_util as util
+import environment.carla_interfaces.scenarios_910 as scenarios
+from environment.carla_interfaces.agents.navigation.agent import Agent
+import environment.carla_interfaces.sensors as sensors
+import environment.carla_interfaces.controller as controller
+from environment.config import DISCRETE_ACTIONS
+from environment import env_util as util
 
 # Need to change the imports to contain env flag
 import carla

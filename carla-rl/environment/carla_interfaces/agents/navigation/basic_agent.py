@@ -12,10 +12,10 @@ The agent also responds to traffic lights. """
 
 
 import carla
-from environment.carla_9_4.agents.navigation.agent import Agent, AgentState
-from environment.carla_9_4.agents.navigation.local_planner import LocalPlanner
-from environment.carla_9_4.agents.navigation.global_route_planner import GlobalRoutePlanner
-from environment.carla_9_4.agents.navigation.global_route_planner_dao import GlobalRoutePlannerDAO
+from environment.carla_interfaces.agents.navigation.agent import Agent, AgentState
+from environment.carla_interfaces.agents.navigation.local_planner import LocalPlanner
+from environment.carla_interfaces.agents.navigation.global_route_planner import GlobalRoutePlanner
+from environment.carla_interfaces.agents.navigation.global_route_planner_dao import GlobalRoutePlannerDAO
 
 class BasicAgent(Agent):
     """

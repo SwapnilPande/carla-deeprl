@@ -4,26 +4,11 @@ import os
 import glob
 import sys
 
-# CARLA_9_4_PATH = "/home/swapnil/carla910"#os.environ.get("CARLA_9_4_PATH")
-# if CARLA_9_4_PATH == None:
-#     raise ValueError("Set $CARLA_9_4_PATH to directory that contains CarlaUE4.sh")
 
-# user_paths = os.environ['PYTHONPATH'].split(os.pathsep)
+CARLA_ROOT = os.environ.get("CARLA_ROOT")
 
-# # try:
-# # sys.path.append(glob.glob(CARLA_9_4_PATH+ '/**/carla/dist/carla-*%d.%d-%s.egg' % (
-# #     sys.version_info.major,
-# #     sys.version_info.minor,
-# #     'win-amd64' if os.name == 'nt' else 'linux-x86_64'))[0])
-# # except IndexError:
-# #     pass
-
-# sys.path.append("/home/swapnil/carla910/PythonAPI/carla/dist/carla-0.9.10-py3.7-linux-x86_64.egg")
-
-CARLA_9_4_PATH = os.environ.get("CARLA_9_4_PATH")
-
-if CARLA_9_4_PATH == None:
-    raise ValueError("Set $CARLA_9_4_PATH to directory that contains CarlaUE4.sh")
+if CARLA_ROOT == None:
+    raise ValueError("Set $CARLA_ROOT to directory that contains CarlaUE4.sh")
 
 import carla
 
@@ -31,6 +16,9 @@ from carla.libcarla import Transform
 from carla.libcarla import Location
 from carla.libcarla import Rotation
 import random
+
+from environment.carla_interfaces.agents.navigation.local_planner import RoadOption
+
 
 WAYPOINT_DICT_Town01 = {
     0: Transform(Location(x=271.0400085449219, y=129.489990234375, z=1.32), Rotation(yaw=179.999755859375)),
@@ -2093,7 +2081,6 @@ def get_left_turn(unseen = False):
     else:
         return random.choice(paths_left_Town01_train())
 
-from environment.carla_9_4.agents.navigation.local_planner import RoadOption
 
 def get_test_route():
 
@@ -2125,7 +2112,7 @@ def get_leaderboard_route(unseen=False, curr_town=None, index=0, max_idx=None, a
         _town = curr_town
 
     _route_in_this_town = []
-    for _r in _routes: 
+    for _r in _routes:
         if _r.attrib['town'] == _town:
             _route_in_this_town.append(_r)
 
@@ -2136,17 +2123,17 @@ def get_leaderboard_route(unseen=False, curr_town=None, index=0, max_idx=None, a
 
     _wps = _route.findall('waypoint')
     # _src = Transform(Location(x=float(_wps[0].attrib['x']), y=float(_wps[0].attrib['y']), z=float(_wps[0].attrib['z']) + .5))
-    _src = Transform(Location(x=float(_wps[0].attrib['x']), y=float(_wps[0].attrib['y']), z=float(_wps[0].attrib['z']) + .5), 
+    _src = Transform(Location(x=float(_wps[0].attrib['x']), y=float(_wps[0].attrib['y']), z=float(_wps[0].attrib['z']) + .5),
         Rotation(pitch=float(_wps[0].attrib['pitch']), yaw=float(_wps[0].attrib['yaw']), roll=float(_wps[0].attrib['roll'])))
     _wp_list = [_src.location]
-    for _wp in _wps[1:-1]: 
+    for _wp in _wps[1:-1]:
         _wp_loc = Transform(Location(x=float(_wp.attrib['x']), y=float(_wp.attrib['y']), z=float(_wp.attrib['z']) + .5))
         _wp_list.append(_wp_loc.location)
     _dst = Transform(Location(x=float(_wps[-1].attrib['x']), y=float(_wps[-1].attrib['y']), z=float(_wps[0].attrib['z']) + .5))
     _wp_list.append(_dst.location)
-    # _src = Transform(Location(x=float(_wps[0].attrib['x']), y=float(_wps[0].attrib['y']), z=float(_wps[0].attrib['z']) + .5), 
+    # _src = Transform(Location(x=float(_wps[0].attrib['x']), y=float(_wps[0].attrib['y']), z=float(_wps[0].attrib['z']) + .5),
     #     Rotation(pitch=float(_wps[0].attrib['pitch']), yaw=float(_wps[0].attrib['yaw']), roll=float(_wps[0].attrib['roll'])))
-    # _dst = Transform(Location(x=float(_wps[-1].attrib['x']), y=float(_wps[-1].attrib['y']), z=float(_wps[0].attrib['z']) + .5), 
+    # _dst = Transform(Location(x=float(_wps[-1].attrib['x']), y=float(_wps[-1].attrib['y']), z=float(_wps[0].attrib['z']) + .5),
     #     Rotation(pitch=float(_wps[0].attrib['pitch']), yaw=float(_wps[0].attrib['yaw']), roll=float(_wps[-1].attrib['roll'])))
     # print(_src, _dst)
     # print(2149, curr_town, _town)
@@ -2161,7 +2148,7 @@ def get_leaderboard_route(unseen=False, curr_town=None, index=0, max_idx=None, a
 #     _route_tree = ET.parse(xml_file)
 #     _routes = _route_tree.findall('route')
 #     _route_in_this_town = []
-#     for _r in _routes: 
+#     for _r in _routes:
 #         if _r.attrib['town'] == town:
 #             _route_in_this_town.append(_r)
 
@@ -2171,17 +2158,17 @@ def get_leaderboard_route(unseen=False, curr_town=None, index=0, max_idx=None, a
 #         _route = _route_in_this_town[index % len(_route_in_this_town)]
 #     _wps = _route.findall('waypoint')
 #     # _src = Transform(Location(x=float(_wps[0].attrib['x']), y=float(_wps[0].attrib['y']), z=float(_wps[0].attrib['z']) + .5))
-#     _src = Transform(Location(x=float(_wps[0].attrib['x']), y=float(_wps[0].attrib['y']), z=float(_wps[0].attrib['z']) + .5), 
+#     _src = Transform(Location(x=float(_wps[0].attrib['x']), y=float(_wps[0].attrib['y']), z=float(_wps[0].attrib['z']) + .5),
 #         Rotation(pitch=float(_wps[0].attrib['pitch']), yaw=float(_wps[0].attrib['yaw']), roll=float(_wps[0].attrib['roll'])))
 #     _wp_list = [_src.location]
-#     for _wp in _wps[1:-1]: 
+#     for _wp in _wps[1:-1]:
 #         _wp_loc = Transform(Location(x=float(_wp.attrib['x']), y=float(_wp.attrib['y']), z=float(_wp.attrib['z']) + .5))
 #         _wp_list.append(_wp_loc.location)
 #     _dst = Transform(Location(x=float(_wps[-1].attrib['x']), y=float(_wps[-1].attrib['y']), z=float(_wps[0].attrib['z']) + .5))
 #     _wp_list.append(_dst.location)
-#     # _src = Transform(Location(x=float(_wps[0].attrib['x']), y=float(_wps[0].attrib['y']), z=float(_wps[0].attrib['z']) + .5), 
+#     # _src = Transform(Location(x=float(_wps[0].attrib['x']), y=float(_wps[0].attrib['y']), z=float(_wps[0].attrib['z']) + .5),
 #     #     Rotation(pitch=float(_wps[0].attrib['pitch']), yaw=float(_wps[0].attrib['yaw']), roll=float(_wps[0].attrib['roll'])))
-#     # _dst = Transform(Location(x=float(_wps[-1].attrib['x']), y=float(_wps[-1].attrib['y']), z=float(_wps[0].attrib['z']) + .5), 
+#     # _dst = Transform(Location(x=float(_wps[-1].attrib['x']), y=float(_wps[-1].attrib['y']), z=float(_wps[0].attrib['z']) + .5),
 #     #     Rotation(pitch=float(_wps[0].attrib['pitch']), yaw=float(_wps[0].attrib['yaw']), roll=float(_wps[-1].attrib['roll'])))
 #     # print(_src, _dst)
 #     return _src, _dst, _wp_list

@@ -25,28 +25,15 @@ import matplotlib.pyplot as plt
 # import ipdb
 # st = ipdb.set_trace
 
-# ALTA imports
-sys.path.append("/home/swapnil/important_things/auton/alta/agents/tf")
-sys.path.append("/home/swapnil/important_things/auton/alta")
-# sys.path.append("./../")
-import ae.util as util
-from ae.util import *
+# # ALTA imports
+sys.path.append("/zfsauton2/home/swapnilp/carla-rl/carla-rl")
+# sys.path.append("/home/swapnil/important_things/auton/alta")
 
-# Carla imports
-import environment.carla_9_4.scenarios as scenarios
-from environment.carla_9_4.carla_interfaces.server import CarlaServer
-import environment.carla_9_4.planner as planner
-import environment.carla_9_4.controller as controller
-import environment.carla_9_4.sensors as sensors
-from environment.carla_9_4.reward import compute_reward
-from environment.carla_9_4.agents.navigation.roaming_agent import RoamingAgent
-from environment.carla_9_4.agents.navigation.agent import Agent
-from environment.carla_9_4.agents.navigation.basic_agent import BasicAgent
-from environment.carla_9_4.config import DEFAULT_ENV, DISCRETE_ACTIONS, episode_measurements, ConfigManager
-
-from environment.carla_9_4.carla_interfaces.carla_interface import Carla910Interface, Carla910Interface_Leaderboard
-
-from environment.carla_9_4 import env_util as util
+# Environment imports
+from environment.reward import compute_reward
+from environment.config import DEFAULT_ENV, DISCRETE_ACTIONS, episode_measurements, ConfigManager
+from environment.carla_interfaces.carla_interface import Carla910Interface, Carla910Interface_Leaderboard
+from environment import env_util as util
 
 
 try:
@@ -61,11 +48,6 @@ from carla.libcarla import Location
 from carla.libcarla import Rotation
 import psutil
 
-from environment.carla_9_4.env_util import (
-    check_if_vehicle_in_same_lane,
-    get_world_coords_from_latlong,
-    convert_route_from_GPS_world
-)
 
 class CarlaEnv(gym.Env):
     def __init__(self, config=DEFAULT_ENV, vis_wrapper=None, vis_wrapper_vae=None, logger=None, log_dir=None):
@@ -776,7 +758,7 @@ class CarlaEnv(gym.Env):
             if not d_bool:
                 continue
             else:
-                if not check_if_vehicle_in_same_lane(ego_vehicle_actor, target_vehicle, self.next_waypoints, map):
+                if not util.check_if_vehicle_in_same_lane(ego_vehicle_actor, target_vehicle, self.next_waypoints, map):
                     continue
 
                 found_obstacle = True
@@ -1743,7 +1725,7 @@ def plot_episode_info(path,
     plt.close()
 
 if __name__ == "__main__":
-    env = CarlaEnv(log_dir = "/home/swapnil/temp_dir")
+    env = CarlaEnv(log_dir = "/home/scratch/swapnilp/carla_test")
     env.reset()
     for i in range(10000):
 

@@ -4,9 +4,9 @@ import glob
 import sys
 import math
 import numpy as np
-from environment.carla_9_4.agents.navigation.global_route_planner import GlobalRoutePlanner
-from environment.carla_9_4.agents.navigation.global_route_planner_dao import GlobalRoutePlannerDAO
-from environment.carla_9_4.agents.tools.misc import distance_vehicle
+from environment.carla_interfaces.agents.navigation.global_route_planner import GlobalRoutePlanner
+from environment.carla_interfaces.agents.navigation.global_route_planner_dao import GlobalRoutePlannerDAO
+from environment.carla_interfaces.agents.tools.misc import distance_vehicle
 from collections import deque
 
 # CARLA_9_4_PATH = os.environ.get("CARLA_9_4_PATH")

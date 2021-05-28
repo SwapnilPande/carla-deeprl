@@ -4,7 +4,7 @@ import subprocess
 import traceback
 import random
 import time
-from environment.carla_9_4.config import DEFAULT_ENV
+from environment.config import DEFAULT_ENV
 
 from tqdm import tqdm
 
@@ -19,6 +19,8 @@ class CarlaServer():
         self.render_server = config['render_server']
         self.live_carla_processes = set()
 
+        self.server_process = None
+
         if not self.server_port:
             self.server_port = random.randint(10000, 60000)
         else:
@@ -28,7 +30,11 @@ class CarlaServer():
         self.carla_env = os.environ.copy()
         if self.carla_gpu is not None:
             self.carla_env["SDL_HINT_CUDA_DEVICE"] = self.carla_gpu
-            del self.carla_env['CUDA_VISIBLE_DEVICES']
+            # Delete cuda visible devices
+            try:
+                del self.carla_env['CUDA_VISIBLE_DEVICES']
+            except:
+                pass
 
         if not self.render_server:
             os.environ["SDL_VIDEODRIVER"] = "offscreen"

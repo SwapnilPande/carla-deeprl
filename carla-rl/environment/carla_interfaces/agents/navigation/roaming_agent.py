@@ -9,8 +9,8 @@
 """ This module implements an agent that roams around a track following random waypoints and avoiding other vehicles.
 The agent also responds to traffic lights. """
 
-from environment.carla_9_4.agents.navigation.agent import Agent, AgentState
-from environment.carla_9_4.agents.navigation.local_planner import LocalPlanner
+from environment.carla_interfaces.agents.navigation.agent import Agent, AgentState
+from environment.carla_interfaces.agents.navigation.local_planner import LocalPlanner
 
 
 class RoamingAgent(Agent):

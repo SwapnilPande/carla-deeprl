@@ -1,7 +1,7 @@
-import environment.carla_9_4.scenarios as scenarios
-from environment.carla_9_4.carla_interfaces.server import CarlaServer
-from environment.carla_9_4 import planner
-from environment.carla_9_4.carla_interfaces.actor_manager import ActorManager910, ActorManager910_Leaderboard
+import environment.carla_interfaces.scenarios_910 as scenarios
+from environment.carla_interfaces.server import CarlaServer
+from environment.carla_interfaces import planner
+from environment.carla_interfaces.actor_manager import ActorManager910, ActorManager910_Leaderboard
 from abc import ABC
 import time
 import random
@@ -10,8 +10,10 @@ import py_trees
 
 # Leaerboard Import
 import sys, os
+# Add paths to get leaderboard to work
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../leaderboard'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../scenario_runner'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), './'))
 from leaderboard.utils.route_manipulation import interpolate_trajectory
 from leaderboard.utils.route_parser import RouteParser, TRIGGER_THRESHOLD, TRIGGER_ANGLE_THRESHOLD
 from leaderboard.scenarios.route_scenario import scenario_sampling, build_scenario_instances, convert_transform_to_location, Trigger

@@ -16,7 +16,7 @@ import weakref
 import carla
 import queue
 import numpy as np
-from ae.util import *
+# from ae.util import *
 
 class SensorManager():
     '''
