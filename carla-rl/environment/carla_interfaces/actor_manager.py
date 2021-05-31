@@ -232,6 +232,8 @@ class ActorManager910():
             target_speed = -1
             episode_measurements["target_speed"] = target_speed
             return action, episode_measurements
+        else:
+            raise Exception("Invalid Action Type")
 
         control = carla.VehicleControl(
             throttle=throttle,

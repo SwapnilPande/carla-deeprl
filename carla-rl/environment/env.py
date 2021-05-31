@@ -53,6 +53,7 @@ class CarlaEnv(gym.Env):
     def __init__(self, config=DEFAULT_ENV, vis_wrapper=None, vis_wrapper_vae=None, logger=None, log_dir=None):
         self.carla_interface = None
         self.config = DEFAULT_ENV
+
         self._update_config(config)
 
         if 'challenge' in self.config["scenarios"]:
@@ -258,6 +259,9 @@ class CarlaEnv(gym.Env):
                                         shape=(1, num_cams*(int(self.config['sensor_y_res']) * int(self.config['sensor_x_res']) * dim * self.config['frame_stack_size']) + 8), dtype=np.float32)
                                         # shape=(1, 12296), dtype=np.float32)
                                         # shape=(1, 20488), dtype=np.float32)
+
+            else:
+                raise Exception("Undefined Observation Space")
 
 
         print(self.observation_space)
@@ -670,7 +674,8 @@ class CarlaEnv(gym.Env):
         #     observation = np.expand_dims(obs['observation'], axis = 0)
         #     return observation, reward, done, self.episode_measurements
         # else:
-        return gym_obs, reward, done, self.episode_measurements
+
+        return gym_obs, float(reward), done, self.episode_measurements
 
     def _add_to_stacked_queue(self, object_queue, object_to_add):
 

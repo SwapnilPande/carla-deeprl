@@ -217,3 +217,168 @@ def convert_route_from_GPS_world(route, world_map):
         x, y, z = world_coord[0][0], world_coord[1][0], world_coord[2][0]
         mapped_route.append(carla.Transform(carla.Location(x=x, y=y, z=z), carla.Rotation()))
     return mapped_route
+
+SEMANTIC_COLOR_MAP = {
+    0	: ["Unlabeled", ( 0, 0, 0)],
+    1	: ["Building",	( 70, 70, 70)],
+    2	: ["Fence",	(190, 153, 153)],
+    3	: ["Other",	(250, 170, 160)],
+    4	: ["Pedestrian",	(220, 20, 60)],
+    5	: ["Pole",	(153, 153, 153)],
+    6	: ["Road line",	(157, 234, 50)],
+    7	: ["Road",	(128, 64, 128)],
+    8	: ["Sidewalk",	(244, 35, 232)],
+    9	: ["Vegetation",	(107, 142, 35)],
+    10	: ["Car",	( 0, 0, 142)],
+    11	: ["Wall",	(102, 102, 156)],
+    12	: ["Traffic sign",	(220, 220, 0)]
+}
+
+SEMANTIC_COLOR_MAP_ARRAY = np.array([
+    [0, 0, 0],
+    [70, 70, 70],
+    [190, 153, 153],
+    [250, 170, 160],
+    [220, 20, 60],
+    [153, 153, 153],
+    [157, 234, 50],
+    [128, 64, 128],
+    [244, 35, 232],
+    [107, 142, 35],
+    [0, 0, 142],
+    [102, 102, 156],
+    [220, 220, 0]
+])
+
+CLASS_REMAP = {
+    0	: 0,
+    1	: 0,
+    2	: 0,
+    3	: 0,
+    4	: 1,
+    5	: 0,
+    6	: 2,
+    7	: 3,
+    8	: 0,
+    9	: 0,
+    10	: 4,
+    11	: 0,
+    12	: 0,
+    13  : 0,
+    14  : 0,
+    15  : 0,
+    16  : 0,
+    17  : 0,
+    18  : 0,
+    19  : 0,
+    20  : 0,
+    21  : 0,
+    22  : 0
+}
+
+CLASS_REMAP_ARRAY = np.array([
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    2,
+    3,
+    0,
+    0,
+    4,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+])
+
+BINARIZED_REMAP_ARRAY = np.array([
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    1,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0
+])
+
+REDUCED_SEMANTIC_COLOR_MAP = {
+    0	: ["Everything Else", ( 0, 0, 0)],
+    1	: ["Pedestrian",	(220, 20, 60)],
+    2	: ["Road line",	(157, 234, 50)],
+    3	: ["Road",	(128, 64, 128)],
+    4	: ["Car",	( 0, 0, 142)]
+}
+
+REDUCED_SEMANTIC_COLOR_MAP_ARRAY = np.array([
+    [0, 0, 0],
+    [220, 20, 60],
+    [157, 234, 50],
+    [128, 64, 128],
+    [0, 0, 142]
+])
+
+BINARIZED_SEMANTIC_COLOR_MAP_ARRAY = np.array([
+    [0, 0, 0],
+    [255, 255, 255]
+])
+
+def reduce_classes(semantic_image, binarized_image=False):
+    h, w = np.shape(semantic_image)
+    # # assert(d == 1)
+    # semantic_reduced_image = np.zeros_like(semantic_image)
+    if binarized_image:
+        f = lambda x : BINARIZED_REMAP_ARRAY[x]
+    else:
+        f = lambda x : CLASS_REMAP_ARRAY[x]
+    # print(semantic_image.reshape(-1))
+    semantic_reduced_image = f(semantic_image.reshape(-1))
+    return semantic_reduced_image.reshape((h,w))
+
+
+def convert_to_one_hot(labels, num_classes):
+    labels = np.squeeze(labels)
+    h, w = labels.shape
+    flattened_labels = labels.reshape((h*w))
+    one_hot = np.zeros((flattened_labels.shape[0], num_classes))
+    one_hot[np.arange(flattened_labels.shape[0]), flattened_labels] = 1
+    one_hot = one_hot.reshape((h, w, -1))
+
+    return one_hot
+
+def convert_from_one_hot(one_hot):
+    return np.argmax(one_hot, axis=2)
+
+
+def convert_to_rgb(semantic_image, reduced_classes=False, binarized_image=False):
+    h, w = np.shape(semantic_image)
+    semantic_rgb_image = np.zeros((h, w, 3))
+
+    if reduced_classes:
+        if binarized_image:
+            semantic_map = BINARIZED_SEMANTIC_COLOR_MAP_ARRAY
+        else:
+            semantic_map = REDUCED_SEMANTIC_COLOR_MAP_ARRAY
+    else:
+        semantic_map = SEMANTIC_COLOR_MAP_ARRAY
+
+    f = lambda x : semantic_map[x]
+
+    semantic_rgb_image = f(semantic_image.reshape(-1))
+    return semantic_rgb_image.reshape((h,w,3))

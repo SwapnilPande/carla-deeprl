@@ -35,7 +35,7 @@ DEFAULT_ENV = {
     "city_name" : "Town01",
     "frame_skip": 1,
     "enable_planner" : True,
-    "reward_function" : 'corl',
+    "reward_function" : 'simple2',
     # Print measurements to screen
     "print_obs" : True,
     "client" : None,
@@ -57,8 +57,25 @@ DEFAULT_ENV = {
                       'vehicle.volkswagen.t2', 'vehicle.nissan.micra', 'vehicle.chevrolet.impala', 'vehicle.mini.cooperst',
                       'vehicle.jeep.wrangler_rubicon'],
     "target_speed": 20,
-    "sensors": ["sensor.camera.rgb", "sensor.camera.semantic_segmentation"],
-    "action_type": "merged_gas",
+    "sensors": {"lane_invasion_sensor":None, \
+                "collision_sensor": None, \
+                "sensor.camera.semantic_segmentation/top": {'x':13.0,
+                                                            'z':18.0,
+                                                            'pitch':270.0,
+                                                            'sensor_x_res': '112',
+                                                            'sensor_y_res':'112',
+                                                            'fov':'90',
+                                                            'sensor_tick': '0.0',
+                                                            'num_classes':5},
+                "sensor.camera.rgb/front": {'x':2.0,
+                                            'z':1.4,
+                                            'pitch':0.0,
+                                            'sensor_x_res':'112',
+                                            'sensor_y_res':'112',
+                                            'fov':'90', \
+                                            'sensor_tick': '0.0'}
+                },
+    "action_type": "merged_speed_tanh",
     "sensor_tick": '0.0',
     "dist_for_success" : 10.0,
     "max_offlane_steps" : 20,
@@ -76,7 +93,7 @@ DEFAULT_ENV = {
     "render_server": True,
     "steer_penalty_coeff": 0,
     "vae_encoding_norm_factor" : 10,
-    "input_type": None,
+    "input_type": "wp_obs_info_speed_steer_ldist_goal_light",
     "use_scenarios": True,
     "num_npc" : 0,
     "num_npc_lower_threshold" : 70,
@@ -270,7 +287,7 @@ def get_discrete_actions():
 
 DISCRETE_ACTIONS = get_discrete_actions()
 
-class ConfigManager(object):
+class ConfigManager:
     def __init__(self, algo='PPO'):
         # self.config = {'client_timeout_seconds': 100,}
         self.config = DEFAULT_ENV
@@ -278,6 +295,7 @@ class ConfigManager(object):
         self._initialize_config(algo)
 
     def _initialize_config(self, algo):
+
         if algo == 'DDPG':
             self.config["algo"] = "DDPG"
             self.config["x_res"] = 200
@@ -319,12 +337,12 @@ class ConfigManager(object):
                                                                     'sensor_x_res':'112', 'sensor_y_res':'112', 'fov':'90', \
                                                                     'sensor_tick': '0.0'} }
             # self.config["scenarios"] = "navigation"
-            self.config["scenarios"] = "challenge_train_scenario"
+            self.config["scenarios"] = "dynamic_navigation"
             self.config["videos"] = False
             self.config["x_res"] = 80
             self.config["y_res"] = 160
             # self.config["input_type"] = "wp_bev_rv_obs_info_speed_steer_ldist_goal_light"
-            self.config["input_type"] = "wp"
+            self.config["input_type"] = "wp_obs_info_speed_steer_ldist_goal_light"
             self.config["city_name"] = "Town01"
             self.config["verbose"] = False
             self.config["carla_gpu"] = "0"
@@ -380,3 +398,5 @@ class ConfigManager(object):
             self.config["verbose"] = True
             self.config["carla_gpu"] = "1"
             self.config["max_static_steps"] = 20
+        else:
+            raise Exception("Invalid Algorithm")
