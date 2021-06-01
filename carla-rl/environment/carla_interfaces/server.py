@@ -64,7 +64,7 @@ class CarlaServer():
         if self.server_process:
             print("Launched server at port:", self.server_port)
 
-            print('Waiting 60s for server to finish setting up')
+            print('Waiting 20s for server to finish setting up')
             for _ in tqdm(range(20)):
                 time.sleep(1)
 

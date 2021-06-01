@@ -46,7 +46,7 @@ class ActorManager910():
             self.spawn_points_fixed_order =  [self.spawn_points[i] for i in self.config['spawn_points_fixed_idx']]
         else:
             spawn_pt_idx = np.random.permutation(len(self.spawn_points))
-            np.save(os.path.join(log_dir, "spawn_pt_order"), spawn_pt_idx)
+            # np.save(os.path.join(log_dir, "spawn_pt_order"), spawn_pt_idx)
             self.spawn_points_fixed_order =  [self.spawn_points[i] for i in spawn_pt_idx]
 
         ################################################
@@ -260,8 +260,9 @@ class ActorManager910():
 
         return ep_measurements
 
-
-
+    def check_for_vehicle_elimination(self):
+        # https://github.com/carla-simulator/carla/issues/3860
+        self.actor_list = [actor for actor in self.actor_list if actor.is_alive]
 
     def spawn_sensors(self):
         if self.ego_vehicle is None:

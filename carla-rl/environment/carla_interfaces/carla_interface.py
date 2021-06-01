@@ -242,6 +242,8 @@ class Carla910Interface():
 
         world_frame = self.world.tick()
 
+        self.actor_fleet.check_for_vehicle_elimination()
+
         sensor_readings = self.actor_fleet.sensor_manager.get_sensor_readings(world_frame)
         location = self.actor_fleet.ego_vehicle._vehicle.get_location()
 

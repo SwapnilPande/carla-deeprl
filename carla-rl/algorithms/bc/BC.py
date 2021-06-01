@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
 
-from agents.torch.models import make_conv_preprocessor
+from common.models import make_conv_preprocessor
 
 
 class BC(pl.LightningModule):

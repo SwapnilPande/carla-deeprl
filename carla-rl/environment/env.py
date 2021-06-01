@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt
 # st = ipdb.set_trace
 
 # # ALTA imports
-sys.path.append("/zfsauton2/home/swapnilp/carla-rl/carla-rl")
+# sys.path.append("/zfsauton2/home/swapnilp/carla-rl/carla-rl")
 # sys.path.append("/home/swapnil/important_things/auton/alta")
 
 # Environment imports
@@ -50,11 +50,13 @@ import psutil
 
 
 class CarlaEnv(gym.Env):
-    def __init__(self, config=DEFAULT_ENV, vis_wrapper=None, vis_wrapper_vae=None, logger=None, log_dir=None):
+    def __init__(self, config=DEFAULT_ENV, vis_wrapper=None, vis_wrapper_vae=None, logger=None, log_dir=None, **kwargs):
         self.carla_interface = None
         self.config = DEFAULT_ENV
-
         self._update_config(config)
+        ppo_config = ConfigManager().config
+        self._update_config(ppo_config)
+        self._update_config(kwargs)
 
         if 'challenge' in self.config["scenarios"]:
             self.carla_interface = Carla910Interface_Leaderboard(config, log_dir)
@@ -135,7 +137,7 @@ class CarlaEnv(gym.Env):
         ################################################
         # Logging
         ################################################
-        self.base_dir = os.path.join("/",*(log_dir.split("/")[:-3]))
+        # self.base_dir = os.path.join("/",*(log_dir.split("/")[:-3]))
         self.log_dir = log_dir
         self.logger = logger
         self.vis_wrapper = vis_wrapper
@@ -263,9 +265,6 @@ class CarlaEnv(gym.Env):
             else:
                 raise Exception("Undefined Observation Space")
 
-
-        print(self.observation_space)
-
         ################################################
         # Misc (need to check about these later)
         ################################################
@@ -342,7 +341,6 @@ class CarlaEnv(gym.Env):
         world_frame = None
         reward = 0
 
-
         for _ in range(self.config["frame_skip"]):
             carla_obs = self.carla_interface.step(action)
 
@@ -365,6 +363,8 @@ class CarlaEnv(gym.Env):
                 self.episode_measurements['control_reverse'] = carla_obs['control_reverse']
                 self.episode_measurements['control_hand_brake'] = carla_obs['control_hand_brake']
 
+            camera_image = carla_obs['sensor.camera.rgb/top']['image']
+            self.episode_measurements['camera_image'] = camera_image
             # rgb_image = carla_obs['sensor.camera.rgb/front']
             # self._update_env_obs(front_rgb_image=rgb_image)
             self._update_env_obs()
@@ -1623,6 +1623,9 @@ class CarlaEnv(gym.Env):
     def printInfo(self):
         print("Vehicle transform:{0}".format(self.vehicle_actor.get_transform()))
         print("Vehicle velocity:{0}".format(self.vehicle_actor.get_velocity()))
+
+    def render(self):
+        return self.episode_measurements['camera_image']
 
     def close(self):
 

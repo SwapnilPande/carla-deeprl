@@ -1,0 +1,6 @@
+# @package _group_
+
+agent:
+    _target_: tabular.DiscreteModel
+    obs_dim: 8
+    action_dim: 2
