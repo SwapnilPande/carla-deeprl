@@ -363,8 +363,13 @@ class CarlaEnv(gym.Env):
                 self.episode_measurements['control_reverse'] = carla_obs['control_reverse']
                 self.episode_measurements['control_hand_brake'] = carla_obs['control_hand_brake']
 
-            camera_image = carla_obs['sensor.camera.rgb/top']['image']
-            self.episode_measurements['camera_image'] = camera_image
+            rgb_bev = carla_obs['sensor.camera.rgb/top']['image']
+            self.episode_measurements['rgb_bev'] = rgb_bev
+            rgb_front = carla_obs['sensor.camera.rgb/front']['image']
+            self.episode_measurements['rgb_front'] = rgb_front
+            sem_bev = carla_obs['sensor.camera.semantic_segmentation/top']['image']
+            self.episode_measurements['sem_bev'] = sem_bev
+
             # rgb_image = carla_obs['sensor.camera.rgb/front']
             # self._update_env_obs(front_rgb_image=rgb_image)
             self._update_env_obs()
@@ -1634,7 +1639,7 @@ class CarlaEnv(gym.Env):
         print("Vehicle velocity:{0}".format(self.vehicle_actor.get_velocity()))
 
     def render(self, mode='rgb_array'):
-        return self.episode_measurements['camera_image']
+        return self.episode_measurements['rgb_bev']
 
     def close(self):
 

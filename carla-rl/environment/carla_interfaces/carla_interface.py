@@ -67,7 +67,7 @@ class Carla910Interface():
         self.world.apply_settings(settings)
 
         # Sleep to allow for settings to update
-        time.sleep(20)
+        time.sleep(5)
 
         # Retrieve map
         self.map = self.world.get_map()
