@@ -10,7 +10,6 @@ env = CarlaEnv()
 
 try:
     env.reset()
-
     calibration = np.array([[64, 0, 64],
                             [0, 64, 64],
                             [0,  0,  1]])
@@ -19,7 +18,8 @@ try:
     camera_actor.calibration = calibration
 
     for i in range(2000):
-        action = np.array([0,-1])
+        action = env.get_autopilot_action()
+        # action = np.array([0,-1])
         _, _, done, _ = env.step(action)
         image = env.render()
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -38,9 +38,12 @@ try:
 
         if done:
             env.reset()
+            ego_actor = env.carla_interface.get_ego_vehicle()._vehicle
+            camera_actor = env.carla_interface.actor_fleet.sensor_manager.sensors['sensor.camera.rgb/top'].sensor
+            camera_actor.calibration = calibration
 except:
     traceback.print_exc()
-    import ipdb; ipdb.set_trace()
+    # import ipdb; ipdb.set_trace()
 finally:
     env.close()
     cv2.destroyAllWindows()

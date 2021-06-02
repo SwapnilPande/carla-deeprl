@@ -1474,6 +1474,15 @@ class CarlaEnv(gym.Env):
 
         ##################################################################################3
 
+    def get_autopilot_action(self, target_speed=0.5):
+        hazard_detected = self.carla_interface.actor_fleet.ego_vehicle.check_for_hazard()
+        if hazard_detected:
+            return np.array([0,-1])
+        else:
+            waypoint = self.carla_interface.next_waypoints[0]
+            steer = self.carla_interface.actor_fleet.lateral_controller.pid_control(waypoint)
+            return np.array([steer, target_speed])
+
     def get_wp_obs_input(self):
         '''
         Create wp angles input
@@ -1624,7 +1633,7 @@ class CarlaEnv(gym.Env):
         print("Vehicle transform:{0}".format(self.vehicle_actor.get_transform()))
         print("Vehicle velocity:{0}".format(self.vehicle_actor.get_velocity()))
 
-    def render(self):
+    def render(self, mode='rgb_array'):
         return self.episode_measurements['camera_image']
 
     def close(self):
