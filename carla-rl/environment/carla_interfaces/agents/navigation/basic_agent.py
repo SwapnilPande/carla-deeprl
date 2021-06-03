@@ -67,6 +67,9 @@ class BasicAgent(Agent):
 
         self._local_planner.set_global_plan(route_trace)
 
+    def set_planner(self, planner):
+        self._local_planner = planner
+
     def _trace_route(self, start_waypoint, end_waypoint):
         """
         This method sets up a global router and returns the optimal route
@@ -87,12 +90,7 @@ class BasicAgent(Agent):
 
         return route
 
-    def run_step(self, debug=False):
-        """
-        Execute one step of navigation.
-        :return: carla.VehicleControl
-        """
-
+    def check_for_hazard(self):
         # is there an obstacle in front of us?
         hazard_detected = False
 
@@ -105,8 +103,8 @@ class BasicAgent(Agent):
         # check possible obstacles
         vehicle_state, vehicle = self._is_vehicle_hazard(vehicle_list)
         if vehicle_state:
-            if debug:
-                print('!!! VEHICLE BLOCKING AHEAD [{}])'.format(vehicle.id))
+            # if debug:
+            #     print('!!! VEHICLE BLOCKING AHEAD [{}])'.format(vehicle.id))
 
             self._state = AgentState.BLOCKED_BY_VEHICLE
             hazard_detected = True
@@ -114,11 +112,20 @@ class BasicAgent(Agent):
         # check for the state of the traffic lights
         light_state, traffic_light = self._is_light_red(lights_list)
         if light_state:
-            if debug:
-                print('=== RED LIGHT AHEAD [{}])'.format(traffic_light.id))
+            # if debug:
+            #     print('=== RED LIGHT AHEAD [{}])'.format(traffic_light.id))
 
             self._state = AgentState.BLOCKED_RED_LIGHT
             hazard_detected = True
+        return hazard_detected
+
+    def run_step(self, debug=False):
+        """
+        Execute one step of navigation.
+        :return: carla.VehicleControl
+        """
+
+        hazard_detected = self.check_for_hazard()
 
         if hazard_detected:
             control = self.emergency_stop()

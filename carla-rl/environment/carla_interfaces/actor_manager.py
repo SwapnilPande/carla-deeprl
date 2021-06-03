@@ -6,6 +6,7 @@ import time
 # Need to change the imports to contain env flag
 import environment.carla_interfaces.scenarios_910 as scenarios
 from environment.carla_interfaces.agents.navigation.agent import Agent
+from environment.carla_interfaces.agents.navigation.basic_agent import BasicAgent
 import environment.carla_interfaces.sensors as sensors
 import environment.carla_interfaces.controller as controller
 from environment.config import DISCRETE_ACTIONS
@@ -46,7 +47,7 @@ class ActorManager910():
             self.spawn_points_fixed_order =  [self.spawn_points[i] for i in self.config['spawn_points_fixed_idx']]
         else:
             spawn_pt_idx = np.random.permutation(len(self.spawn_points))
-            np.save(os.path.join(log_dir, "spawn_pt_order"), spawn_pt_idx)
+            # np.save(os.path.join(log_dir, "spawn_pt_order"), spawn_pt_idx)
             self.spawn_points_fixed_order =  [self.spawn_points[i] for i in spawn_pt_idx]
 
         ################################################
@@ -74,7 +75,13 @@ class ActorManager910():
             'K_D': 0.0005,
             'K_I': 0.4,
             'dt': 1/10.0}
+        self.args_lateral_dict = {
+            'K_P': 0.88,
+            'K_D': 0.02,
+            'K_I': 0.5,
+            'dt': 1/10.0}
         self.controller = controller.PIDLongitudinalController(K_P=self.args_longitudinal_dict['K_P'], K_D=self.args_longitudinal_dict['K_D'], K_I=self.args_longitudinal_dict['K_I'], dt=self.args_longitudinal_dict['dt'])
+        self.lateral_controller = controller.PIDLateralController(self.vehicle_actor, K_P=self.args_lateral_dict['K_P'], K_D=self.args_lateral_dict['K_D'], K_I=self.args_lateral_dict['K_I'], dt=self.args_lateral_dict['dt'])
         self.target_speed = self.config['target_speed']
 
         self.sensor_manager = self.spawn_sensors()
@@ -122,7 +129,7 @@ class ActorManager910():
 
         # Agent uses proximity_threshold to detect traffic lights.
         # Hence we use traffic_light_proximity_threshold while creating an Agent.
-        vehicle_agent = Agent(self.vehicle_actor, self.config['traffic_light_proximity_threshold'])
+        vehicle_agent = BasicAgent(self.vehicle_actor, self.config['traffic_light_proximity_threshold'])
         return vehicle_agent
 
     def get_ego_vehicle_transform(self):
@@ -260,8 +267,9 @@ class ActorManager910():
 
         return ep_measurements
 
-
-
+    def check_for_vehicle_elimination(self):
+        # https://github.com/carla-simulator/carla/issues/3860
+        self.actor_list = [actor for actor in self.actor_list if actor.is_alive]
 
     def spawn_sensors(self):
         if self.ego_vehicle is None:

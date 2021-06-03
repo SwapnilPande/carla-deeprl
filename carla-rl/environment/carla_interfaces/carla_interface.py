@@ -67,7 +67,7 @@ class Carla910Interface():
         self.world.apply_settings(settings)
 
         # Sleep to allow for settings to update
-        time.sleep(20)
+        time.sleep(5)
 
         # Retrieve map
         self.map = self.world.get_map()
@@ -241,6 +241,8 @@ class Carla910Interface():
         control = self.actor_fleet.step(action)
 
         world_frame = self.world.tick()
+
+        self.actor_fleet.check_for_vehicle_elimination()
 
         sensor_readings = self.actor_fleet.sensor_manager.get_sensor_readings(world_frame)
         location = self.actor_fleet.ego_vehicle._vehicle.get_location()
