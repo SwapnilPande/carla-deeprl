@@ -10,10 +10,10 @@ import torch
 from torch.utils.data import Dataset, DataLoader, IterableDataset
 import pytorch_lightning as pl
 
-from utils import get_reward, preprocess_rgb, preprocess_topdown, \
+from .utils import get_reward, preprocess_rgb, preprocess_topdown, \
     get_angle_to_next_node, get_obs, get_action, get_dir
-from replay_buffer import Experience, ReplayBuffer, PERBuffer
-from environment.carla_9_4.env import CarlaEnv
+from .replay_buffer import Experience, ReplayBuffer, PERBuffer
+from environment import CarlaEnv
 
 """
 Offline dataset handling

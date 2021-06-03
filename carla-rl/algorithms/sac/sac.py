@@ -12,7 +12,7 @@ import hydra
 from .actor import DiagGaussianActor
 from .critic import DoubleQCritic, Critic
 from .utils import to_np, soft_update_params
-from agents.torch.models import make_conv_preprocessor
+from common.models import make_conv_preprocessor
 
 
 class SAC(pl.LightningModule):

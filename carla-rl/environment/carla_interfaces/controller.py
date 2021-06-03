@@ -1,5 +1,7 @@
 from collections import deque
 import numpy as np
+import carla
+import math
 
 class PIDLongitudinalController():
     """
@@ -58,13 +60,14 @@ class PIDLateralController():
         :param K_I: Integral term
         :param dt: time differential in seconds
         """
+        self._vehicle = vehicle
         self._K_P = K_P
         self._K_D = K_D
         self._K_I = K_I
         self._dt = dt
         self._e_buffer = deque(maxlen=10)
 
-    def pid_control(self, waypoint, vehicle_transform):
+    def pid_control(self, waypoint):
         """
         Estimate the steering angle of the vehicle based on the PID equations
 
@@ -72,6 +75,7 @@ class PIDLateralController():
         :param vehicle_transform: current transform of the vehicle
         :return: steering control in the range [-1, 1]
         """
+        vehicle_transform = self._vehicle.get_transform()
         v_begin = vehicle_transform.location
         v_end = v_begin + carla.Location(x=math.cos(math.radians(vehicle_transform.rotation.yaw)),
                                          y=math.sin(math.radians(vehicle_transform.rotation.yaw)))

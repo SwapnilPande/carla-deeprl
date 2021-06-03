@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt
 # st = ipdb.set_trace
 
 # # ALTA imports
-sys.path.append("/zfsauton2/home/swapnilp/carla-rl/carla-rl")
+# sys.path.append("/zfsauton2/home/swapnilp/carla-rl/carla-rl")
 # sys.path.append("/home/swapnil/important_things/auton/alta")
 
 # Environment imports
@@ -139,7 +139,7 @@ class CarlaEnv(gym.Env):
         ################################################
         # Logging
         ################################################
-        self.base_dir = os.path.join("/",*(log_dir.split("/")[:-3]))
+        # self.base_dir = os.path.join("/",*(log_dir.split("/")[:-3]))
         self.log_dir = log_dir
         self.logger = logger
         self.vis_wrapper = vis_wrapper
@@ -151,7 +151,6 @@ class CarlaEnv(gym.Env):
         self.action_space = self.config.action_config.action_space
 
         self.observation_space = self.config.obs_config.observation_space
-
 
         ################################################
         # Misc (need to check about these later)
@@ -186,8 +185,12 @@ class CarlaEnv(gym.Env):
         world_frame = None
         reward = 0
 
+<<<<<<< HEAD
 
         for _ in range(self.config.action_config.frame_skip):
+=======
+        for _ in range(self.config["frame_skip"]):
+>>>>>>> main
             carla_obs = self.carla_interface.step(action)
 
             # if we are, use loop over # of frames to skip
@@ -208,6 +211,13 @@ class CarlaEnv(gym.Env):
                 self.episode_measurements['control_brake'] = carla_obs['control_brake']
                 self.episode_measurements['control_reverse'] = carla_obs['control_reverse']
                 self.episode_measurements['control_hand_brake'] = carla_obs['control_hand_brake']
+
+            rgb_bev = carla_obs['sensor.camera.rgb/top']['image']
+            self.episode_measurements['rgb_bev'] = rgb_bev
+            rgb_front = carla_obs['sensor.camera.rgb/front']['image']
+            self.episode_measurements['rgb_front'] = rgb_front
+            sem_bev = carla_obs['sensor.camera.semantic_segmentation/top']['image']
+            self.episode_measurements['sem_bev'] = sem_bev
 
             # rgb_image = carla_obs['sensor.camera.rgb/front']
             # self._update_env_obs(front_rgb_image=rgb_image)
@@ -1018,6 +1028,15 @@ class CarlaEnv(gym.Env):
 
         ##################################################################################3
 
+    def get_autopilot_action(self, target_speed=0.5):
+        hazard_detected = self.carla_interface.actor_fleet.ego_vehicle.check_for_hazard()
+        if hazard_detected:
+            return np.array([0,-1])
+        else:
+            waypoint = self.carla_interface.next_waypoints[0]
+            steer = self.carla_interface.actor_fleet.lateral_controller.pid_control(waypoint)
+            return np.array([steer, target_speed])
+
     def get_wp_obs_input(self):
         '''
         Create wp angles input
@@ -1158,6 +1177,9 @@ class CarlaEnv(gym.Env):
     def printInfo(self):
         print("Vehicle transform:{0}".format(self.vehicle_actor.get_transform()))
         print("Vehicle velocity:{0}".format(self.vehicle_actor.get_velocity()))
+
+    def render(self, mode='rgb_array'):
+        return self.episode_measurements['rgb_bev']
 
     def close(self):
 
