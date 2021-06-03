@@ -4,7 +4,6 @@ import subprocess
 import traceback
 import random
 import time
-from environment.config import DEFAULT_ENV
 
 from tqdm import tqdm
 
@@ -13,15 +12,15 @@ class CarlaServer():
         # print("Launching CARLA server...")
         # Save config parameters
         self.config = config
-        self.server_port = config['server_port']
-        self.server_binary = config['server_binary']
-        self.carla_gpu = config['carla_gpu']
-        self.render_server = config['render_server']
+        self.server_port = config.server_port
+        self.server_binary = config.server_binary
+        self.carla_gpu = config.carla_gpu
+        self.render_server = config.render_server
         self.live_carla_processes = set()
 
         self.server_process = None
 
-        if not self.server_port:
+        if self.server_port == -1:
             self.server_port = random.randint(10000, 60000)
         else:
             pass
@@ -29,7 +28,7 @@ class CarlaServer():
         # Configure environment variables
         self.carla_env = os.environ.copy()
         if self.carla_gpu is not None:
-            self.carla_env["SDL_HINT_CUDA_DEVICE"] = self.carla_gpu
+            self.carla_env["SDL_HINT_CUDA_DEVICE"] = str(self.carla_gpu)
             # Delete cuda visible devices
             try:
                 del self.carla_env['CUDA_VISIBLE_DEVICES']
@@ -43,7 +42,6 @@ class CarlaServer():
         self.launch_command = [
                 self.server_binary, "-carla-rpc-port={}".format(self.server_port)
         ]
-        # self.start()
 
 
     def _attempt_server_launch(self):
@@ -51,6 +49,9 @@ class CarlaServer():
         # import ipdb; ipdb.set_trace()
         # Try to launch
         print("Attempting to start carla on GPU {0}".format(self.carla_gpu))
+        print(type(self.launch_command[0]))
+        print(type(self.launch_command[1]))
+        print(self.launch_command)
         try:
             self.server_process = subprocess.Popen(self.launch_command,
                 preexec_fn=os.setsid, env=self.carla_env)
@@ -64,8 +65,9 @@ class CarlaServer():
         if self.server_process:
             print("Launched server at port:", self.server_port)
 
-            print('Waiting 20s for server to finish setting up')
-            for _ in tqdm(range(20)):
+            server_launch_delay = 25
+            print('Waiting {}s for server to finish setting up'.format(server_launch_delay))
+            for _ in tqdm(range(server_launch_delay)):
                 time.sleep(1)
 
             return True
@@ -84,7 +86,7 @@ class CarlaServer():
         server_started = False
         server_start_retries = 0
 
-        while ((not server_started) and server_start_retries < self.config['server_retries']):
+        while ((not server_started) and server_start_retries < self.config.server_retries):
             server_started = self._attempt_server_launch()
             server_start_retries += 1
 
@@ -104,8 +106,3 @@ class CarlaServer():
             self.server_port = None
             self.server_process = None
             print("Killed server process")
-
-
-if __name__ == "__main__":
-    server = CarlaServer(config=DEFAULT_ENV)
-    time.sleep(10)
