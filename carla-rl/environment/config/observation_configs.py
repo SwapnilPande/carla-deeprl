@@ -48,11 +48,11 @@ class LowDimObservationConfig(BaseObservationConfig):
 
         self.sensors = {"lane_invasion_sensor":None, \
                         "collision_sensor": None, \
-                        "sensor.camera.semantic_segmentation/top": {'x':13.0,
-                                                                    'z':18.0,
+                        "sensor.camera.semantic_segmentation/top": {'x':3.0,
+                                                                    'z':10.0,
                                                                     'pitch':270.0,
-                                                                    'sensor_x_res': '112',
-                                                                    'sensor_y_res':'112',
+                                                                    'sensor_x_res': '128',
+                                                                    'sensor_y_res':'128',
                                                                     'fov':'90',
                                                                     'sensor_tick': '0.0',
                                                                     'num_classes':5},
