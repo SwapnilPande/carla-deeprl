@@ -26,9 +26,9 @@ class SensorManager():
         self.config = config
 
         self.parent_actor = parent_actor
-        self.sensor_names = list(self.config['sensors'].keys())
+        self.sensor_names = list(self.config.obs_config.sensors.keys())
         # Assuming sensors_configs as a list of dictioaries
-        self.sensor_configs = list(self.config['sensors'].values())
+        self.sensor_configs = list(self.config.obs_config.sensors.values())
 
         # This is similar to normal dictionary but with efficient memory management during garbage collection
         #self.sensors = weakref.WeakValueDictionary()
@@ -43,7 +43,7 @@ class SensorManager():
                 sensor = LaneInvasionSensor(self.parent_actor)
             elif 'camera' in sensor_name:
                 sensor_config.update({'name':sensor_name})
-                sensor = CameraSensor(self.parent_actor, sensor_config, self.config['verbose'])
+                sensor = CameraSensor(self.parent_actor, sensor_config, self.config.verbose)
             else:
                 raise Exception("Sensor {} not supported".format(sensor_name))
 
