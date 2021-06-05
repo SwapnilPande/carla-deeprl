@@ -185,12 +185,8 @@ class CarlaEnv(gym.Env):
         world_frame = None
         reward = 0
 
-<<<<<<< HEAD
 
         for _ in range(self.config.action_config.frame_skip):
-=======
-        for _ in range(self.config["frame_skip"]):
->>>>>>> main
             carla_obs = self.carla_interface.step(action)
 
             # if we are, use loop over # of frames to skip
