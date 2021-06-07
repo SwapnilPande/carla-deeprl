@@ -251,15 +251,7 @@ class OfflineCarlaDataset(Dataset):
         done = self.terminals[idx]
         vehicle_pose = self.vehicle_poses[idx]
 
-        # print(mlp_features.shape)
-        # print(action.shape)
-        # # print(reward.shape)
-        # print(delta.shape)
-        # # print(done.shape)
-
-
-
-        return mlp_features, action, reward, delta, done#, waypoints, vehicle_pose
+        return mlp_features, action, reward, delta, done, waypoints, len(waypoints), vehicle_pose
 
     def __len__(self):
         return len(self.rewards)
@@ -268,6 +260,36 @@ class OfflineCarlaDataset(Dataset):
     def sample(self):
         idx = np.random.randint(len(self))
         return self[idx]
+
+        
+''' Pads waypoints with zeros so that all waypoints sequences are same length
+@param: batch of data
+@out:   original features but with padded waypoints
+'''
+def collate_fn(batch):
+    mlp_features, action, reward, delta, done, waypoints, num_wps_list, vehicle_pose = [list(x) for x in zip(*batch)]  
+    # waypoint feature is at the fifth index
+    wp_idx = 5
+    # get maximum number of waypoints across all sequences
+    max_wps = max(num_wps_list)
+    # get innermost dimension of each wp
+    wp_dim = batch[0][wp_idx].size(-1)
+    # create padding 
+    padded_waypoints = torch.zeros((len(batch), max_wps, wp_dim))
+    for i in range(len(waypoints)):
+        wp = waypoints[i]
+        num_wps, wp_dim = batch[i][wp_idx].size()
+        padded_waypoints[i] = torch.cat([wp, torch.zeros((max_wps - num_wps, wp_dim))])
+    
+    # convert to tensors 
+    mlp_features = torch.stack(mlp_features)
+    action       = torch.stack(action)
+    delta        = torch.stack(delta)
+    vehicle_pose = torch.stack(vehicle_pose)
+
+    new_batch = mlp_features, action, reward, delta, done, padded_waypoints, num_wps_list, vehicle_pose
+    return new_batch
+
 
 
 class OfflineCarlaDataModule():
@@ -308,7 +330,7 @@ class OfflineCarlaDataModule():
         sampler = None
         if(weighted):
             for i in range(len(self.train_data)):
-                _, _, _, deltas, _ = self.train_data[i]
+                _, _, _, deltas, _, _, _, _ = self.train_data[i]
                 weights[i] = torch.abs(deltas[0]) + 0.1
 
             sampler = torch.utils.data.WeightedRandomSampler(
@@ -336,12 +358,15 @@ class OfflineCarlaDataModule():
             batch_size = batch_size_override
 
         return DataLoader(self.train_data,
+                            collate_fn=collate_fn,
                             batch_size=batch_size,
                             num_workers=self.num_workers,
                             sampler = sampler)
 
     def val_dataloader(self):
-        return DataLoader(self.val_data, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
+        return DataLoader(self.val_data,\
+                          collate_fn=collate_fn, \
+                          batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
 
 
 """
