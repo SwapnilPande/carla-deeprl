@@ -2,7 +2,7 @@
 
 ## Setup Instructions
 
-* Prerequisites: Follow the instructions at https://github.com/Auton-Self-Driving/alta/edit/carla_upgrade/ to install Carla.
+* Prerequisites: Follow the instructions at https://github.com/Auton-Self-Driving/alta/tree/carla_upgrade to install Carla.
 
 
 * Modify your existing configure_env.setup file to contain the following:
