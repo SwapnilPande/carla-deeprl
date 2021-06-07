@@ -198,7 +198,7 @@ class DynamicsEnsemble:
         self.optimizers[model_idx].zero_grad()
 
         # Split batch into componenets
-        obs, actions, rewards, delta, _ = batch
+        obs, actions, rewards, delta, done, waypoints, num_wps_list, vehicle_pose = batch
 
         # Combine tensors and reshape batch to flat inputs
         feed, target = self.prepare_batch(obs, actions, delta, rewards)
@@ -222,7 +222,7 @@ class DynamicsEnsemble:
     def validation_step(self, batch, model_idx = 0):
 
         # Split batch into componenets
-        obs, actions, rewards, delta, _ = batch
+        obs, actions, rewards, delta, done, waypoints, num_wps_list, vehicle_pose = batch
 
         # Combine tensors and reshape batch to flat inputs
         feed, target = self.prepare_batch(obs, actions, delta, rewards)
