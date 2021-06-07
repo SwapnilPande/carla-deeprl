@@ -3,71 +3,189 @@ from numpy.lib.arraysetops import isin
 from tqdm import tqdm
 import scipy.spatial
 
-# torch imports
 import torch
-print("REDUCED STEER REWARD")
+from torch.utils.data import Dataset, DataLoader, IterableDataset
+from data_modules import OfflineCarlaDataset
 
-# def unnormalize_deltas(deltas):
-#     # assert len(deltas.shape) == 1
-#     deltas = deltas*(torch.tensor([0.0073, 0.0241, 0.0076, 0.0138]).to("cuda:2")) + torch.tensor([-4.0775e-06, -4.5966e-05,  1.6651e-04,  2.2809e-06]).to("cuda:2")
-
-#     return deltas
-
-# def unnormalize_mlp(mlp_features):
-#     # assert len(mlp_features.shape) == 1
-#     # mlp_features[0] = mlp_features[0]*(7*10**2)
-#     # mlp_features[1] = mlp_features[1]*(3*10**2)
-#     # mlp_features[2] = mlp_features[2]*(2)
-#     # mlp_features[2] = mlp_features[2]*(2*10**2)
-
-#     mlp_features = mlp_features[:,0:4]*torch.tensor([0.0327, 0.0781, 0.1413, 0.0785]).to("cuda:2") + torch.tensor([ 0.0003, -0.0039,  0.1515,  0.0010]).to("cuda:2")
-
-#     return mlp_features
-
-# def normalize_mlp(mlp_features):
-
-#     mlp_features = (mlp_features[:,0:4] - torch.tensor([ 0.0003, -0.0039,  0.1515,  0.0010]).to("cuda:2"))/torch.tensor([0.0327, 0.0781, 0.1413, 0.0785]).to("cuda:2")
-
-#     return mlp_features
-
-# def unnormalize_deltas(deltas):
-#     # assert len(deltas.shape) == 1
-#     # deltas = deltas*(torch.tensor([0.0073, 0.0241, 0.0076, 0.0138]).to("cuda:2")) + torch.tensor([-4.0775e-06, -4.5966e-05,  1.6651e-04,  2.2809e-06]).to("cuda:2")
-
-#     return deltas
-
-# def unnormalize_mlp(mlp_features):
-#     # assert len(mlp_features.shape) == 1
-#     # mlp_features[0] = mlp_features[0]*(7*10**2)
-#     # mlp_features[1] = mlp_features[1]*(3*10**2)
-#     # mlp_features[2] = mlp_features[2]*(2)
-#     # mlp_features[2] = mlp_features[2]*(2*10**2)
-
-#     # mlp_features = mlp_features[:,0:4]*torch.tensor([0.0327, 0.0781, 0.1413, 0.0785]).to("cuda:2") + torch.tensor([ 0.0003, -0.0039,  0.1515,  0.0010]).to("cuda:2")
-
-#     return mlp_features
-
-# def normalize_mlp(mlp_features):
-
-#     # mlp_features = (mlp_features[:,0:4] - torch.tensor([ 0.0003, -0.0039,  0.1515,  0.0010]).to("cuda:2"))/torch.tensor([0.0327, 0.0781, 0.1413, 0.0785]).to("cuda:2")
-
-#     return mlp_features
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
+# speed, steer
 def unnormalize_state(obs, device):
-    return torch.tensor([0.9105, 3.3075, 0.1100, 0.1323,1.0]).to(device)*obs + torch.tensor([ 0.2295,  3.5232,  0.0196, -0.0883,0]).to(device)
+    return torch.tensor([0.1100, 0.1323]).to(device)*obs + torch.tensor([0.0196, -0.0887]).to(device)
 
 def normalize_state(obs, device):
-    return (obs - torch.tensor([ 0.2295,  3.5232,  0.0196, -0.0883,0.0]).to(device))/torch.tensor([0.9105, 3.3075, 0.1100, 0.1323,1.0]).to(device)
+    return (obs - torch.tensor([0.0196, -0.0887]).to(device))/torch.tensor([0.1100, 0.1323]).to(device)
 
+# Δx, Δy, Δyaw, Δspeed, Δsteer
 def unnormalize_delta(delta, device):
-    return torch.tensor([0.2927, 0.2108, 0.0491, 0.0334,1.0]).to(device)*delta
+    raise NotImplementedError
 
 def normalize_delta(delta, device):
-    return delta/torch.tensor([0.2927, 0.2108, 0.0491, 0.0334,1.0]).to(device)
+    raise NotImplementedError
 
-def calc_next_state(obs, delta, device):
-    return normalize_state(unnormalize_state(obs, device) + unnormalize_delta(delta, device), device)
+''' 
+Calculates L2 distance between waypoint, vehicle
+@param waypoint:     torch.Tensor([x,y])
+        vehicle_pose: torch.Tensor([x, y, yaw])
+'''
+def distance_vehicle(waypoint, vehicle_pose):
+    vehicle_loc = vehicle_pose[:2] # get x, y 
+    dist = torch.dist(waypoint, vehicle_loc).item()
+    return dist
+
+
+''' 
+Calculates dot product, angle between vehicle, waypoint
+@param waypoint:     [x, y]
+       vehicle_pose: torch.Tensor([x, y, yaw])
+'''
+def get_dot_product_and_angle(vehicle_pose, waypoint):
+
+    waypoint = torch.FloatTensor(waypoint)
+
+    v_begin         = vehicle_pose[:2]
+    vehicle_yaw     = vehicle_pose[2]  
+    v_end = v_begin + torch.Tensor([torch.cos(torch.deg2rad(vehicle_yaw)), \
+                                    torch.sin(torch.deg2rad(vehicle_yaw))])
+
+    # vehicle vector: direction vehicle is pointing in global coordinates  
+    v_vec = torch.sub(v_end, v_begin)
+    # vector from vehicle's position to next waypoint
+    w_vec = torch.sub(waypoint, v_begin)
+    # steering error: angle between vehicle vector and vector pointing from vehicle loc to 
+    # waypoint 
+    dot   = torch.dot(w_vec, v_vec)
+    angle = torch.acos(torch.clip(dot /
+                                (torch.linalg.norm(w_vec) * torch.linalg.norm(v_vec)), -1.0, 1.0))
+    assert(torch.isclose(torch.cos(angle), torch.clip(torch.dot(w_vec, v_vec) / \
+        (torch.linalg.norm(w_vec) * torch.linalg.norm(v_vec)), -1.0, 1.0)))
+
+    # make vectors 3D for cross product
+    v_vec_3d = torch.hstack((v_vec, torch.Tensor([0])))
+    w_vec_3d = torch.hstack((w_vec, torch.Tensor([0])))
+
+    _cross = torch.cross(v_vec_3d, w_vec_3d)
+
+    # if negative steer, turn left 
+    if _cross[2] < 0:   
+        angle *= -1.0
+    
+    # assert cross product a x b = |a||b|sin(angle)
+    assert(torch.isclose(_cross[2], torch.norm(v_vec_3d) * torch.norm(w_vec_3d) * torch.sin(angle)))
+
+    return dot, angle, w_vec
+
+'''
+Gets distance of vehicle to a line formed by two waypoints
+@param waypoint1:     [x,y]
+       waypoint2:     [x,y]
+       vehicle_pose:  torch.Tensor([x,y, yaw])
+'''
+def vehicle_to_line_distance(vehicle_pose, waypoint1, waypoint2):
+    waypoint1 = torch.FloatTensor(waypoint1)
+    waypoint2 = torch.FloatTensor(waypoint2)
+
+    vehicle_loc   = vehicle_pose[:2] # x, y coords
+    
+    a_vec = torch.sub(waypoint2, waypoint1)   # forms line between two waypoints
+    b_vec = torch.sub(vehicle_loc, waypoint1) # line from vehicle to first waypoint
+    
+    # make 3d for cross product
+    a_vec_3d = torch.hstack((a_vec, torch.Tensor([0])))
+    b_vec_3d = torch.hstack((b_vec, torch.Tensor([0])))
+
+    dist_vec = torch.cross(a_vec_3d, b_vec_3d) / torch.linalg.norm(a_vec_3d)
+    return abs(dist_vec[2]) # dist
+
+'''
+Calculate dist to trajectory, angle
+@param waypoints:    [torch.Tensor([wp1_x,wp1_y]), torch.Tensor([wp2_x,wp2_y)......]
+       vehicle pose: torch.Tensor([x,y,yaw])
+@returns dist_to_trajectory, angle, ...
+'''
+def process_waypoints(waypoints, vehicle_pose):
+
+    waypoints = waypoints.tolist()
+    next_waypoints_angles = []
+    next_waypoints_vectors = []
+    next_waypoints = []
+    num_next_waypoints = 5
+    last_waypoint, second_last_waypoint = None, None
+
+    # closest wp to car
+    min_dist_index = -1
+    min_dist = np.inf
+
+    for i, waypoint in enumerate(waypoints):
+        # find wp that yields min dist between itself and car
+        dist_i = distance_vehicle(torch.FloatTensor(waypoint), vehicle_pose)
+        if dist_i < min_dist:
+            min_dist_index = i
+            min_dist = dist_i
+
+    wp_len = len(waypoints)
+    if min_dist_index >= 0:
+        # pop waypoints up untilthe one with min dist
+        for i in range(min_dist_index + 1):
+            waypoint = waypoints.pop(0)
+            # set last, second-to-last waypoints
+            if i == wp_len - 1:
+                last_waypoint = waypoint
+            elif i == wp_len - 2:
+                second_last_waypoint = waypoint
+
+
+
+    # only keep next N waypoints 
+    for i, waypoint in enumerate(waypoints[:num_next_waypoints]):
+        # dist to waypoint 
+        dot, angle, w_vec = get_dot_product_and_angle(vehicle_pose, waypoint)
+
+        if len(next_waypoints_angles) == 0:
+            next_waypoints_angles = [angle]
+            next_waypoints = [waypoint]
+            next_waypoints_vectors = [w_vec]
+        else:
+            next_waypoints_angles.append(angle)
+            next_waypoints.append(waypoint)
+            next_waypoints_vectors.append(w_vec)
+
+
+    # get mean of all angles to figure out which direction to turn 
+    if len(next_waypoints_angles) > 0:
+        angle = np.mean(np.array(next_waypoints_angles))
+    else:
+        print("No next waypoint found!")
+        angle = 0
+
+    if len(next_waypoints) > 1:
+        print(next_waypoints)
+        # get dist from vehicle to a line formed by the next two wps 
+        dist_to_trajectory = vehicle_to_line_distance(
+                                vehicle_pose,
+                                next_waypoints[0],
+                                next_waypoints[1])
+
+    # if only one next waypoint, use it and second to last 
+    elif len(next_waypoints) > 0:
+        dist_to_trajectory = vehicle_to_line_distance(
+                                vehicle_pose,
+                                second_last_waypoint,
+                                next_waypoints[0])
+
+    else:
+
+        if second_last_waypoint and last_waypoint:
+            dist_to_trajectory = vehicle_to_line_distance(
+                                    vehicle_pose,
+                                    second_last_waypoint,
+                                    last_waypoint)
+            
+        else:
+            dist_to_trajectory = 0
+
+    return angle, dist_to_trajectory, next_waypoints, next_waypoints_angles, next_waypoints_vectors
 
 
 
@@ -90,10 +208,14 @@ class FakeEnv:
         self.dynamics = dynamics
         self.input_dim, self.output_dim = self.dynamics.get_input_output_dim()
         self.device_num = self.dynamics.get_gpu()
-        self.device = "cuda:{}".format(self.device_num)
+        self.device = "cuda:{}".format(self.device_num) if torch.cuda.is_available() else "cpu"
 
         self.logger = logger
+        # init
         self.state = None
+        self.vehicle_pose = None
+        self.waypoints = None
+
 
         # Setup dataset
         self.offline_data_module = self.dynamics.get_data_module()
@@ -101,7 +223,6 @@ class FakeEnv:
         # Move dynamics to correct device
         # We only have to do this because lightning moves the device back to CPU
         self.dynamics.to(self.device)
-
         self.data_iter = iter(self.dataloader)
 
         # self.calc_usad_params()
@@ -112,6 +233,7 @@ class FakeEnv:
         # self.maximum = 2
         # self.beta_max = 2
 
+    # sample from dataset 
     def sample(self):
         # print("_--------------------------")
         # print(len(self.dataloader))
@@ -125,160 +247,143 @@ class FakeEnv:
             self.data_iter = iter(self.dataloader)
             return next(self.data_iter)
 
-    def calculate_reward(self, cur_state, next_state):
 
-        cur_state_unnorm = unnormalize_state(cur_state, device = self.device)
-        next_state_unnorm = unnormalize_state(next_state, device = self.device)
+    ''' 
+    Calculates reward according to distance to trajectory 
+    @params next_state:   vehicle state after taking action
+            dist_to_traj: distance from vehicle to current trajectory
+    '''
+    def calculate_reward(self, next_state, dist_to_traj):
+        speed = next_state[0]*15
+        dist_to_trajectory = dist_to_traj *10
 
-        speed = next_state_unnorm[1]*15
-
-        steer_reward = torch.abs(cur_state_unnorm[2] - cur_state_unnorm[2])
-        dist_to_trajectory = next_state_unnorm[0]*10
-
+        # reward for speed, penalize for straying from target trajectory 
         off_route = torch.abs(dist_to_trajectory) > 10
-        collision = torch.abs(next_state_unnorm[-1]) < 0.2
+        return torch.unsqueeze(speed - 1.2*torch.abs(dist_to_trajectory) - (off_route * 50.), dim = 0)
 
-        return torch.unsqueeze(speed - 1.2*torch.abs(dist_to_trajectory) - (off_route * 50.) - 1.3*steer_reward - (collision * 50), dim = 0)
 
+    ''' Resets environment '''
     def reset(self, obs = None, action = None):
-        if(obs is None):
-            obs, action, _, _, _ = self.sample()
-            self.state = torch.clone(obs)
-            self.state =  self.state.to(self.device)
-            self.past_action = action[:,2:4].to(self.device)
-        else:
-            obs = torch.tensor(obs).to(self.device)
-            self.state = torch.clone(obs)
-            # obs = normalize_mlp(obs)
-            action = torch.tensor(action).to(self.device)
-            self.past_action = action[:,2:4]
+        print("Resetting environment...\n")
+        if obs is None:
+            # samples returns (obs, act, reward, delta, done, waypoints, vehicle_pose)
+            # obs: [[speed_t, steer_t, delta_time_t], [speed_t-1, steer_t-1, delta_time_t-1], ...]
+            obs, action, _, _, _, waypoints, vehicle_pose = self.sample()
 
+            self.obs = torch.squeeze(obs)
+            self.past_action = torch.squeeze(action)
+            self.waypoints = torch.squeeze(waypoints)
+            self.vehicle_pose = torch.squeeze(vehicle_pose)
+            # state only includes speed, steer
+            self.state =  self.obs[:, :2]
+
+        print('obs', self.obs)
+        print('action', self.past_action)
+        print('waypoints', self.waypoints)
+        print('vehicle pose', self.vehicle_pose)
+        print('state', self.state)
 
         self.steps_elapsed = 0
 
-        return self.state[:,[0,2,4,6,16]]
+        return self.state  # [speed_frames, steer_frames, delta_frames]
 
-    def calc_usad_params(self):
-        # Mask to select upper triangle of the distance matrix
-        # Does not include diagonal
-        mask = np.triu_indices(self.dynamics.get_n_models(), 1)
+   
+    '''
+    Updates state vector according to dynamics prediction 
+    # @params: delta      [Δspeed, Δsteer]
+    # @return new state:  [[speed_t+1, steer_t+1], [speed_t, steer_t], speed_t-1, steer_t-1]] 
+    '''
+    def update_next_state(self, delta_state):
+        # calculate newest state 
+        newest_state = self.state[0, :] + delta_state 
+        # insert newest state at front 
+        self.state = torch.cat([newest_state.unsqueeze(0), self.state], dim=0)
+        # delete oldest state
+        self.state = self.state[:-1, :] 
+        return self.state 
+        
+    '''
+    Takes one step according to action
+    @ params: new_action 
+    @ returns next_obs, reward_out, (uncertain or timeout), {"delta" : delta, "uncertain" : 100*uncertain} 
+    '''
+    def step(self, new_action, obs = None):
 
-        print("Calculating disagreement statistics")
+        print("Taking step...\n")
 
-        uncertainty_sum = 0.0
-        uncertainty_sum_sq = 0.0
-        uncertainty_maximum = 0.0
-        n = 0
+        # clamp new action to safe range
+        new_action = torch.clamp(new_action, -1, 1).to(self.device)
+        # insert new action at front, delete oldest action
+        action = torch.cat([new_action, self.past_action[:-1]])
 
-        for i, batch in enumerate(tqdm(self.dataloader)):
-            obs, action, _, _, _ = batch
-            x = torch.cat([obs, action], dim = 1).float().to(self.device)
+        # if obs not passed in
+        if not obs:
+            obs = self.obs
+       
+        ############ feed predictions (normalized) through dynamics model ##############
 
-            predictions = self.dynamics.predict(x).cpu().numpy()
-            predictions = np.swapaxes(predictions, 0, 1)
-            # predictions = predictions[:,:,:-1]
+        # input [[speed_t, steer_t, Δtime_t, action_t], [speed_t-1, steer_t-1, Δt-1, action_t-1]]
+    
+        # TODO: dynamics model must flatten input to 1D list
+        dynamics_input = torch.cat([obs, action.reshape(-1,1)], dim = 1).float()
 
-
-            # Generate distance matrix for predictions
-            for prediction in predictions:
-                discs = self.calc_disc(prediction)
-                discs_flat = discs[mask]
-
-                # Get maximum
-                temp_max = np.amax(discs_flat)
-                uncertainty_maximum = np.maximum(temp_max, uncertainty_maximum)
-
-                uncertainty_sum += np.sum(discs_flat)
-                uncertainty_sum_sq += np.sum(np.square(discs_flat))
-                n += len(discs_flat)
-
-        self.mean = uncertainty_sum/n
-        self.var = uncertainty_sum_sq/n - self.mean*self.mean
-        self.std = np.sqrt(self.var)
-        self.maximum = uncertainty_maximum
-
-        self.beta_max = (self.maximum - self.mean)/self.std
-
-        print("mean: {}".format(self.mean))
-        print("var: {}".format(self.var))
-        print("maximum: {}".format(self.maximum))
-
-    def calc_disc(self, predictions):
-        # Compute the pairwise distances between all predictions
-        return scipy.spatial.distance_matrix(predictions, predictions)
-
-
-    def usad(self, predictions):
-        # thres = self.mean + (self.uncertain_threshold * self.beta_max) * (self.std)
-
-        # max_discrep = np.amax(self.calc_disc(predictions)
-        # If maximum is greater than threshold, return true
-        return np.amax(self.calc_disc(predictions))
-
-
-    def step(self, action_unnormalized, obs = None):
-        action = torch.unsqueeze(action_unnormalized, dim = 0)
-
-        # Clamp actions to safe range
-        action = torch.clamp(action, -12, 12).to(self.device)
-
-        action = torch.cat([action, self.past_action], dim = 1)
-
-        # Next, save observation if passed
-        # Only used to intialize model to certain state
-        if obs is not None:
-            if(not torch.is_tensor(obs)):
-                obs = torch.unsqueeze(torch.tensor(obs).float().to(self.device), dim = 0)
-                self.state = torch.clone(obs)
-                # obs = normalize_mlp(obs)
-            else:
-                obs = obs.to(self.device)
-                self.state = torch.clone(obs)
-                # obs = normalize_mlp(obs)
-        else:
-            obs = torch.clone(self.state)
-        #     obs = normalize_mlp(self.state)
-
-        # Feed predictions through dynamics model
-        # print(self.state.shape)
-        predictions = torch.squeeze(self.dynamics.predict(torch.cat([obs, action],dim = 1).float()))
-        # predictions = torch.squeeze(self.dynamics.predict(obs.float()))
-
-        # Randomly sample a model and split output
+        # dynamics_input = torch.flatten(torch.cat([obs, action.reshape(-1,1)], dim = 1).float())
+        # predicts normalized deltas across models 
+        predictions = torch.squeeze(self.dynamics.predict(dynamics_input))
+        # randomly sample a model
         model_idx = np.random.choice(self.dynamics.n_models)
-        # delta = unnormalize_deltas(predictions[model_idx])
+        # output delta: [Δx_t+1, Δy_t+1, Δtheta_t+1, Δspeed_t+1, Δsteer_t+1]
         delta = torch.clone(predictions[model_idx])
-        #reward = #predictions[model_idx, -1:]
+        delta = unnormalize_delta(delta, device) # TODO: FILL IN UNNORMALIZE
 
-        # Calculate next state
-        prev_state = torch.clone(self.state)
-        self.state = calc_next_state(self.state[0,[0,2,4,6,16]], delta, self.device)
+        # predicted change in x, y, th
+        delta_vehicle_pose = delta[:3]
+        # change in speed, steer 
+        delta_state = delta[3:5]
 
+        # update vehicle pose
+        self.vehicle_pose = self.vehicle_pose + delta_vehicle_pose
+        # update next state
+        self.state = self.update_next_state(delta_state)
+               
 
+        ###################### calculate waypoint features (in global frame)  ##############################
 
-        next_obs = torch.clone(self.state)
+        angle, dist_to_trajectory, _, _, _ = process_waypoints(self.waypoints, self.vehicle_pose)
 
-        # next_obs = normalize_mlp(self.state)
-        obs = next_obs
+        ################## calc reward with penalty for uncertainty ##############################
 
-        # Next, calculate reward
-        reward_out = self.calculate_reward(prev_state[0,[0,2,4,6,16]], self.state)
+        reward_out = self.calculate_reward(self.state, dist_to_trajectory)
 
-        # Check if uncertain
-        # If uncertain, apply uncertainty penalty
-        uncertain = self.usad(predictions.cpu().numpy())
-        # if(uncertain):
+        uncertain = 0 # self.usad(predictions.cpu().numpy())    # TODO: FILL IN
         reward_out[0] = reward_out[0] - uncertain * 150
         reward_out = torch.squeeze(reward_out)
 
+        # advance time 
         self.steps_elapsed += 1
-
         timeout = self.steps_elapsed >= self.timeout_steps
 
+        # log 
         if(uncertain and self.logger is not None):
             # self.logger.get_metric("average_halt")
             self.logger.log_metrics({"halts" : 1})
         elif(timeout and self.logger is not None):
             self.logger.log_metrics({"halts" : 0})
 
-        return self.state, reward_out, (uncertain or timeout), {"delta" : delta, "uncertain" : 100*uncertain}
+
+        ######################### build policy input ##########################
+
+        # Policy input (unnormalized): dist_to_trajectory, next orientation, speed, steer
+        dist_to_trajectory = torch.Tensor([dist_to_trajectory])
+        angle = torch.Tensor([angle])
+
+
+        # take most recent state
+        policy_input = torch.cat([dist_to_trajectory, angle, torch.flatten(self.state[0, :])], dim=0).float().to(self.device)
+        next_obs = policy_input
+
+        # renormalize state for next round of dynamics prediction
+        self.state = normalize_state(self.state, device)
+
+        return next_obs, reward_out, (uncertain or timeout), {"delta" : delta, "uncertain" : 100*uncertain}
+
