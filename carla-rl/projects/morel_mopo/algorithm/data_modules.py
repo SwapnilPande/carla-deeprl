@@ -26,12 +26,12 @@ def rotz(theta):
     return Rz
 
 ''' Computes the mean and standard deviation of data
-@param data
+@param data across all trajectories
        n: number of data points
 @returns: dictionary storing mean, std
 '''
 def compute_mean_std(data, n):
-    # sum data row-wise 
+    # sum data row-wise across all trajectories
     data_sum    = torch.sum(data, dim=0)
     data_sum_sq = torch.sum(torch.square(data), 0)
     mean = data_sum/n
@@ -173,7 +173,7 @@ class OfflineCarlaDataset(Dataset):
                     self.vehicle_poses.append(vehicle_pose_cur)
 
                     # rewards, terminal at each timestep
-                    self.rewards.append(samples[i]['reward'])
+                    self.rewards.append(torch.FloatTensor([samples[i]['reward']]))
                     self.terminals.append(samples[i]['done'])
             
             self.obs = torch.stack(self.obs)
@@ -182,15 +182,13 @@ class OfflineCarlaDataset(Dataset):
             self.delta = torch.stack(self.delta)
             self.vehicle_poses = torch.stack(self.vehicle_poses)
 
-            
+            # normalize using z-score 
             if normalize_data:
                 n = len(self.rewards)
                 # get last frame from each timestep to build all frames across trajectory 
-                # shape [timesteps x frames x values]
                 traj_obs              = self.obs[:,-1,:] 
                 traj_actions          = self.actions[:,-1,:]
                 traj_additional_state = self.additional_state[:,-1, :] 
-                # delta not stacked, only 2D
                 traj_delta            = self.delta[:, -1]
 
                 self.normalization_stats["obs"]              = compute_mean_std(traj_obs,n)
@@ -204,25 +202,16 @@ class OfflineCarlaDataset(Dataset):
                 self.actions =  (self.actions - self.normalization_stats["action"]["mean"]) / self.normalization_stats["action"]["std"]
                 self.delta = (self.delta - self.normalization_stats["delta"]["mean"]) / self.normalization_stats["delta"]["std"]
 
-        # print("Getting item....\n")
-
-        # print('obs',self.obs)
-        # print('adst', self.additional_state)
-        # print('act', self.actions)
-        # print('delta', self.delta)
-        # print('rew', self.rewards)
-        # print('vp', self.vehicle_poses)
-        
-        print('Number of samples: {}'.format(len(self)))
-
     def __getitem__(self, idx):
         '''
-        mlp_features: (<frame_stack>,3) [[speed_t, steer_t, Δtime_t], [speed_t-1, steer_t-1, Δtime_t-1], ...... ]
-        waypoints:    (<traj_len>,2)    [[wp1x, wp1y], [wp2_x, wp2_y], [wp3_x, wp_3y].....[wpT_x, wpT_y]]
-        action:       (<frame_stack>)   [a_t, a_t-1, a_t-2, ....]
-        reward:                         reward_t
-        done:                           done_t
-        vehicle_pose:                   [x, y, θ]
+        obs:              B x F x 2
+        additional_state: B x F x 1
+        mlp_features:     B x F x 3 
+        action:           B x F x 2   
+        reward:           B x 1           
+        done:             B x 1           
+        vehicle_pose:     B x 3         
+        delta:            B x 5           
         '''
 
         obs = self.obs[idx]
@@ -236,7 +225,7 @@ class OfflineCarlaDataset(Dataset):
         done = self.terminals[idx]
         vehicle_pose = self.vehicle_poses[idx]
 
-        return mlp_features, action, reward, delta, done, waypoints, len(waypoints), vehicle_pose
+        return mlp_features, action, reward, delta, done, 0, 0, 0#waypoints, len(waypoints), vehicle_pose
 
     def __len__(self):
         return len(self.rewards)
@@ -246,27 +235,27 @@ class OfflineCarlaDataset(Dataset):
         idx = np.random.randint(len(self))
         return self[idx]
 
-        
+
 ''' Pads waypoints with zeros so that all waypoints sequences are same length
 @param: batch of data
 @out:   original features but with padded waypoints
 '''
 def collate_fn(batch):
-    mlp_features, action, reward, delta, done, waypoints, num_wps_list, vehicle_pose = [list(x) for x in zip(*batch)]  
+    mlp_features, action, reward, delta, done, waypoints, num_wps_list, vehicle_pose = [list(x) for x in zip(*batch)]
     # waypoint feature is at the fifth index
     wp_idx = 5
     # get maximum number of waypoints across all sequences
     max_wps = max(num_wps_list)
     # get innermost dimension of each wp
     wp_dim = batch[0][wp_idx].size(-1)
-    # create padding 
+    # create padding
     padded_waypoints = torch.zeros((len(batch), max_wps, wp_dim))
     for i in range(len(waypoints)):
         wp = waypoints[i]
         num_wps, wp_dim = batch[i][wp_idx].size()
         padded_waypoints[i] = torch.cat([wp, torch.zeros((max_wps - num_wps, wp_dim))])
-    
-    # convert to tensors 
+
+    # convert to tensors
     mlp_features = torch.stack(mlp_features)
     action       = torch.stack(action)
     delta        = torch.stack(delta)
@@ -343,14 +332,14 @@ class OfflineCarlaDataModule():
             batch_size = batch_size_override
 
         return DataLoader(self.train_data,
-                            collate_fn=collate_fn,
+                            # collate_fn=collate_fn,
                             batch_size=batch_size,
                             num_workers=self.num_workers,
                             sampler = sampler)
 
     def val_dataloader(self):
         return DataLoader(self.val_data,\
-                          collate_fn=collate_fn, \
+                          #collate_fn=collate_fn, \
                           batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
 
 
