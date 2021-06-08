@@ -10,6 +10,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader, IterableDataset
 
 from tqdm import tqdm
+torch.multiprocessing.set_sharing_strategy('file_system') 
 
 """
 Offline dataset handling
@@ -339,6 +340,7 @@ class OfflineCarlaDataModule():
 
         return DataLoader(self.train_data,
                             collate_fn=collate_fn,
+                            pin_memory=True,
                             batch_size=batch_size,
                             num_workers=self.num_workers,
                             sampler = sampler)
@@ -346,7 +348,10 @@ class OfflineCarlaDataModule():
     def val_dataloader(self):
         return DataLoader(self.val_data,\
                           collate_fn=collate_fn, \
-                          batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
+                          pin_memory=True,
+                          batch_size=self.batch_size,
+                          shuffle=False,
+                          num_workers=self.num_workers)
 
 
 """
