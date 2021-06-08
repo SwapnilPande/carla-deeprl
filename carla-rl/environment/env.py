@@ -1486,6 +1486,7 @@ class CarlaEnv(gym.Env):
         else:
             waypoint = self.carla_interface.next_waypoints[0]
             steer = self.carla_interface.actor_fleet.lateral_controller.pid_control(waypoint)
+            steer = np.clip(steer, -1, 1)
             return np.array([steer, target_speed])
 
     def get_wp_obs_input(self):
