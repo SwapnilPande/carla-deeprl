@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader, IterableDataset
+from torch.nn.utils.rnn import pad_sequence
 
 from tqdm import tqdm
 
@@ -31,11 +32,15 @@ def rotz(theta):
 @returns: dictionary storing mean, std
 '''
 def compute_mean_std(data, n):
-    # sum data row-wise 
+    print('data',data)
+    # sum data row-wise across all trajectories
     data_sum    = torch.sum(data, dim=0)
+    print('data_sum', data_sum)
     data_sum_sq = torch.sum(torch.square(data), 0)
+    print('data_sum_sq', data_sum_sq)
     mean = data_sum/n
-    std =  np.sqrt(data_sum_sq/n - torch.square(mean))
+    std =  torch.sqrt(data_sum_sq/n - torch.square(mean))
+    print('mean, std', mean, std)
     return {"mean" : mean, "std" : std} 
 
 
@@ -91,7 +96,7 @@ class OfflineCarlaDataset(Dataset):
         # Don't calculate gradients for descriptive statistics
         with torch.no_grad():
             # Loop over all trajectories
-            for trajectory_path in tqdm(trajectory_paths):
+            for trajectory_path in tqdm(trajectory_paths[:1]):
                 samples = []
                 json_paths = sorted(glob.glob('{}/measurements/*.json'.format(trajectory_path)))
                 traj_length = len(json_paths)
@@ -133,7 +138,6 @@ class OfflineCarlaDataset(Dataset):
                         action.append(torch.FloatTensor(samples[i-j]['action']))
 
 
-
                     # vehicle pose at timestep t
                     vehicle_pose_cur = torch.FloatTensor([samples[i+1]['x'],
                                                           samples[i+1]['y'],
@@ -166,6 +170,7 @@ class OfflineCarlaDataset(Dataset):
                     waypoints = torch.FloatTensor(samples[i]['waypoints'])
                     # Convert stacked frame list to torch tensor
                     self.obs.append(torch.stack(obs))
+
                     self.additional_state.append(torch.stack(additional_state))
                     self.actions.append(torch.stack(action))
                     self.delta.append(delta)
@@ -182,7 +187,9 @@ class OfflineCarlaDataset(Dataset):
             self.delta = torch.stack(self.delta)
             self.vehicle_poses = torch.stack(self.vehicle_poses)
 
-            
+            print('delta full orig', self.delta)
+            print('actions full orig', self.actions)
+            # normalize using z-score 
             if normalize_data:
                 n = len(self.rewards)
                 # get last frame from each timestep to build all frames across trajectory 
@@ -190,19 +197,69 @@ class OfflineCarlaDataset(Dataset):
                 traj_obs              = self.obs[:,-1,:] 
                 traj_actions          = self.actions[:,-1,:]
                 traj_additional_state = self.additional_state[:,-1, :] 
-                # delta not stacked, only 2D
-                traj_delta            = self.delta[:, -1]
+                traj_delta            = self.delta[:, -1].unsqueeze(-1)
+                print("before normalize...\n")
 
+                print('obs', self.obs.shape) # S x F x 2
+                print('act', self.actions.shape) # S x F x 2
+                print('addstate', self.additional_state.shape) # S x F x 1
+
+                # not stacked 
+                print('delta', self.delta.shape) # S x 5
+                print('vehpose', self.vehicle_poses.shape) # S x 3
+
+                print('calc mean std obs\n')
                 self.normalization_stats["obs"]              = compute_mean_std(traj_obs,n)
+                print('calc mean std addstate\n')
                 self.normalization_stats["additional_state"] = compute_mean_std(traj_additional_state, n)
+                print('calc mean std action\n')
                 self.normalization_stats["action"]           = compute_mean_std(traj_actions, n)
+                print('calc mean std delta\n')
                 self.normalization_stats["delta"]            = compute_mean_std(traj_delta, n)
 
+
                 # normalize 
-                self.obs = (self.obs - self.normalization_stats["obs"]["mean"]) / self.normalization_stats["obs"]["std"]
-                self.additional_state = (self.additional_state - self.normalization_stats["additional_state"]["mean"]) / self.normalization_stats["additional_state"]["std"]
-                self.actions =  (self.actions - self.normalization_stats["action"]["mean"]) / self.normalization_stats["action"]["std"]
-                self.delta = (self.delta - self.normalization_stats["delta"]["mean"]) / self.normalization_stats["delta"]["std"]
+                print("Normalize obs\n")
+                print('orig', self.obs)
+                self.obs -= self.normalization_stats["obs"]["mean"]
+                self.obs /= self.normalization_stats["obs"]["std"]
+                print('x-u /std', self.normalization_stats["obs"]["std"].expand_as(self.obs), self.obs)
+            
+                print("Normalize addstate\n")
+                print('orig', self.additional_state)
+                self.additional_state -= self.normalization_stats["additional_state"]["mean"]
+                print('x-u', self.normalization_stats["additional_state"]["mean"], self.additional_state)
+                self.additional_state /=  self.normalization_stats["additional_state"]["std"]
+                print('x-u/std', self.normalization_stats["additional_state"]["std"], self.additional_state)
+
+                print("normalize actions\n")
+                print('orig', self.actions)
+                
+                if not 0 in self.normalization_stats["action"]["std"]:
+                    self.actions -= self.normalization_stats["action"]["mean"]
+                    print('x-u', self.actions)
+                    self.actions /= self.normalization_stats["action"]["std"]
+                    print('x-u/std', self.actions)
+                else: print("Found 0 stdev for action")
+
+                print("normalize delta\n")
+                print('orig', self.delta)
+                self.delta -= self.normalization_stats["delta"]["mean"]
+                print('x-u', self.normalization_stats["delta"]["mean"], self.delta)
+                self.delta /= self.normalization_stats["delta"]["std"] 
+                print('x-u/std', self.normalization_stats["delta"]["std"], self.delta)
+ 
+                print("after normalize...\n\n\n")
+
+                print('obs', self.obs.shape)
+                print('act', self.actions.shape)
+                print('addstate', self.additional_state.shape)
+
+                # not stacked 
+                print('delta', self.delta.shape)
+                print('vehpose', self.vehicle_poses.shape)
+
+
 
         # print("Getting item....\n")
 
@@ -236,7 +293,7 @@ class OfflineCarlaDataset(Dataset):
         done = self.terminals[idx]
         vehicle_pose = self.vehicle_poses[idx]
 
-        return mlp_features, action, reward, delta, done, waypoints, len(waypoints), vehicle_pose
+        return mlp_features, action, reward, delta, done, 0,0,0#waypoints, len(waypoints), vehicle_pose
 
     def __len__(self):
         return len(self.rewards)
@@ -261,17 +318,21 @@ def collate_fn(batch):
     wp_dim = batch[0][wp_idx].size(-1)
     # create padding 
     padded_waypoints = torch.zeros((len(batch), max_wps, wp_dim))
+
+    # padded_waypoints = pad_sequence(waypoints, batch_first=True, padding_value=0)
     for i in range(len(waypoints)):
         wp = waypoints[i]
         num_wps, wp_dim = batch[i][wp_idx].size()
         padded_waypoints[i] = torch.cat([wp, torch.zeros((max_wps - num_wps, wp_dim))])
     
+<<<<<<< Updated upstream
     # convert to tensors 
+=======
+>>>>>>> Stashed changes
     mlp_features = torch.stack(mlp_features)
     action       = torch.stack(action)
     delta        = torch.stack(delta)
     vehicle_pose = torch.stack(vehicle_pose)
-
     new_batch = mlp_features, action, reward, delta, done, padded_waypoints, num_wps_list, vehicle_pose
     return new_batch
 
@@ -343,14 +404,24 @@ class OfflineCarlaDataModule():
             batch_size = batch_size_override
 
         return DataLoader(self.train_data,
+<<<<<<< Updated upstream
                             collate_fn=collate_fn,
+=======
+                            pin_memory=True,
+                            # collate_fn=collate_fn,
+>>>>>>> Stashed changes
                             batch_size=batch_size,
                             num_workers=self.num_workers,
                             sampler = sampler)
 
     def val_dataloader(self):
         return DataLoader(self.val_data,\
+<<<<<<< Updated upstream
                           collate_fn=collate_fn, \
+=======
+                          pin_memory=True,
+                        #   collate_fn=collate_fn, \
+>>>>>>> Stashed changes
                           batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
 
 
