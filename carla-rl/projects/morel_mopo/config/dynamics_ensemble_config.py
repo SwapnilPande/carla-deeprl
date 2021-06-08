@@ -27,6 +27,9 @@ class BaseDynamicsEnsembleConfig(BaseConfig):
         # Type of optimizer to use
         optimizer_type = None
 
+        # GPU to load model/data on
+        self.gpu = None
+
 class DefaultDynamicsEnsembleConfig(BaseConfig):
     def __init__(self):
         self.lr = 0.001
@@ -35,6 +38,7 @@ class DefaultDynamicsEnsembleConfig(BaseConfig):
         self.loss_args = {"beta" : 0.5}
         self.optimizer_type = optim.Adam
         self.network_cfg = DefaultDynamicsModuleConfig()
+        self.gpu = 2
 
 class BaseDynamicsModuleConfig(BaseConfig):
     def __init__(self):

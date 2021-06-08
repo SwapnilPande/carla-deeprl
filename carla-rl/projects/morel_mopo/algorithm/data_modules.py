@@ -173,7 +173,7 @@ class OfflineCarlaDataset(Dataset):
                     self.vehicle_poses.append(vehicle_pose_cur)
 
                     # rewards, terminal at each timestep
-                    self.rewards.append(samples[i]['reward'])
+                    self.rewards.append(torch.FloatTensor([samples[i]['reward']]))
                     self.terminals.append(samples[i]['done'])
             
             self.obs = torch.stack(self.obs)
@@ -225,7 +225,7 @@ class OfflineCarlaDataset(Dataset):
         done = self.terminals[idx]
         vehicle_pose = self.vehicle_poses[idx]
 
-        return mlp_features, action, reward, delta, done, waypoints, len(waypoints), vehicle_pose
+        return mlp_features, action, reward, delta, done, 0, 0, 0#waypoints, len(waypoints), vehicle_pose
 
     def __len__(self):
         return len(self.rewards)
@@ -235,27 +235,27 @@ class OfflineCarlaDataset(Dataset):
         idx = np.random.randint(len(self))
         return self[idx]
 
-        
+
 ''' Pads waypoints with zeros so that all waypoints sequences are same length
 @param: batch of data
 @out:   original features but with padded waypoints
 '''
 def collate_fn(batch):
-    mlp_features, action, reward, delta, done, waypoints, num_wps_list, vehicle_pose = [list(x) for x in zip(*batch)]  
+    mlp_features, action, reward, delta, done, waypoints, num_wps_list, vehicle_pose = [list(x) for x in zip(*batch)]
     # waypoint feature is at the fifth index
     wp_idx = 5
     # get maximum number of waypoints across all sequences
     max_wps = max(num_wps_list)
     # get innermost dimension of each wp
     wp_dim = batch[0][wp_idx].size(-1)
-    # create padding 
+    # create padding
     padded_waypoints = torch.zeros((len(batch), max_wps, wp_dim))
     for i in range(len(waypoints)):
         wp = waypoints[i]
         num_wps, wp_dim = batch[i][wp_idx].size()
         padded_waypoints[i] = torch.cat([wp, torch.zeros((max_wps - num_wps, wp_dim))])
-    
-    # convert to tensors 
+
+    # convert to tensors
     mlp_features = torch.stack(mlp_features)
     action       = torch.stack(action)
     delta        = torch.stack(delta)
@@ -332,14 +332,14 @@ class OfflineCarlaDataModule():
             batch_size = batch_size_override
 
         return DataLoader(self.train_data,
-                            collate_fn=collate_fn,
+                            # collate_fn=collate_fn,
                             batch_size=batch_size,
                             num_workers=self.num_workers,
                             sampler = sampler)
 
     def val_dataloader(self):
         return DataLoader(self.val_data,\
-                          collate_fn=collate_fn, \
+                          #collate_fn=collate_fn, \
                           batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
 
 
