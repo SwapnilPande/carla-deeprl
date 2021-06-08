@@ -10,6 +10,7 @@ from projects.morel_mopo.config.dynamics_ensemble_config import DefaultDynamicsE
 from projects.morel_mopo.algorithm.dynamics_ensemble_module import DynamicsEnsemble
 from projects.morel_mopo.algorithm.data_modules import OfflineCarlaDataModule
 
+
 EXPERIMENT_NAME = "first_test"
 TAGS = ["dyn_only"]
 
@@ -24,7 +25,7 @@ def main():
             self.dataset_paths = ["/zfsauton/datasets/ArgoRL/swapnilp/new_state_space"]
             self.batch_size = 512
             self.frame_stack = 2
-            self.num_workers = 1
+            self.num_workers = 5
             self.train_val_split = 0.95
 
     data_config = TempDataModuleConfig()
