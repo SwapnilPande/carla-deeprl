@@ -10,20 +10,6 @@ from data_modules import OfflineCarlaDataset
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-# speed, steer
-def unnormalize_state(obs, device):
-    return torch.tensor([0.1100, 0.1323]).to(device)*obs + torch.tensor([0.0196, -0.0887]).to(device)
-
-def normalize_state(obs, device):
-    return (obs - torch.tensor([0.0196, -0.0887]).to(device))/torch.tensor([0.1100, 0.1323]).to(device)
-
-# Δx, Δy, Δyaw, Δspeed, Δsteer
-def unnormalize_delta(delta, device):
-    raise NotImplementedError
-
-def normalize_delta(delta, device):
-    raise NotImplementedError
-
 ''' 
 Calculates L2 distance between waypoint, vehicle
 @param waypoint:     torch.Tensor([x,y])
@@ -227,6 +213,8 @@ class FakeEnv:
 
         # self.calc_usad_params()
 
+        # get mean, std normalization stats from data module
+        self.norm_stats = self.offline_data_module.normalization_stats
         # self.mean = 0
         # self.var = 1
         # self.std = np.sqrt(self.var)
@@ -268,11 +256,11 @@ class FakeEnv:
         if obs is None:
             # samples returns (obs, act, reward, delta, done, waypoints, vehicle_pose)
             # obs: [[speed_t, steer_t, delta_time_t], [speed_t-1, steer_t-1, delta_time_t-1], ...]
-            obs, action, _, _, _, waypoints, vehicle_pose = self.sample()
+            obs, action, _, _, _, waypoints, num_waypoints, vehicle_pose = self.sample()
 
             self.obs = torch.squeeze(obs)
             self.past_action = torch.squeeze(action)
-            self.waypoints = torch.squeeze(waypoints)
+            self.waypoints = torch.squeeze(waypoints[:, num_waypoints])
             self.vehicle_pose = torch.squeeze(vehicle_pose)
             # state only includes speed, steer
             self.state =  self.obs[:, :2]
@@ -334,7 +322,7 @@ class FakeEnv:
         model_idx = np.random.choice(self.dynamics.n_models)
         # output delta: [Δx_t+1, Δy_t+1, Δtheta_t+1, Δspeed_t+1, Δsteer_t+1]
         delta = torch.clone(predictions[model_idx])
-        delta = unnormalize_delta(delta, device) # TODO: FILL IN UNNORMALIZE
+        delta = self.unnormalize_delta(delta, device) 
 
         # predicted change in x, y, th
         delta_vehicle_pose = delta[:3]
@@ -383,7 +371,21 @@ class FakeEnv:
         next_obs = policy_input
 
         # renormalize state for next round of dynamics prediction
-        self.state = normalize_state(self.state, device)
+        self.state = self.normalize_state(self.state, device)
 
         return next_obs, reward_out, (uncertain or timeout), {"delta" : delta, "uncertain" : 100*uncertain}
 
+
+    # speed, steer
+    def unnormalize_state(self, obs, device):
+        return self.norm_stats["obs"]["std"].to(device) * obs + self.norm_stats["obs"]["mean"].to(device)
+
+    def normalize_state(self, obs, device):
+        return (obs - self.norm_stats["obs"]["mean"].to(device))/self.norm_stats["obs"]["std"].to(device)
+
+    # Δx, Δy, Δyaw, Δspeed, Δsteer
+    def unnormalize_delta(self, delta, device):
+        return self.norm_stats["delta"]["std"].to(device) * delta + self.norm_stats["delta"]["mean"].to(device)
+
+    def normalize_delta(self, delta, device):
+        return (delta - self.norm_stats["delta"]["mean"].to(device))/self.norm_stats["delta"]["std"].to(device)
