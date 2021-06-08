@@ -25,17 +25,18 @@ def rotz(theta):
                       [ 0,              0,             1]])
     return Rz
 
-''' Computes the mean and standard deviation
-@param data_sum: sum of the inputs
-       data_sum_sq: sum squared of the inputs
+''' Computes the mean and standard deviation of data
+@param data
        n: number of data points
 @returns: dictionary storing mean, std
 '''
-def compute_mean_std(data_sum, data_sum_sq, n):
+def compute_mean_std(data, n):
+    # sum data row-wise 
+    data_sum    = torch.sum(data, dim=0)
+    data_sum_sq = torch.sum(torch.square(data), 0)
     mean = data_sum/n
-    std = torch.sqrt(data_sum_sq/n - mean**2)
-
-    return {"mean" : mean, "std" : std}
+    std =  np.sqrt(data_sum_sq/n - torch.square(mean))
+    return {"mean" : mean, "std" : std} 
 
 
 class OfflineCarlaDataset(Dataset):
@@ -84,20 +85,7 @@ class OfflineCarlaDataset(Dataset):
             "action" : None
         }
 
-        # Used to store running count of statistic for each variable
-        if(normalize_data):
-            obs_sum = torch.zeros((obs_dim,)).float()
-            obs_sum_sq = torch.zeros((obs_dim,)).float()
-
-            additional_state_sum = torch.zeros((additional_state_dim,)).float()
-            additional_state_sum_sq = torch.zeros((additional_state_dim,)).float()
-
-            delta_sum = torch.zeros((state_dim_out,)).float()
-            delta_sum_sq = torch.zeros((state_dim_out,)).float()
-
-            action_sum = torch.zeros((action_dim,)).float()
-            action_sum_sq = torch.zeros((action_dim,)).float()
-
+    
         print("Loading data")
 
         # Don't calculate gradients for descriptive statistics
@@ -175,59 +163,56 @@ class OfflineCarlaDataset(Dataset):
                                                 samples[i+1]['speed'] - samples[i]['speed'],
                                                 samples[i+1]['steer'] - samples[i]['steer']])
 
-
-                    # TODO: The last few states in each trajectory is not factored into computing the descriptive statistics (specifically skipping (frame_stack -1 + 1) frames)
-                    #       This is not a huge issue, because the length of trajectories is much greater than the number of trajectories
-                    #       This might be worth fixing in the long term\
-                    if(normalize_data):
-                        obs_sum += obs[-1]
-                        obs_sum_sq += obs[-1]**2
-
-                        additional_state_sum += additional_state[-1]
-                        additional_state_sum_sq += additional_state[-1]**2
-
-                        action_sum += action[-1]
-                        action_sum_sq += action[-1]**2
-
-                        delta_sum += delta
-                        delta_sum_sq += delta**2
-
+                    waypoints = torch.FloatTensor(samples[i]['waypoints'])
                     # Convert stacked frame list to torch tensor
                     self.obs.append(torch.stack(obs))
                     self.additional_state.append(torch.stack(additional_state))
                     self.actions.append(torch.stack(action))
                     self.delta.append(delta)
-                    self.waypoints.append(torch.FloatTensor(samples[i]['waypoints']))
+                    self.waypoints.append(waypoints)
                     self.vehicle_poses.append(vehicle_pose_cur)
 
                     # rewards, terminal at each timestep
                     self.rewards.append(samples[i]['reward'])
                     self.terminals.append(samples[i]['done'])
+            
+            self.obs = torch.stack(self.obs)
+            self.actions = torch.stack(self.actions)
+            self.additional_state = torch.stack(self.additional_state)
+            self.delta = torch.stack(self.delta)
+            self.vehicle_poses = torch.stack(self.vehicle_poses)
 
-            # Compute descriptive statistics
-            # Normalization across all trajectories
-            if(normalize_data):
-                self.normalization_stats["obs"] = compute_mean_std(obs_sum, obs_sum_sq, len(self.rewards))
-                self.normalization_stats["additional_state"] = compute_mean_std(additional_state_sum, additional_state_sum_sq, len(self.rewards))
-                self.normalization_stats["action"] = compute_mean_std(action_sum, action_sum_sq, len(self.rewards))
-                self.normalization_stats["delta"] = compute_mean_std(delta_sum, delta_sum_sq, len(self.rewards))
-            else:
-                #TODO Fill with standard normal distribution N(0,1)
-                pass
+            
+            if normalize_data:
+                n = len(self.rewards)
+                # get last frame from each timestep to build all frames across trajectory 
+                # shape [timesteps x frames x values]
+                traj_obs              = self.obs[:,-1,:] 
+                traj_actions          = self.actions[:,-1,:]
+                traj_additional_state = self.additional_state[:,-1, :] 
+                # delta not stacked, only 2D
+                traj_delta            = self.delta[:, -1]
 
+                self.normalization_stats["obs"]              = compute_mean_std(traj_obs,n)
+                self.normalization_stats["additional_state"] = compute_mean_std(traj_additional_state, n)
+                self.normalization_stats["action"]           = compute_mean_std(traj_actions, n)
+                self.normalization_stats["delta"]            = compute_mean_std(traj_delta, n)
 
-            # Normalize all data
-            if(normalize_data):
-                print("Normalizing all data")
-                for i in tqdm(range(len(self.obs))):
-                    # Tile mean and std frame_stack times to get the correct dim
-                    self.obs[i] = (self.obs[i] - torch.unsqueeze(self.normalization_stats["obs"]["mean"], dim = 0))/torch.unsqueeze(self.normalization_stats["obs"]["std"], dim = 0)
-                    self.additional_state[i] = (self.additional_state[i] - torch.unsqueeze(self.normalization_stats["additional_state"]["mean"], dim = 0))/torch.unsqueeze(self.normalization_stats["additional_state"]["std"], dim = 0)
-                    self.actions[i] = (self.actions[i] - torch.unsqueeze(self.normalization_stats["action"]["mean"], dim = 0))/torch.unsqueeze(self.normalization_stats["action"]["std"], dim = 0)
+                # normalize 
+                self.obs = (self.obs - self.normalization_stats["obs"]["mean"]) / self.normalization_stats["obs"]["std"]
+                self.additional_state = (self.additional_state - self.normalization_stats["additional_state"]["mean"]) / self.normalization_stats["additional_state"]["std"]
+                self.actions =  (self.actions - self.normalization_stats["action"]["mean"]) / self.normalization_stats["action"]["std"]
+                self.delta = (self.delta - self.normalization_stats["delta"]["mean"]) / self.normalization_stats["delta"]["std"]
 
-                    # Don't need to tile delta stats because delta is never stacked
-                    self.delta[i] = (self.delta[i] - self.normalization_stats["delta"]["mean"])/self.normalization_stats["delta"]["std"]
+        # print("Getting item....\n")
 
+        # print('obs',self.obs)
+        # print('adst', self.additional_state)
+        # print('act', self.actions)
+        # print('delta', self.delta)
+        # print('rew', self.rewards)
+        # print('vp', self.vehicle_poses)
+        
         print('Number of samples: {}'.format(len(self)))
 
     def __getitem__(self, idx):
