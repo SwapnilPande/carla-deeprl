@@ -3,17 +3,8 @@ from environment.config.base_config import BaseConfig
 
 
 
-class BaseCometLoggerConfig(BaseConfig):
+class BaseLoggerConfig(BaseConfig):
     def __init__(self):
-        # Comet.ml API key for your account
-        self.api_key = None
-
-        # Comet.ml Workspace for the project
-        self.workspace = None
-
-        # Comet.ml project name within the workspace
-        self.project_name = None
-
         ##### These fields should be populated every experiment
         # Name of the experiment
         # If name already exists in logging directory
