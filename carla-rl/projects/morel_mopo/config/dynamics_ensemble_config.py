@@ -38,7 +38,7 @@ class DefaultDynamicsEnsembleConfig(BaseConfig):
         self.loss_args = {"beta" : 0.5}
         self.optimizer_type = optim.Adam
         self.network_cfg = DefaultDynamicsModuleConfig()
-        self.gpu = 2
+        self.gpu = 1
 
 class BaseDynamicsModuleConfig(BaseConfig):
     def __init__(self):

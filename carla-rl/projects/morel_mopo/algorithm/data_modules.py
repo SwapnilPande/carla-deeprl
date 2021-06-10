@@ -10,7 +10,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader, IterableDataset
 
 from tqdm import tqdm
-torch.multiprocessing.set_sharing_strategy('file_system') 
+torch.multiprocessing.set_sharing_strategy('file_system')
 
 """
 Offline dataset handling
@@ -37,7 +37,7 @@ def compute_mean_std(data, n):
     data_sum_sq = torch.sum(torch.square(data), 0)
     mean        = data_sum/n
     std         =  np.sqrt(data_sum_sq/n - torch.square(mean))
-    return {"mean" : mean, "std" : std} 
+    return {"mean" : mean, "std" : std}
 
 
 class OfflineCarlaDataset(Dataset):
@@ -86,13 +86,13 @@ class OfflineCarlaDataset(Dataset):
             "action" : None
         }
 
-    
+
         print("Loading data")
 
         # Don't calculate gradients for descriptive statistics
         with torch.no_grad():
             # Loop over all trajectories
-            for trajectory_path in tqdm(trajectory_paths):
+            for trajectory_path in tqdm(trajectory_paths[0:2]):
                 samples = []
                 json_paths = sorted(glob.glob('{}/measurements/*.json'.format(trajectory_path)))
                 traj_length = len(json_paths)
@@ -178,25 +178,25 @@ class OfflineCarlaDataset(Dataset):
                     # rewards, terminal at each timestep
                     self.rewards.append(torch.FloatTensor([samples[i]['reward']]))
                     self.terminals.append(samples[i]['done'])
-            
+
             self.obs = torch.stack(self.obs)
             self.actions = torch.stack(self.actions)
             self.additional_state = torch.stack(self.additional_state)
             self.delta = torch.stack(self.delta)
             self.vehicle_poses = torch.stack(self.vehicle_poses)
 
-            # normalize using z-score 
+            # normalize using z-score
             if normalize_data:
                 n = len(self.rewards)
 
                 # get last frame from each timestep
-                traj_obs              = self.obs[:,-1,:] 
+                traj_obs              = self.obs[:,-1,:]
                 traj_actions          = self.actions[:,-1,:]
-                traj_additional_state = self.additional_state[:,-1, :] 
+                traj_additional_state = self.additional_state[:,-1, :]
                 # no need to index because deltas are not stacked
                 traj_delta            = self.delta
 
-                # calculate mean, stdev across all trajectories 
+                # calculate mean, stdev across all trajectories
                 self.normalization_stats["obs"]              = compute_mean_std(traj_obs,n)
                 self.normalization_stats["additional_state"] = compute_mean_std(traj_additional_state, n)
                 self.normalization_stats["action"]           = compute_mean_std(traj_actions, n)
@@ -213,12 +213,12 @@ class OfflineCarlaDataset(Dataset):
         '''
         obs:              B x F x 2
         additional_state: B x F x 1
-        mlp_features:     B x F x 3 
-        action:           B x F x 2   
-        reward:           B x 1           
-        done:             B x 1           
-        vehicle_pose:     B x 3         
-        delta:            B x 5           
+        mlp_features:     B x F x 3
+        action:           B x F x 2
+        reward:           B x 1
+        done:             B x 1
+        vehicle_pose:     B x 3
+        delta:            B x 5
         '''
 
         obs = self.obs[idx]
@@ -232,7 +232,7 @@ class OfflineCarlaDataset(Dataset):
         done = self.terminals[idx]
         vehicle_pose = self.vehicle_poses[idx]
 
-        return mlp_features, action, reward, delta, done, waypoints, len(waypoints), vehicle_pose
+        return mlp_features, action, reward, delta, done, 0, len(waypoints), vehicle_pose
 
     def __len__(self):
         return len(self.rewards)
@@ -319,19 +319,6 @@ class OfflineCarlaDataModule():
                 num_samples=len(weights),
                 replacement=True
             )
-        else:
-            #for i in range(len(self.train_data)):
-             #   mlp_features, _, _, _, red_light = self.train_data[i]
-             #   weights[i] = torch.pow(torch.abs(mlp_features[4]), 0.5) + 0.1
-
-            #    if(red_light[0] == 1):
-            #        weights[i] = 0
-
-            sampler = None #torch.utils.data.WeightedRandomSampler(
-            #    weights=weights,
-            #    num_samples=len(weights),
-            #    replacement=True
-            #)
 
         if(batch_size_override is None):
             batch_size = self.batch_size
@@ -339,23 +326,16 @@ class OfflineCarlaDataModule():
             batch_size = batch_size_override
 
         return DataLoader(self.train_data,
-                            collate_fn=collate_fn,
+                            #collate_fn=collate_fn,
                             pin_memory=True,
                             batch_size=batch_size,
                             num_workers=self.num_workers,
                             sampler = sampler)
 
     def val_dataloader(self):
-        return DataLoader(self.val_data,\
-                          collate_fn=collate_fn, \
+        return DataLoader(self.val_data,
+                          #collate_fn=collate_fn,
                           pin_memory=True,
                           batch_size=self.batch_size,
                           shuffle=False,
                           num_workers=self.num_workers)
-
-
-"""
-Online dataset handling
-"""
-
-

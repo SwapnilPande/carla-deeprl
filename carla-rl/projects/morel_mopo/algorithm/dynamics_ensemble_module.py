@@ -8,6 +8,8 @@ import scipy.spatial
 import os
 from tqdm import tqdm
 
+from projects.morel_mopo.config.dynamics_ensemble_config import BaseDynamicsEnsembleConfig
+
 class DynamicsMLP(nn.Module):
     def __init__(self,
                 state_dim_in,
@@ -116,13 +118,18 @@ class DynamicsMLP(nn.Module):
 
         return output
 
-class DynamicsEnsemble:
+class DynamicsEnsemble(nn.Module):
     def __init__(self,
-                    data_module,
                     config,
+                    data_module = None,
+                    state_dim_in = None,
+                    state_dim_out = None,
+                    action_dim = None,
+                    frame_stack = None,
 
                     logger = None,
                     log_freq = 100):
+        super(DynamicsEnsemble, self).__init__()
 
         self.config = config
 
@@ -131,23 +138,60 @@ class DynamicsEnsemble:
         else:
             self.device = "cuda:{}".format(self.config.gpu)
 
+        # Save the logger
         self.logger = logger
+        self.log_dir = "dynamics_ensemble"
+        self.model_log_dir = os.path.join(self.log_dir, "models")
+
+        # Save config to load in the future
+        if logger is not None:
+            self.logger.pickle_save(self.config, self.log_dir, "config.pkl")
+
+
         self.log_freq = log_freq
 
-        # TODO LOG ALL HYPERPARAMETERS
         # Save Parameters
-        # Setup data module
-        self.data_module = data_module
-        self.data_module.setup()
+
+        # This module can be setup by passing a data module or by passing the shape of the
+        # output separately
+        if(data_module is not None):
+            # Setup data module
+            self.data_module = data_module
+            self.data_module.setup()
+            # Get the shape of the input, output, and frame stack from the data module
+            self.state_dim_in = self.data_module.state_dim_in
+            self.state_dim_out = self.data_module.state_dim_out
+            self.action_dim = self.data_module.action_dim
+            self.frame_stack = self.data_module.frame_stack
+        else:
+            # Validate that all of these inputs are passed
+            self.state_dim_in = state_dim_in
+            if(self.state_dim_in is None):
+                raise Exception("state_dim_in is None, this must be passed if data_module is None")
+
+            self.state_dim_out = state_dim_out
+            if(self.state_dim_out is None):
+                raise Exception("state_dim_out is None, this must be passed if data_module is None")
+
+            self.action_dim = action_dim
+            if(self.action_dim is None):
+                raise Exception("action_dim is None, this must be passed if data_module is None")
+
+            self.frame_stack = frame_stack
+            if(self.frame_stack is None):
+                raise Exception("frame_stack is None, this must be passed if data_module is None")
+
+        if logger is not None:
+            state_params = (self.state_dim_in,
+                            self.state_dim_out,
+                            self.action_dim,
+                            self.frame_stack)
+            self.logger.pickle_save(state_params, self.log_dir, "state_params.pkl")
 
         # Model parameters
         self.n_models = config.n_models
         self.network_cfg = config.network_cfg
-        # Get the shape of the input, output, and frame stack from the data module
-        self.state_dim_in = self.data_module.state_dim_in
-        self.state_dim_out = self.data_module.state_dim_out
-        self.action_dim = self.data_module.action_dim
-        self.frame_stack = self.data_module.frame_stack
+
 
         self.lr = config.lr
         # Build the loss function using loss args
@@ -175,6 +219,17 @@ class DynamicsEnsemble:
                 activation = self.network_cfg.activation
             ))
             self.models[-1].to(self.device)
+
+    # def create_log_directories(self):
+    #     # Construct the dynamics_ensemble log dir
+    #     # Base log dir
+    #     self.log_dir = os.path.join(self.logger.log_dir, "dynamics_ensmemble")
+    #     os.mkdir(self.log_dir)
+
+    #     # Log dir for models
+    #     self.model_log_dir = os.path.join(self.log_dir, "models")
+    #     os.mkdir(self.model_log_dir)
+
 
 
     def forward(self, x, model_idx = None):
@@ -259,7 +314,7 @@ class DynamicsEnsemble:
             for metric_name, value in metric_dict.items():
                 self.logger.log_scalar(metric_name, value, step)
 
-    def train(self, epochs):
+    def train(self, epochs, n_incremental_models = 10):
         train_dataloader = self.data_module.train_dataloader()
         val_dataloader = self.data_module.val_dataloader()
 
@@ -291,6 +346,9 @@ class DynamicsEnsemble:
         if(len(val_dataloader) <= 0):
             print("WARNING: Skipping validation since validation dataloader has 0 elements.")
 
+
+        steps_between_model_save = epochs // n_incremental_models
+
         for epoch in range(epochs): # Loop over epochs
             for model_idx in range(self.n_models): # Loop over models
 
@@ -319,56 +377,11 @@ class DynamicsEnsemble:
                         if batch_idx % self.log_freq == 0 and self.logger is not None:
                             self.log_metrics(epoch, batch_idx, num_val_batches, log_params)
 
-    def configure_optimizers(self):
-        # Define optimizers
-        # self.optimizer is defined in __init__
-        # This is the type of optimizer we want to use
-        optimizers = [self.optimizer_type(model.parameters()) for model in self.models]
+            if(epoch % steps_between_model_save == 0):
+                self.save("incremental-step-{}".format(epoch, ))
 
-        return optimizers
+        self.save("final")
 
-    # def on_train_epoch_end(self, outputs):
-    #     self.model_idx += 1
-
-    #     if(self.model_idx == self.n_models):
-    #         self.model_idx = 0
-
-    #     self.log('selected_model', self.model_idx, prog_bar = True)
-
-
-    # def on_validation_epoch_end(self):
-    #     val_data = torch.tensor(self.val_data)
-    #     self.val_data = None
-
-    #     is_nan = torch.isnan(val_data)
-    #     means = torch.mean(val_data, dim = 0)
-
-    #     if(self.trainer.train_dataloader is not None):
-    #         # Actual epoch, when adjusted for number of models
-    #         actual_epoch = self.trainer.current_epoch // self.n_models
-
-    #         log_step = actual_epoch * len(self.trainer.train_dataloader)
-
-    #     else:
-    #         log_step = 0
-
-    #     self.logger.log_metrics({'val_loss'.format(self.model_idx) : means[0]},
-    #             step = log_step)
-
-    #     self.logger.log_metrics({'val_mse'.format(self.model_idx) : means[1]},
-    #             step = log_step)
-
-    #     # self.logger.log_metrics({'val_rel_error'.format(self.model_idx) : means[2]},
-    #     #         step = log_step)
-
-    #     # self.logger.log_metrics({'max_val_rel_error'.format(self.model_idx) : means[3]},
-    #     #         step = log_step)
-
-    #     # self.logger.log_metrics({'min_val_rel_error'.format(self.model_idx) : means[4]},
-    #     #         step = log_step)
-
-
-    #     # self.model_idx = self.train_model_idx
 
     def configure_optimizers(self):
         # Define optimizers
@@ -378,84 +391,39 @@ class DynamicsEnsemble:
 
         return optimizers
 
-    # def get_input_output_dim(self):
-    #     return self.models[0].input_dim, self.models[0].output_dim
 
-    # def predict(self, x):
-    #     # Generate prediction of next state using dynamics model
-    #     with torch.set_grad_enabled(False):
-    #         return torch.stack(list(map(lambda i: self.forward(x, model_idx = i), range(self.n_models))))
+    def save(self, model_name):
+        # Don't save model if no logger configured
+        if self.logger is None:
+            print("DYNAMICS ENSEMBLE: SKIPPING SAVING SINCE LOGGER IS NOT CONFIGURED")
+            return
 
-    # def optimizer_step(self,
-    #                     current_epoch,
-    #                     batch_nb,
-    #                     optimizer,
-    #                     optimizer_i,
-    #                     second_order_closure,
-    #                     on_tpu,
-    #                     using_native_amp,
-    #                     using_lbfgs):
-    #     """Override default step method to train one model per epoch
-    #     """
+        print("DYNAMICS ENSEMBLE: Saving model {}".format(model_name))
 
-    #     if(current_epoch % self.n_models == optimizer_i):
-    #         optimizer.step()
-    #         optimizer.zero_grad()
+        # Save model
+        self.logger.torch_save(self.state_dict(), self.model_log_dir, model_name)
 
+    # @classmethod
+    # def load(cls, model_path, data_module):
+    #     # To load the model, we first need to build an instance of this class
+    #     # We want to keep the same config parameters, so we will build it from the pickled config
+    #     # Also, we will load the dimensional parameters of the model from the saved dimensions
+    #     # This allows us to avoid loading a dataloader every time we want to do inference
 
+    #     # Get pickle first
+    #     # Get model directory
+    #     model_dir, _ = os.path.split(model_path)
+    #     # Pickle is one directory up from where models are saved
+    #     dynamics_dir = os.path.normpath(os.path.join(model_dir, ".."))
 
-
-
-
-    # def train(self, dataloader, epochs = 5, optimizer = torch.optim.Adam, loss = nn.MSELoss, summary_writer = None, comet_experiment = None):
-
-    #     hyper_params = {
-    #         "dynamics_n_models":  self.n_models,
-    #         "usad_threshold": self.threshold,
-    #         "dynamics_epochs" : 5
-    #     }
-    #     if(comet_experiment is not None):
-    #         comet_experiment.log_parameters(hyper_params)
-
-    #     # Define optimizers and loss functions
-    #     self.optimizers = [None] * self.n_models
-    #     self.losses = [None] * self.n_models
-
-    #     for i in range(self.n_models):
-    #         self.optimizers[i] = optimizer(self.models[i].parameters())
-    #         self.losses[i] = loss()
-
-    #     # Start training loop
-    #     for epoch in range(epochs):
-    #         for i, batch in enumerate(tqdm(dataloader)):
-    #             # Split batch into input and output
-    #             feed, target = batch
-
-    #             loss_vals = list(map(lambda i: self.train_step(i, feed, target), range(self.n_models)))
-
-    #             # Tensorboard
-    #             if(summary_writer is not None):
-    #                 for j, loss_val in enumerate(loss_vals):
-    #                     summary_writer.add_scalar('Loss/dynamics_{}'.format(j), loss_val, epoch*len(dataloader) + i)
-
-    #             if(comet_experiment is not None and i % 10 == 0):
-    #                 for j, loss_val in enumerate(loss_vals):
-    #                     comet_experiment.log_metric('dyn_model_{}_loss'.format(j), loss_val, epoch*len(dataloader) + i)
-    #                     comet_experiment.log_metric('dyn_model_avg_loss'.format(j), sum(loss_vals)/len(loss_vals), epoch*len(dataloader) + i)
+    #     # Load Config from pickle
+    #     config = BaseDynamicsEnsembleConfig.from_pickle(os.path.join(dynamics_dir, "config.pkl"))
 
 
-    # def usad(self, predictions):
-    #     # Compute the pairwise distances between all predictions
-    #     distances = scipy.spatial.distance_matrix(predictions, predictions)
 
-    #     # If maximum is greater than threshold, return true
-    #     return (np.amax(distances) > self.threshold)
 
-    # def save(self, save_dir):
-    #     for i in range(self.n_models):
-    #         torch.save(self.models[i].state_dict(), os.path.join(save_dir, "dynamics_{}.pt".format(i)))
 
-    # def load(self, load_dir):
-    #     for i in range(self.n_models):
-    #         self.models[i].load_state_dict(torch.load(os.path.join(load_dir, "dynamics_{}.pt".format(i)), map_location=self.device))
+
+
+
 

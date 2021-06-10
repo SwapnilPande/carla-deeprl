@@ -6,7 +6,7 @@ sys.path.append(os.path.abspath(os.path.join('../../../')))
 
 from common.loggers.comet_logger import CometLogger
 from projects.morel_mopo.config.logger_config import CometLoggerConfig
-from projects.morel_mopo.config.dynamics_ensemble_config import DefaultDynamicsEnsembleConfig
+from projects.morel_mopo.config.dynamics_ensemble_config import DefaultDynamicsEnsembleConfig, BaseDynamicsEnsembleConfig
 from projects.morel_mopo.algorithm.dynamics_ensemble_module import DynamicsEnsemble
 from projects.morel_mopo.algorithm.data_modules import OfflineCarlaDataModule
 
@@ -17,6 +17,7 @@ TAGS = ["dyn_only"]
 def main():
     logger_conf = CometLoggerConfig()
     logger_conf.populate(experiment_name = EXPERIMENT_NAME, tags = TAGS)
+
 
     logger = CometLogger(logger_conf)
 
@@ -32,6 +33,7 @@ def main():
     data_module = OfflineCarlaDataModule(data_config)
 
     dyn_config = DefaultDynamicsEnsembleConfig()
+
     dynamics = DynamicsEnsemble(
         data_module = data_module,
         config = dyn_config,
