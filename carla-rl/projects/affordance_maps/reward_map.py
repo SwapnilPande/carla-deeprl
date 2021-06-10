@@ -42,11 +42,11 @@ class RewardMapper(pl.LightningModule):
             nn.ReLU(True),
             nn.ConvTranspose2d(32,16,3,2,1,1),
             nn.BatchNorm2d(16),
-            nn.ReLU(True),
-            nn.ConvTranspose2d(16,8,3,2,1,1),
-            nn.BatchNorm2d(8),
-            nn.Conv2d(8,2,1,1,0),
-            nn.Softmax(dim=1)
+            # nn.ReLU(True),
+            # nn.ConvTranspose2d(16,8,3,2,1,1),
+            # nn.BatchNorm2d(8),
+            nn.Conv2d(16,1,1,1,0),
+            nn.Sigmoid()
         )
         self.model = nn.Sequential(
             self.backbone,
@@ -59,34 +59,28 @@ class RewardMapper(pl.LightningModule):
         return x
 
     def training_step(self, batch, batch_idx):
-        image, ego_pts, rewards, terminals = batch
+        # image, ego_pts, rewards, terminals = batch
+        image, rewards = batch
         batch_size = rewards.shape[0]
-        reward_map = self.forward(image)
-        pred = reward_map[torch.arange(batch_size)[:,None].repeat(1,5), :, ego_pts[torch.arange(batch_size),:,0], ego_pts[torch.arange(batch_size),:,1]]
-
-        pred = pred.reshape(-1,2)
-        terminals = terminals.flatten()
-
-        loss = F.cross_entropy(pred, terminals)
+        pred = self.forward(image)
+        rewards = (rewards > 0).float()
+        loss = F.binary_cross_entropy(pred, rewards)
         self.log('train/loss', loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        image, ego_pts, rewards, terminals = batch
+        image, rewards = batch
         batch_size = rewards.shape[0]
-        reward_map = self.forward(image)
-        pred = reward_map[torch.arange(batch_size)[:,None].repeat(1,ego_pts.size(1)), :, ego_pts[torch.arange(batch_size),:,0], ego_pts[torch.arange(batch_size),:,1]]
-
-        pred = pred.reshape(-1,2)
-        terminals = terminals.flatten()
-        loss = F.cross_entropy(pred, terminals)
+        pred = self.forward(image)
+        rewards = (rewards > 0).float()
+        loss = F.binary_cross_entropy(pred, rewards)
         self.log('val/loss', loss)
 
-        pred_labels = pred.argmax(dim=1)
-        accuracy = (pred_labels == terminals).sum() / len(terminals)
-        self.log('val/acc', accuracy)
+        pred_labels = pred > 0.5
+        accuracy = (pred_labels == rewards).sum() / rewards.numel()
+        self.log('val/accuracy', accuracy)
 
-        reward_map_viz = (reward_map.argmax(dim=1)[:16].unsqueeze(1)).type(torch.uint8) * 255
+        reward_map_viz = (pred_labels[:16]).type(torch.uint8) * 255
         reward_map_viz = torchvision.utils.make_grid(reward_map_viz)
         self.logger.experiment.add_image('binarized_predictions', reward_map_viz)
 
@@ -98,9 +92,10 @@ class RewardMapper(pl.LightningModule):
 def main(cfg):
     model = RewardMapper()
     dataset_paths = [
-        '/media/brian/linux-data/reward_maps'
+        '/media/brian/linux-data/reward_maps_v2'
     ]
-    dm = SpatialDataModule(dataset_paths)
+    val_path = '/media/brian/linux-data/reward_maps_val/'
+    dm = SpatialDataModule(dataset_paths, val_path)
 
     logger = TensorBoardLogger(save_dir=os.getcwd(), name='', version='')
     callbacks = []
