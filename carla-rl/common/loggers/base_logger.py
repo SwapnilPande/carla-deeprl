@@ -23,7 +23,7 @@ class BaseLogger:
             self.log_dir = os.path.join(self.config.log_dir, self.experiment_name)
 
         # Create log dir
-        os.mkdir(self.log_dir)
+        os.makedirs(self.log_dir)
 
         print("LOGGER: Experiment name - {}".format(self.experiment_name))
         print("LOGGER: Created log directory at {}".format(self.log_dir))

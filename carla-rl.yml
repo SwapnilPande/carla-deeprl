@@ -81,18 +81,28 @@ dependencies:
   - xz=5.2.5=h7b6447c_0
   - zlib=1.2.11=h7b6447c_3
   - pip:
+    - attrs==21.2.0
     - backcall==0.2.0
+    - chardet==4.0.0
     - cloudpickle==1.6.0
+    - comet-ml==3.12.0
+    - configobj==5.0.6
     - cycler==0.10.0
+    - dulwich==0.20.23
+    - everett==1.0.3
     - gym==0.18.3
+    - idna==2.10
+    - importlib-metadata==4.5.0
     - ipdb==0.13.8
     - ipython==7.24.0
     - ipython-genutils==0.2.0
     - jedi==0.18.0
+    - jsonschema==3.2.0
     - kiwisolver==1.3.1
     - matplotlib==3.4.2
     - matplotlib-inline==0.1.2
     - numpy==1.20.3
+    - nvidia-ml-py3==7.352.0
     - pandas==1.2.4
     - parso==0.8.2
     - pexpect==4.8.0
@@ -105,15 +115,24 @@ dependencies:
     - pyglet==1.5.15
     - pygments==2.9.0
     - pyparsing==2.4.7
+    - pyrsistent==0.17.3
     - python-dateutil==2.8.1
     - pytz==2021.1
+    - requests==2.25.1
+    - requests-toolbelt==0.9.1
     - scipy==1.6.3
+    - semantic-version==2.8.5
     - six==1.16.0
     - toml==0.10.2
     - torch==1.8.1
     - tqdm==4.61.0
     - traitlets==5.0.5
     - typing-extensions==3.10.0.0
+    - urllib3==1.26.5
     - wcwidth==0.2.5
+    - websocket-client==1.0.1
+    - wrapt==1.12.1
+    - wurlitzer==2.1.0
+    - zipp==3.4.1
 prefix: /zfsauton2/home/swapnilp/anaconda3/envs/carla-rl
 
