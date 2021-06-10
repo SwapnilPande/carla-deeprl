@@ -1,6 +1,8 @@
 import sys
 import os
 
+from gym.core import ObservationWrapper
+
 # Setup imports for algorithm and environment
 sys.path.append(os.path.abspath(os.path.join('../../../')))
 
@@ -10,11 +12,21 @@ from stable_baselines3.common.env_util import DummyVecEnv
 
 # Environment
 from environment.env import CarlaEnv
-from environment.config import ConfigManager
+from environment.config.config import DefaultMainConfig
 
 
-config_manager = ConfigManager(algo="PPO")
-env = CarlaEnv(config = config_manager.config, log_dir = "/home/scratch/swapnilp/carla_test")
+config = DefaultMainConfig()
+config.populate_config(
+    observation_config = "LowDimObservationConfig",
+    action_config = "MergedSpeedScaledTanhConfig",
+    reward_config = "Simple2RewardConfig",
+    scenario_config = "NoCrashEmptyTown01Config",
+    testing = False,
+    carla_gpu = 0
+)
+
+
+env = CarlaEnv(config = config, log_dir = "/home/scratch/swapnilp/carla_test")
 # Parallel environments
 dummy_env = DummyVecEnv([lambda: env])
 

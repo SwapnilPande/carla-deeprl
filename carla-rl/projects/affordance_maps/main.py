@@ -9,11 +9,24 @@ import matplotlib.pyplot as plt
 import carla
 from client_bounding_boxes import ClientSideBoundingBoxes
 from environment import CarlaEnv
+from environment.config.config import DefaultMainConfig
+from environment.config.observation_configs import *
 
 np.random.seed(1)
 plt.ion()
 
-env = CarlaEnv()
+config = DefaultMainConfig()
+obs_config = PerspectiveRGBObservationConfig() # LowDimObservationConfig()
+obs_config.sensors['sensor.camera.rgb/top'] = {
+    'x':13.0,
+    'z':18.0,
+    'pitch':270,
+    'sensor_x_res':'64',
+    'sensor_y_res':'64',
+    'fov':'90', \
+    'sensor_tick': '0.0'}
+config.populate_config(observation_config=obs_config)
+env = CarlaEnv(config=config)
 
 def rotate_points(points, angle):
     radian = angle * math.pi/180
@@ -31,7 +44,7 @@ try:
     for i in range(2000):
         action = env.get_autopilot_action()
         # action = np.array([0,-1])
-        _, _, done, _ = env.step(action)
+        obs, _, done, _ = env.step(action)
         image = env.render()
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
