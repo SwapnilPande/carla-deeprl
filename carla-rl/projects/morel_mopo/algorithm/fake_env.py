@@ -6,6 +6,9 @@ import scipy.spatial
 import torch
 from torch.utils.data import Dataset, DataLoader, IterableDataset
 
+import gym
+from gym.spaces import Box, Discrete, Tuple
+
 ''' 
 Calculates L2 distance between waypoint, vehicle
 @param waypoint:     torch.Tensor([x,y])
@@ -55,7 +58,7 @@ def get_dot_product_and_angle(vehicle_pose, waypoint, device):
         angle *= -1.0
     
     # assert cross product a x b = |a||b|sin(angle)
-    assert(torch.isclose(_cross[2], torch.norm(v_vec_3d) * torch.norm(w_vec_3d) * torch.sin(angle)))
+    assert(torch.isclose(_cross[2], torch.norm(v_vec_3d) * torch.norm(w_vec_3d) * torch.sin(angle), atol=1e-3))
 
     return dot, angle, w_vec
 
@@ -175,7 +178,7 @@ def process_waypoints(waypoints, vehicle_pose, device):
 
 
 
-class FakeEnv:
+class FakeEnv(gym.Env):
     def __init__(self, dynamics,
                         logger = None,
                         uncertainty_threshold = 0.5,
@@ -183,36 +186,40 @@ class FakeEnv:
                         timeout_steps = 1,
                         uncertainty_params = [0.0045574815320799725, 1.9688976602303934e-05, 0.2866033549975823]):
 
-
-        # MOReL hyperparameters
-        self.uncertain_threshold = uncertainty_threshold
-        self.uncertain_penalty = uncertain_penalty
-        self.timeout_steps = timeout_steps
-
-
-        # Get dynamics model parameters
-        self.dynamics = dynamics
+        ################################################
+        # Dynamics parameters
+        ################################################
+        self.dynamics = dynamics 
         self.input_dim, self.output_dim = self.dynamics.get_input_output_dim()
+        print(self.input_dim, self.output_dim)
         self.device_num = self.dynamics.get_gpu()
-
-
         self.device = "cuda:{}".format(self.device_num) if torch.cuda.is_available() else "cpu"
-
         print('Device: ', self.device)
         self.logger = logger
-        # init
+
         self.state = None
         self.vehicle_pose = None
         self.waypoints = None
 
-
-        # Setup dataset, data module comes from dynamics
+        ################################################
+        # Dataset comes from dynamics
+        ################################################
         self.offline_data_module = self.dynamics.get_data_module()
+        self.frame_stack = self.offline_data_module.frame_stack
         self.dataloader = self.offline_data_module.train_dataloader(weighted = False, batch_size_override = 1)
-        # Move dynamics to correct device
-        # We only have to do this because lightning moves the device back to CPU
         self.dynamics.to(self.device)
         self.data_iter = iter(self.dataloader)
+
+        ################################################
+        # MOReL hyperparameters
+        ################################################
+        self.uncertain_threshold = uncertainty_threshold
+        self.uncertain_penalty = uncertain_penalty
+        self.timeout_steps = timeout_steps
+
+        ################################################
+        # MOReL uncertainty
+        ################################################
 
         # self.calc_usad_params()
 
@@ -223,6 +230,16 @@ class FakeEnv:
         # self.std = np.sqrt(self.var)
         # self.maximum = 2
         # self.beta_max = 2
+
+        ################################################
+        # Action, observation space
+        ################################################
+        self.action_space = Box(low=np.tile(np.array([-0.5, -0.5]), (self.frame_stack, 1)),\
+                                high=np.tile(np.array([0.5, 0.5]), (self.frame_stack, 1)), shape=(self.frame_stack, 2), dtype=np.float32)
+        # speed steer delta_time
+        self.obs_space = Box(low=np.tile(np.array([0.0, -0.5, -np.inf]), (self.frame_stack,1)),\
+                             high=np.tile(np.array([1.0, 0.5, np.inf]), (self.frame_stack,1)), shape=(self.frame_stack, 3), dtype=np.float32)
+
 
     # sample from dataset 
     def sample(self):
