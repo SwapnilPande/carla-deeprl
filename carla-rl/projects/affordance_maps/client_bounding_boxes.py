@@ -79,15 +79,15 @@ class ClientSideBoundingBoxes(object):
     """
 
     @staticmethod
-    def get_bounding_boxes(vehicles, camera):
+    def get_bounding_boxes(vehicles, camera, calibration):
         """
         Creates 3D bounding boxes based on carla vehicle list and camera.
         """
 
-        bounding_boxes = [ClientSideBoundingBoxes.get_bounding_box(vehicle, camera) for vehicle in vehicles]
+        bounding_boxes = [ClientSideBoundingBoxes.get_bounding_box(vehicle, camera, calibration) for vehicle in vehicles]
         # filter objects behind camera
-        bounding_boxes = [bb for bb in bounding_boxes if all(bb[:, 2] > 0)]
-        return bounding_boxes
+        # bounding_boxes = [bb for bb in bounding_boxes if all(bb[:, 2] > 0)]
+        return np.array(bounding_boxes).reshape(-1,3)
 
     @staticmethod
     def draw_bounding_boxes(display, bounding_boxes):
@@ -119,17 +119,23 @@ class ClientSideBoundingBoxes(object):
         display.blit(bb_surface, (0, 0))
 
     @staticmethod
-    def get_bounding_box(vehicle, camera):
+    def get_bounding_box(vehicle, camera, calibration):
         """
         Returns 3D bounding box for a vehicle based on camera view.
         """
 
-        bb_cords = ClientSideBoundingBoxes._create_bb_points(vehicle)
+        bb_cords = np.array([[0,0,0,1]]) # ClientSideBoundingBoxes._create_bb_points(vehicle)
         cords_x_y_z = ClientSideBoundingBoxes._vehicle_to_sensor(bb_cords, vehicle, camera)[:3, :]
         cords_y_minus_z_x = np.concatenate([cords_x_y_z[1, :], -cords_x_y_z[2, :], cords_x_y_z[0, :]])
-        bbox = np.transpose(np.dot(camera.calibration, cords_y_minus_z_x))
+        bbox = np.transpose(np.dot(calibration, cords_y_minus_z_x))
         camera_bbox = np.concatenate([bbox[:, 0] / bbox[:, 2], bbox[:, 1] / bbox[:, 2], bbox[:, 2]], axis=1)
-        return camera_bbox
+        return np.array(camera_bbox)[:2]
+
+    @staticmethod
+    def transform_points(src_pts, calibration):
+        cords = np.concatenate([src_pts, np.ones((src_pts.shape[0], 1))], axis=1)
+        world_cord = ClientSideBoundingBoxes._vehicle_to_world(cords, carla.Transform())
+        sensor_cord = ClientSideBoundingBoxes._world_to_sensor(world_cord, sensor)
 
     @staticmethod
     def _create_bb_points(vehicle):
@@ -165,9 +171,9 @@ class ClientSideBoundingBoxes(object):
         Transforms coordinates of a vehicle bounding box to world.
         """
 
-        bb_transform = carla.Transform(vehicle.bounding_box.location)
+        bb_transform = carla.Transform()
         bb_vehicle_matrix = ClientSideBoundingBoxes.get_matrix(bb_transform)
-        vehicle_world_matrix = ClientSideBoundingBoxes.get_matrix(vehicle.get_transform())
+        vehicle_world_matrix = ClientSideBoundingBoxes.get_matrix(vehicle)
         bb_world_matrix = np.dot(vehicle_world_matrix, bb_vehicle_matrix)
         world_cords = np.dot(bb_world_matrix, np.transpose(cords))
         return world_cords
@@ -178,9 +184,17 @@ class ClientSideBoundingBoxes(object):
         Transforms world coordinates to sensor.
         """
 
-        sensor_world_matrix = ClientSideBoundingBoxes.get_matrix(sensor.get_transform())
+        sensor_world_matrix = ClientSideBoundingBoxes.get_matrix(sensor)
         world_sensor_matrix = np.linalg.inv(sensor_world_matrix)
         sensor_cords = np.dot(world_sensor_matrix, cords)
+        return sensor_cords
+
+    @staticmethod
+    def _sensor_to_world(cords, sensor):
+
+        sensor_world_matrix = ClientSideBoundingBoxes.get_matrix(sensor)
+        # world_sensor_matrix = np.linalg.inv(sensor_world_matrix)
+        sensor_cords = np.dot(sensor_world_matrix, cords)
         return sensor_cords
 
     @staticmethod

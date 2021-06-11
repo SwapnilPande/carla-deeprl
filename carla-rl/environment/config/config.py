@@ -174,7 +174,7 @@ class BaseMainConfig(BaseConfig):
 
 
 
-    def populate_config(self, observation_config = None, action_config = None, reward_config = None, scenario_config = None, testing = False, carla_gpu = 0):
+    def populate_config(self, observation_config = 'LowDimObservationConfig', action_config = 'MergedSpeedScaledTanhConfig', reward_config = 'Simple2RewardConfig', scenario_config = 'NoCrashEmptyTown01Config', testing = False, carla_gpu = 0):
         """Fill in the config parameters that are not set by default
 
         For each type of config, the parameter can be either passed in as a string containing the class name or

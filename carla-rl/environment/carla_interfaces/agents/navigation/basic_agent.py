@@ -106,8 +106,9 @@ class BasicAgent(Agent):
             # if debug:
             #     print('!!! VEHICLE BLOCKING AHEAD [{}])'.format(vehicle.id))
 
-            self._state = AgentState.BLOCKED_BY_VEHICLE
-            hazard_detected = True
+            # self._state = AgentState.BLOCKED_BY_VEHICLE
+            # hazard_detected = True
+            pass
 
         # check for the state of the traffic lights
         light_state, traffic_light = self._is_light_red(lights_list)

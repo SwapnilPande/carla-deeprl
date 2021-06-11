@@ -208,12 +208,17 @@ class CarlaEnv(gym.Env):
                 self.episode_measurements['control_reverse'] = carla_obs['control_reverse']
                 self.episode_measurements['control_hand_brake'] = carla_obs['control_hand_brake']
 
-            rgb_bev = carla_obs['sensor.camera.rgb/top']['image']
-            self.episode_measurements['rgb_bev'] = rgb_bev
-            rgb_front = carla_obs['sensor.camera.rgb/front']['image']
-            self.episode_measurements['rgb_front'] = rgb_front
-            sem_bev = carla_obs['sensor.camera.semantic_segmentation/top']['image']
-            self.episode_measurements['sem_bev'] = sem_bev
+            sensors = [k for k in self.config.obs_config.sensors if 'sensor.camera' in k]
+            for sensor_name in sensors:
+                image = carla_obs[sensor_name]
+                self.episode_measurements[sensor_name] = image
+
+            # rgb_bev = carla_obs['sensor.camera.rgb/top']['image']
+            # self.episode_measurements['rgb_bev'] = rgb_bev
+            # rgb_front = carla_obs['sensor.camera.rgb/front']['image']
+            # self.episode_measurements['rgb_front'] = rgb_front
+            # sem_bev = carla_obs['sensor.camera.semantic_segmentation/top']['image']
+            # self.episode_measurements['sem_bev'] = sem_bev
 
             # rgb_image = carla_obs['sensor.camera.rgb/front']
             # self._update_env_obs(front_rgb_image=rgb_image)
@@ -812,49 +817,55 @@ class CarlaEnv(gym.Env):
         return obs_output
 
     def create_observations_image(self, carla_obs):
-        visual_observations = []
-        if self.config.obs_config.input_type in ['vae', 'wp_vae', 'wp_vae_speed_steer_goal',
-                                         'wp_vae_speed_steer_ldist_goal_light', 'wp_vae_obs_info_speed_steer_ldist_goal_light',
-                                         'wp_cnn_obs_info_speed_steer_ldist_goal_light', 'wp_bev_rv_obs_info_speed_steer_ldist_goal_light']:
+        # visual_observations = []
+        # if self.config.obs_config.input_type in ['vae', 'wp_vae', 'wp_vae_speed_steer_goal',
+        #                                  'wp_vae_speed_steer_ldist_goal_light', 'wp_vae_obs_info_speed_steer_ldist_goal_light',
+        #                                  'wp_cnn_obs_info_speed_steer_ldist_goal_light', 'wp_bev_rv_obs_info_speed_steer_ldist_goal_light']:
 
 
-            # Get each type of camera image and add it to the stacked observation queue
-            # We loop over the length of the observation queue to fill it up for the reset
+        #     # Get each type of camera image and add it to the stacked observation queue
+        #     # We loop over the length of the observation queue to fill it up for the reset
 
-            if "sensor.camera.semantic_segmentation/top" in carla_obs:
-                for _ in range(self.frame_stack_size):
-                    self._add_to_stacked_queue(self.top_sem_stacked_observation_queue, carla_obs["sensor.camera.semantic_segmentation/top"]["image"])
+        #     if "sensor.camera.semantic_segmentation/top" in carla_obs:
+        #         for _ in range(self.frame_stack_size):
+        #             self._add_to_stacked_queue(self.top_sem_stacked_observation_queue, carla_obs["sensor.camera.semantic_segmentation/top"]["image"])
 
-                # Use np.concat if multiple channels in image
-                if not self.config.obs_config.single_channel_image:
-                    stacked_observation = np.concatenate(list(self.top_sem_stacked_observation_queue.queue), axis=2)
-                else:
-                    stacked_observation = np.stack(list(self.top_sem_stacked_observation_queue.queue), axis=2)
-                visual_observations.append(stacked_observation)
-            if "sensor.camera.rgb/top" in carla_obs:
-                for _ in range(self.frame_stack_size):
-                    self._add_to_stacked_queue(self.top_rgb_stacked_observation_queue, carla_obs["sensor.camera.rgb/top"]["image"])
-                if not self.config.obs_config.single_channel_image:
-                    stacked_observation = np.concatenate(list(self.top_rgb_stacked_observation_queue.queue), axis=2)
-                else:
-                    stacked_observation = np.stack(list(self.top_rgb_stacked_observation_queue.queue), axis=2)
-                visual_observations.append(stacked_observation)
-            if "sensor.camera.semantic_segmentation/front" in carla_obs:
-                for _ in range(self.frame_stack_size):
-                    self._add_to_stacked_queue(self.front_sem_stacked_observation_queue, carla_obs["sensor.camera.semantic_segmentation/front"]["image"])
-                if not self.config.obs_config.single_channel_image:
-                    stacked_observation = np.concatenate(list(self.front_sem_stacked_observation_queue.queue), axis=2)
-                else:
-                    stacked_observation = np.stack(list(self.front_sem_stacked_observation_queue.queue), axis=2)
-                visual_observations.append(stacked_observation)
-            if "sensor.camera.rgb/front" in carla_obs:
-                for _ in range(self.frame_stack_size):
-                    self._add_to_stacked_queue(self.front_rgb_stacked_observation_queue, carla_obs["sensor.camera.rgb/front"]["image"])
-                if not self.config.obs_config.single_channel_image:
-                    stacked_observation = np.concatenate(list(self.front_rgb_stacked_observation_queue.queue), axis=2)
-                else:
-                    stacked_observation = np.stack(list(self.front_rgb_stacked_observation_queue.queue), axis=2)
-                visual_observations.append(stacked_observation)
+        #         # Use np.concat if multiple channels in image
+        #         if not self.config.obs_config.single_channel_image:
+        #             stacked_observation = np.concatenate(list(self.top_sem_stacked_observation_queue.queue), axis=2)
+        #         else:
+        #             stacked_observation = np.stack(list(self.top_sem_stacked_observation_queue.queue), axis=2)
+        #         visual_observations.append(stacked_observation)
+        #     if "sensor.camera.rgb/top" in carla_obs:
+        #         for _ in range(self.frame_stack_size):
+        #             self._add_to_stacked_queue(self.top_rgb_stacked_observation_queue, carla_obs["sensor.camera.rgb/top"]["image"])
+        #         if not self.config.obs_config.single_channel_image:
+        #             stacked_observation = np.concatenate(list(self.top_rgb_stacked_observation_queue.queue), axis=2)
+        #         else:
+        #             stacked_observation = np.stack(list(self.top_rgb_stacked_observation_queue.queue), axis=2)
+        #         visual_observations.append(stacked_observation)
+        #     if "sensor.camera.semantic_segmentation/front" in carla_obs:
+        #         for _ in range(self.frame_stack_size):
+        #             self._add_to_stacked_queue(self.front_sem_stacked_observation_queue, carla_obs["sensor.camera.semantic_segmentation/front"]["image"])
+        #         if not self.config.obs_config.single_channel_image:
+        #             stacked_observation = np.concatenate(list(self.front_sem_stacked_observation_queue.queue), axis=2)
+        #         else:
+        #             stacked_observation = np.stack(list(self.front_sem_stacked_observation_queue.queue), axis=2)
+        #         visual_observations.append(stacked_observation)
+        #     if "sensor.camera.rgb/front" in carla_obs:
+        #         for _ in range(self.frame_stack_size):
+        #             self._add_to_stacked_queue(self.front_rgb_stacked_observation_queue, carla_obs["sensor.camera.rgb/front"]["image"])
+        #         if not self.config.obs_config.single_channel_image:
+        #             stacked_observation = np.concatenate(list(self.front_rgb_stacked_observation_queue.queue), axis=2)
+        #         else:
+        #             stacked_observation = np.stack(list(self.front_rgb_stacked_observation_queue.queue), axis=2)
+        #         visual_observations.append(stacked_observation)
+
+        visual_observations = {}
+
+        for sensor_name in self.config.obs_config.observation_sensors:
+            image = carla_obs[sensor_name]
+            visual_observations[sensor_name] = image
 
         return visual_observations
 
@@ -872,41 +883,16 @@ class CarlaEnv(gym.Env):
         # Components of state space which are semantic
         # For ex: curr agent velocity, traffic light presence(either queried or from a separate classifier)
         scalars_obs = self.create_observations_scalar()
+        scalars_obs = np.expand_dims(scalars_obs, axis=0)
 
         # Components of state space which are non-semantic
         # For ex: hidden layer features
-        feature_obs = self.create_observations_image(carla_obs)
+        image_obs = self.create_observations_image(carla_obs)
 
-        if self.config.obs_config.input_type in ['wp_vae', 'wp_vae_speed_steer_goal', 'wp_vae_speed_steer_ldist_goal_light', 'wp_vae_obs_info_speed_steer_ldist_goal_light']:
-            scalars_obs = np.expand_dims(scalars_obs, axis = 0)
-
-            # Stack all camera frames (flattened) with the low-dim features
-            fused_input = np.hstack([*feature_obs, scalar_observations])
-            return fused_input
-
-        elif self.config.obs_config.input_type in ['wp_cnn_obs_info_speed_steer_ldist_goal_light', 'wp_bev_rv_obs_info_speed_steer_ldist_goal_light']:
-            scalars_obs = np.expand_dims(scalars_obs, axis = 0)
-
-            # Flatten camera frames and stack
-            feature_obs = [elt.reshape((1,-1)) for elt in feature_obs]
-            fused_input = np.hstack([*feature_obs, scalars_obs])
-            return fused_input
-
-        elif self.config.obs_config.input_type == "wp":
-            return scalars_obs
-
-        elif self.config.obs_config.input_type in ['wp_noise', 'wp_constant', 'wp_obs_dist', 'wp_obs_bool', 'wp_obs_bool_noise', 'wp_ldist_goal',
-                                           'wp_speed', 'wp_speed_goal','wp_speed_steer_goal', 'wp_speed_steer_goal_obs_bool',
-                                           'wp_obs_bool_speed_steer_goal_light', 'wp_obs_info_speed_steer_ldist_goal_light',
-                                           'wp_obs_info_speed_steer_ldist_goal', 'wp_obs_info_speed_steer_ldist_light',
-                                           'wp_angles_obs_info_speed_steer_ldist_light', 'wp_vecs_obs_info_speed_steer_ldist_light',
-                                           'wp_angles_vecs_obs_info_speed_steer_ldist_light']:
-
-            observation = np.expand_dims(scalars_obs, axis = 0)
-            return observation
+        if image_obs:
+            return image_obs, scalars_obs
         else:
             return scalars_obs
-
 
 
     def reset(self, unseen=False, index=0):
@@ -1031,6 +1017,7 @@ class CarlaEnv(gym.Env):
         else:
             waypoint = self.carla_interface.next_waypoints[0]
             steer = self.carla_interface.actor_fleet.lateral_controller.pid_control(waypoint)
+            steer = np.clip(steer, -1, 1)
             return np.array([steer, target_speed])
 
     def get_wp_obs_input(self):
@@ -1174,8 +1161,12 @@ class CarlaEnv(gym.Env):
         print("Vehicle transform:{0}".format(self.vehicle_actor.get_transform()))
         print("Vehicle velocity:{0}".format(self.vehicle_actor.get_velocity()))
 
-    def render(self, mode='rgb_array'):
-        return self.episode_measurements['rgb_bev']
+    def render(self, mode='rgb_array', camera='sensor.camera.rgb/top'):
+        try:
+            return self.episode_measurements[camera]['image']
+        except KeyError:
+            print('Cannot render {} -- key error'.format(camera))
+            return None
 
     def close(self):
 
