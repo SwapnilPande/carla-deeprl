@@ -1,3 +1,4 @@
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,6 +8,7 @@ import numpy as np
 import scipy.spatial
 import os
 from tqdm import tqdm
+import time
 
 class DynamicsMLP(nn.Module):
     def __init__(self,
@@ -126,6 +128,11 @@ class DynamicsEnsemble:
 
         self.config = config
 
+        if self.config.gpu == -1:
+            self.device = "cpu"
+        else:
+            self.device = "cuda:{}".format(self.config.gpu)
+
         self.logger = logger
         self.log_freq = log_freq
 
@@ -169,6 +176,25 @@ class DynamicsEnsemble:
                 drop_prob = self.network_cfg.drop_prob,
                 activation = self.network_cfg.activation
             ))
+            self.models[-1].to(self.device)
+
+    def get_input_output_dim(self):
+        return self.state_dim_in, self.state_dim_out
+
+    def get_gpu(self):
+        return self.config.gpu
+
+
+
+    def get_data_module(self):
+        return self.data_module
+
+    def get_n_models(self):
+        return self.n_models
+
+    def to(self, device):
+        for i in range(self.n_models):
+            self.models[i].to(device)
 
     def forward(self, x, model_idx = None):
         return self.models[model_idx](x)
@@ -180,6 +206,13 @@ class DynamicsEnsemble:
         # state_in is [batch_size, frame_stack, state_dim]
         # action is [batch_size, frame_stack, action_dim]
         # feed tensor is [batch_size, frame_stack * (state_dim + action_dim)]
+
+        # Conver to cuda first
+        state_in = state_in.to(self.device)
+        actions = actions.to(self.device)
+        delta = delta.to(self.device)
+        # reward = reward.to(self.device)
+
         feed_tensor = torch.reshape(
                             torch.cat([state_in, actions], dim = 2),
                                 (-1, self.frame_stack * (self.state_dim_in + self.action_dim)
@@ -199,6 +232,11 @@ class DynamicsEnsemble:
 
         # Split batch into componenets
         obs, actions, rewards, delta, done, waypoints, num_wps_list, vehicle_pose = batch
+        obs = (torch.stack(obs)).to(self.device)
+        actions = (torch.stack(actions)).to(self.device)
+        delta = (torch.stack(delta)).to(self.device)
+        # waypoints = (torch.stack(waypoints))to(self.device)
+        vehicle_pose = (torch.stack(vehicle_pose)).to(self.device)
 
         # Combine tensors and reshape batch to flat inputs
         feed, target = self.prepare_batch(obs, actions, delta, rewards)
@@ -223,7 +261,11 @@ class DynamicsEnsemble:
 
         # Split batch into componenets
         obs, actions, rewards, delta, done, waypoints, num_wps_list, vehicle_pose = batch
-
+        obs = (torch.stack(obs)).to(self.device)
+        actions = (torch.stack(actions)).to(self.device)
+        delta = (torch.stack(delta)).to(self.device)
+        # waypoints = (torch.stack(waypoints))to(self.device)
+        vehicle_pose = (torch.stack(vehicle_pose)).to(self.device)
         # Combine tensors and reshape batch to flat inputs
         feed, target = self.prepare_batch(obs, actions, delta, rewards)
 
@@ -238,35 +280,67 @@ class DynamicsEnsemble:
                 "model_{}_val_mse_loss".format(model_idx) : mse_loss}
 
 
+    def log_metrics(self, epoch, batch_idx, num_batches, metric_dict):
+        if(self.logger is not None):
+            step = num_batches*epoch + batch_idx
+
+            for metric_name, value in metric_dict.items():
+                self.logger.log_scalar(metric_name, value, step)
+
     def train(self, epochs):
-        self.train_dataloader = self.data_module.train_dataloader()
-        self.val_dataloader = self.data_module.val_dataloader()
+        train_dataloader = self.data_module.train_dataloader()
+        val_dataloader = self.data_module.val_dataloader()
+
+        num_train_batches = len(train_dataloader)
+        num_val_batches = len(val_dataloader)
+
+        # # Log hyperparameters
+        # self.logger.log_hyperparameters({
+        #     "dyn_ens/lr" : self.lr,
+        #     "dyn_ens/optimizer" : str(self.optimizer_type),
+        #     "dyn_ens/n_models" : self.n_models,
+        #     "dyn_ens/batch_size" : train_dataloader.batch_size,
+        #     "dyn_ens/train_val_split" : self.data_module.train_val_split,
+        #     "dyn_ens/epochs" : epochs,
+        #     "dyn_ens/predict_reward" : self.network_cfg.predict_reward,
+        #     "dyn_ens/n_neurons" : self.network_cfg.n_neurons,
+        #     "dyn_ens/n_hidden_layers" : self.network_cfg.n_hidden_layers,
+        #     "dyn_ens/n_head_layers" : self.network_cfg.n_head_layers,
+        #     "dyn_ens/drop_prob" : self.network_cfg.drop_prob,
+        #     "dyn_ens/activation" : str(self.network_cfg.activation)
+
+        # })
+
 
         # Configure the optimizers
         self.optimizers = self.configure_optimizers()
 
         # Only run validation if val dataloader has elements
-        if(len(self.val_dataloader) <= 0):
+        if(len(val_dataloader) <= 0):
             print("WARNING: Skipping validation since validation dataloader has 0 elements.")
 
         for epoch in range(epochs): # Loop over epochs
+            time.sleep(2)
             for model_idx in range(self.n_models): # Loop over models
 
-                with tqdm(total = len(self.train_dataloader)) as pbar:
-                    pbar.set_description_str("Train epoch {}:".format(epoch))
-                    for batch_idx, batch in enumerate(self.train_dataloader): # Loop over batches
+                with tqdm(total = num_train_batches) as pbar:
+                    pbar.set_description_str("Train epoch {}, Model {}:".format(epoch, model_idx))
+                   
+           
+                    for batch_idx, batch in enumerate(train_dataloader): # Loop over batches
                         # Run training step for jth model
                         log_params = self.training_step(batch, model_idx)
 
-                        pbar.set_postfix_str("epoch {}, model_idx: {}, loss: {}".format(epoch, model_idx, log_params['model_{}_loss'.format(model_idx)]))
+                        pbar.set_postfix_str("loss: {}".format(log_params['model_{}_loss'.format(model_idx)]))
                         pbar.update(1)
 
                         if batch_idx % self.log_freq == 0 and self.logger is not None:
-                            #TODO LOG PARAMS
-                            pass
-                with tqdm(total = len(self.val_dataloader)) as pbar:
+                            self.log_metrics(epoch, batch_idx, num_train_batches, log_params)
+
+
+                with tqdm(total = num_val_batches) as pbar:
                     pbar.set_description_str("Validation:".format(epoch))
-                    for batch_idx, batch in enumerate(self.val_dataloader): # Loop over batches
+                    for batch_idx, batch in enumerate(val_dataloader): # Loop over batches
                         # Run training step for jth model
                         log_params = self.validation_step(batch, model_idx)
 
@@ -274,8 +348,7 @@ class DynamicsEnsemble:
                         pbar.update(1)
 
                         if batch_idx % self.log_freq == 0 and self.logger is not None:
-                            #TODO LOG PARAMS
-                            pass
+                            self.log_metrics(epoch, batch_idx, num_val_batches, log_params)
 
     def configure_optimizers(self):
         # Define optimizers

@@ -1,3 +1,5 @@
+
+
 import numpy as np
 from numpy.lib.arraysetops import isin
 from tqdm import tqdm
@@ -5,18 +7,17 @@ import scipy.spatial
 
 import torch
 from torch.utils.data import Dataset, DataLoader, IterableDataset
-from data_modules import OfflineCarlaDataset
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+import gym
+from gym.spaces import Box, Discrete, Tuple
 
 ''' 
 Calculates L2 distance between waypoint, vehicle
 @param waypoint:     torch.Tensor([x,y])
         vehicle_pose: torch.Tensor([x, y, yaw])
 '''
-def distance_vehicle(waypoint, vehicle_pose):
-    vehicle_loc = vehicle_pose[:2] # get x, y 
+def distance_vehicle(waypoint, vehicle_pose, device):
+    waypoint = torch.FloatTensor(waypoint).to(device)
+    vehicle_loc = vehicle_pose[:2].to(device) # get x, y 
     dist = torch.dist(waypoint, vehicle_loc).item()
     return dist
 
@@ -26,14 +27,13 @@ Calculates dot product, angle between vehicle, waypoint
 @param waypoint:     [x, y]
        vehicle_pose: torch.Tensor([x, y, yaw])
 '''
-def get_dot_product_and_angle(vehicle_pose, waypoint):
-
-    waypoint = torch.FloatTensor(waypoint)
+def get_dot_product_and_angle(vehicle_pose, waypoint, device):
+    waypoint = torch.FloatTensor(waypoint).to(device)
 
     v_begin         = vehicle_pose[:2]
     vehicle_yaw     = vehicle_pose[2]  
     v_end = v_begin + torch.Tensor([torch.cos(torch.deg2rad(vehicle_yaw)), \
-                                    torch.sin(torch.deg2rad(vehicle_yaw))])
+                                    torch.sin(torch.deg2rad(vehicle_yaw))]).to(device)
 
     # vehicle vector: direction vehicle is pointing in global coordinates  
     v_vec = torch.sub(v_end, v_begin)
@@ -44,12 +44,13 @@ def get_dot_product_and_angle(vehicle_pose, waypoint):
     dot   = torch.dot(w_vec, v_vec)
     angle = torch.acos(torch.clip(dot /
                                 (torch.linalg.norm(w_vec) * torch.linalg.norm(v_vec)), -1.0, 1.0))
+
     assert(torch.isclose(torch.cos(angle), torch.clip(torch.dot(w_vec, v_vec) / \
-        (torch.linalg.norm(w_vec) * torch.linalg.norm(v_vec)), -1.0, 1.0)))
+        (torch.linalg.norm(w_vec) * torch.linalg.norm(v_vec)), -1.0, 1.0), atol=1e-3))
 
     # make vectors 3D for cross product
-    v_vec_3d = torch.hstack((v_vec, torch.Tensor([0])))
-    w_vec_3d = torch.hstack((w_vec, torch.Tensor([0])))
+    v_vec_3d = torch.hstack((v_vec, torch.Tensor([0]).to(device)))
+    w_vec_3d = torch.hstack((w_vec, torch.Tensor([0]).to(device)))
 
     _cross = torch.cross(v_vec_3d, w_vec_3d)
 
@@ -58,7 +59,7 @@ def get_dot_product_and_angle(vehicle_pose, waypoint):
         angle *= -1.0
     
     # assert cross product a x b = |a||b|sin(angle)
-    assert(torch.isclose(_cross[2], torch.norm(v_vec_3d) * torch.norm(w_vec_3d) * torch.sin(angle)))
+    assert(torch.isclose(_cross[2], torch.norm(v_vec_3d) * torch.norm(w_vec_3d) * torch.sin(angle), atol=1e-3))
 
     return dot, angle, w_vec
 
@@ -68,9 +69,9 @@ Gets distance of vehicle to a line formed by two waypoints
        waypoint2:     [x,y]
        vehicle_pose:  torch.Tensor([x,y, yaw])
 '''
-def vehicle_to_line_distance(vehicle_pose, waypoint1, waypoint2):
-    waypoint1 = torch.FloatTensor(waypoint1)
-    waypoint2 = torch.FloatTensor(waypoint2)
+def vehicle_to_line_distance(vehicle_pose, waypoint1, waypoint2, device):
+    waypoint1 = torch.FloatTensor(waypoint1).to(device)
+    waypoint2 = torch.FloatTensor(waypoint2).to(device)
 
     vehicle_loc   = vehicle_pose[:2] # x, y coords
     
@@ -78,8 +79,8 @@ def vehicle_to_line_distance(vehicle_pose, waypoint1, waypoint2):
     b_vec = torch.sub(vehicle_loc, waypoint1) # line from vehicle to first waypoint
     
     # make 3d for cross product
-    a_vec_3d = torch.hstack((a_vec, torch.Tensor([0])))
-    b_vec_3d = torch.hstack((b_vec, torch.Tensor([0])))
+    a_vec_3d = torch.hstack((a_vec, torch.Tensor([0]).to(device)))
+    b_vec_3d = torch.hstack((b_vec, torch.Tensor([0]).to(device)))
 
     dist_vec = torch.cross(a_vec_3d, b_vec_3d) / torch.linalg.norm(a_vec_3d)
     return abs(dist_vec[2]) # dist
@@ -90,9 +91,10 @@ Calculate dist to trajectory, angle
        vehicle pose: torch.Tensor([x,y,yaw])
 @returns dist_to_trajectory, angle, ...
 '''
-def process_waypoints(waypoints, vehicle_pose):
-
+def process_waypoints(waypoints, vehicle_pose, device):
+    vehicle_pose.to(device)
     waypoints = waypoints.tolist()
+
     next_waypoints_angles = []
     next_waypoints_vectors = []
     next_waypoints = []
@@ -105,14 +107,14 @@ def process_waypoints(waypoints, vehicle_pose):
 
     for i, waypoint in enumerate(waypoints):
         # find wp that yields min dist between itself and car
-        dist_i = distance_vehicle(torch.FloatTensor(waypoint), vehicle_pose)
+        dist_i = distance_vehicle(waypoint, vehicle_pose, device)
         if dist_i < min_dist:
             min_dist_index = i
             min_dist = dist_i
 
     wp_len = len(waypoints)
     if min_dist_index >= 0:
-        # pop waypoints up untilthe one with min dist
+        # pop waypoints up until the one with min distance to vehicle
         for i in range(min_dist_index + 1):
             waypoint = waypoints.pop(0)
             # set last, second-to-last waypoints
@@ -126,7 +128,7 @@ def process_waypoints(waypoints, vehicle_pose):
     # only keep next N waypoints 
     for i, waypoint in enumerate(waypoints[:num_next_waypoints]):
         # dist to waypoint 
-        dot, angle, w_vec = get_dot_product_and_angle(vehicle_pose, waypoint)
+        dot, angle, w_vec = get_dot_product_and_angle(vehicle_pose, waypoint, device)
 
         if len(next_waypoints_angles) == 0:
             next_waypoints_angles = [angle]
@@ -140,25 +142,26 @@ def process_waypoints(waypoints, vehicle_pose):
 
     # get mean of all angles to figure out which direction to turn 
     if len(next_waypoints_angles) > 0:
-        angle = np.mean(np.array(next_waypoints_angles))
+        angle = torch.mean(torch.FloatTensor(next_waypoints_angles))
     else:
         print("No next waypoint found!")
         angle = 0
 
     if len(next_waypoints) > 1:
-        print(next_waypoints)
         # get dist from vehicle to a line formed by the next two wps 
         dist_to_trajectory = vehicle_to_line_distance(
                                 vehicle_pose,
                                 next_waypoints[0],
-                                next_waypoints[1])
+                                next_waypoints[1], 
+                                device)
 
     # if only one next waypoint, use it and second to last 
     elif len(next_waypoints) > 0:
         dist_to_trajectory = vehicle_to_line_distance(
                                 vehicle_pose,
                                 second_last_waypoint,
-                                next_waypoints[0])
+                                next_waypoints[0],
+                                device)
 
     else:
 
@@ -166,7 +169,8 @@ def process_waypoints(waypoints, vehicle_pose):
             dist_to_trajectory = vehicle_to_line_distance(
                                     vehicle_pose,
                                     second_last_waypoint,
-                                    last_waypoint)
+                                    last_waypoint,
+                                    device)
             
         else:
             dist_to_trajectory = 0
@@ -175,7 +179,7 @@ def process_waypoints(waypoints, vehicle_pose):
 
 
 
-class FakeEnv:
+class FakeEnv(gym.Env):
     def __init__(self, dynamics,
                         logger = None,
                         uncertainty_threshold = 0.5,
@@ -183,57 +187,74 @@ class FakeEnv:
                         timeout_steps = 1,
                         uncertainty_params = [0.0045574815320799725, 1.9688976602303934e-05, 0.2866033549975823]):
 
-
-        # MOReL hyperparameters
-        self.uncertain_threshold = uncertainty_threshold
-        self.uncertain_penalty = uncertain_penalty
-        self.timeout_steps = timeout_steps
-
-
-        # Get dynamics model parameters
-        self.dynamics = dynamics
+        ################################################
+        # Dynamics parameters
+        ################################################
+        self.dynamics = dynamics 
         self.input_dim, self.output_dim = self.dynamics.get_input_output_dim()
+        print(self.input_dim, self.output_dim)
         self.device_num = self.dynamics.get_gpu()
         self.device = "cuda:{}".format(self.device_num) if torch.cuda.is_available() else "cpu"
-
+        print('Device: ', self.device)
         self.logger = logger
-        # init
+
         self.state = None
         self.vehicle_pose = None
         self.waypoints = None
 
-
-        # Setup dataset
+        ################################################
+        # Dataset comes from dynamics
+        ################################################
         self.offline_data_module = self.dynamics.get_data_module()
+        self.frame_stack = self.offline_data_module.frame_stack
         self.dataloader = self.offline_data_module.train_dataloader(weighted = False, batch_size_override = 1)
-        # Move dynamics to correct device
-        # We only have to do this because lightning moves the device back to CPU
         self.dynamics.to(self.device)
         self.data_iter = iter(self.dataloader)
+
+        ################################################
+        # MOReL hyperparameters
+        ################################################
+        self.uncertain_threshold = uncertainty_threshold
+        self.uncertain_penalty = uncertain_penalty
+        self.timeout_steps = timeout_steps
+
+        ################################################
+        # MOReL uncertainty
+        ################################################
 
         # self.calc_usad_params()
 
         # get mean, std normalization stats from data module
-        self.norm_stats = self.offline_data_module.normalization_stats
+        # self.norm_stats = self.dataloader.normalization_stats
         # self.mean = 0
         # self.var = 1
         # self.std = np.sqrt(self.var)
         # self.maximum = 2
         # self.beta_max = 2
 
+        ################################################
+        # Action, observation space
+        ################################################
+        # action
+        self.action_space = Box(low=np.tile(np.array([-0.5, -0.5]), (self.frame_stack, 1)),\
+                                high=np.tile(np.array([0.5, 0.5]), (self.frame_stack, 1)), shape=(self.frame_stack, 2), dtype=np.float32)
+        # speed steer delta_time
+        self.obs_space = Box(low=np.tile(np.array([0.0, -0.5, 0]), (self.frame_stack,1)),\
+                             high=np.tile(np.array([40, 0.5, np.inf]), (self.frame_stack,1)), shape=(self.frame_stack, 3), dtype=np.float32)
+
+
     # sample from dataset 
     def sample(self):
-        # print("_--------------------------")
-        # print(len(self.dataloader))
-        # print(type(len(self.dataloader)))
-        # print("----------------------------")
-
-        # sample_num = torch.randint(len(self.dataloader), size = (1,))
         try:
-            return next(self.data_iter)
+            data_next = next(self.data_iter)
+            wp_next = self.offline_data_module.waypoint_module.get_waypoints()
+            return data_next, wp_next
         except StopIteration:
             self.data_iter = iter(self.dataloader)
-            return next(self.data_iter)
+            data_next = next(self.data_iter)
+            wp_next = self.offline_data_module.waypoint_module.get_waypoints()
+            return data_next, wp_next
+        
 
 
     ''' 
@@ -254,16 +275,17 @@ class FakeEnv:
     def reset(self, obs = None, action = None):
         print("Resetting environment...\n")
         if obs is None:
-            # samples returns (obs, act, reward, delta, done, waypoints, vehicle_pose)
-            # obs: [[speed_t, steer_t, delta_time_t], [speed_t-1, steer_t-1, delta_time_t-1], ...]
-            obs, action, _, _, _, waypoints, num_waypoints, vehicle_pose = self.sample()
+            (obs, action, _, _, _, vehicle_pose), wps = self.sample()
+            print("WWWW", wps)
+            num_waypoints = num_waypoints[0] # this is used to eliminate padding from dataloader
+ 
 
-            self.obs = torch.squeeze(obs)
-            self.past_action = torch.squeeze(action)
-            self.waypoints = torch.squeeze(waypoints[:, num_waypoints])
-            self.vehicle_pose = torch.squeeze(vehicle_pose)
+            self.obs = torch.squeeze(obs).to(self.device)
+            self.past_action = torch.squeeze(action).to(self.device)
+            self.waypoints = torch.squeeze(waypoints[:, :num_waypoints]).to(self.device)
+            self.vehicle_pose = torch.squeeze(vehicle_pose).to(self.device)
             # state only includes speed, steer
-            self.state =  self.obs[:, :2]
+            self.state =  self.obs[:, :2].to(self.device)
 
         print('obs', self.obs)
         print('action', self.past_action)
@@ -273,7 +295,7 @@ class FakeEnv:
 
         self.steps_elapsed = 0
 
-        return self.state  # [speed_frames, steer_frames, delta_frames]
+        return self.state
 
    
     '''
@@ -296,13 +318,12 @@ class FakeEnv:
     @ returns next_obs, reward_out, (uncertain or timeout), {"delta" : delta, "uncertain" : 100*uncertain} 
     '''
     def step(self, new_action, obs = None):
-
-        print("Taking step...\n")
+        new_action.to(self.device)
 
         # clamp new action to safe range
         new_action = torch.clamp(new_action, -1, 1).to(self.device)
         # insert new action at front, delete oldest action
-        action = torch.cat([new_action, self.past_action[:-1]])
+        action = torch.cat([new_action.unsqueeze(0), self.past_action[:-1, :]])
 
         # if obs not passed in
         if not obs:
@@ -311,11 +332,8 @@ class FakeEnv:
         ############ feed predictions (normalized) through dynamics model ##############
 
         # input [[speed_t, steer_t, Δtime_t, action_t], [speed_t-1, steer_t-1, Δt-1, action_t-1]]
-    
-        # TODO: dynamics model must flatten input to 1D list
-        dynamics_input = torch.cat([obs, action.reshape(-1,1)], dim = 1).float()
-
-        # dynamics_input = torch.flatten(torch.cat([obs, action.reshape(-1,1)], dim = 1).float())
+        # unsqueeze to form batch dimension for dynamics input
+        dynamics_input = torch.cat([obs, action.reshape(-1,2)], dim = 1).unsqueeze(0).float()
         # predicts normalized deltas across models 
         predictions = torch.squeeze(self.dynamics.predict(dynamics_input))
         # randomly sample a model
@@ -327,7 +345,7 @@ class FakeEnv:
         # predicted change in x, y, th
         delta_vehicle_pose = delta[:3]
         # change in speed, steer 
-        delta_state = delta[3:5]
+        delta_state        = delta[3:5]
 
         # update vehicle pose
         self.vehicle_pose = self.vehicle_pose + delta_vehicle_pose
@@ -337,7 +355,8 @@ class FakeEnv:
 
         ###################### calculate waypoint features (in global frame)  ##############################
 
-        angle, dist_to_trajectory, _, _, _ = process_waypoints(self.waypoints, self.vehicle_pose)
+        self.waypoints = self.waypoints[:, :2] # get x,y coords for each waypoint
+        angle, dist_to_trajectory, _, _, _ = process_waypoints(self.waypoints, self.vehicle_pose, self.device)
 
         ################## calc reward with penalty for uncertainty ##############################
 
@@ -362,17 +381,16 @@ class FakeEnv:
         ######################### build policy input ##########################
 
         # Policy input (unnormalized): dist_to_trajectory, next orientation, speed, steer
-        dist_to_trajectory = torch.Tensor([dist_to_trajectory])
-        angle = torch.Tensor([angle])
+        dist_to_trajectory = torch.Tensor([dist_to_trajectory]).to(self.device)
+        angle              = torch.Tensor([angle]).to(self.device)
 
 
-        # take most recent state
+        # combine most recent state with waypoint features to form policy input
         policy_input = torch.cat([dist_to_trajectory, angle, torch.flatten(self.state[0, :])], dim=0).float().to(self.device)
-        next_obs = policy_input
+        next_obs     = policy_input
 
         # renormalize state for next round of dynamics prediction
         self.state = self.normalize_state(self.state, device)
-
         return next_obs, reward_out, (uncertain or timeout), {"delta" : delta, "uncertain" : 100*uncertain}
 
 

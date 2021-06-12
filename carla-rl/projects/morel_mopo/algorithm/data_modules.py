@@ -3,14 +3,14 @@
 import glob
 from pathlib import Path
 import json
-
+import gym
 import cv2
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader, IterableDataset
-from torch.nn.utils.rnn import pad_sequence
 
 from tqdm import tqdm
+torch.multiprocessing.set_sharing_strategy('file_system') 
 
 """
 Offline dataset handling
@@ -27,22 +27,35 @@ def rotz(theta):
     return Rz
 
 ''' Computes the mean and standard deviation of data
-@param data
+@param data across all trajectories
        n: number of data points
 @returns: dictionary storing mean, std
 '''
 def compute_mean_std(data, n):
-    print('data',data)
     # sum data row-wise across all trajectories
     data_sum    = torch.sum(data, dim=0)
-    print('data_sum', data_sum)
     data_sum_sq = torch.sum(torch.square(data), 0)
-    print('data_sum_sq', data_sum_sq)
-    mean = data_sum/n
-    std =  torch.sqrt(data_sum_sq/n - torch.square(mean))
-    print('mean, std', mean, std)
+    mean        = data_sum/n
+    std         =  np.sqrt(data_sum_sq/n - torch.square(mean))
     return {"mean" : mean, "std" : std} 
 
+
+
+
+# ATTEMPTED TO SEPARATELY FETCH THE WAYPOINTS 
+# IN THE LOOP THROUGH EACH TRAJECTORY, CALL STORE_WAYPOINTS
+# THEN GET_WAYPOINTS GETS THE WAYPOINTS ACCORDING TO SPECIFIC IDX
+class WaypointCollector():
+    ''' init waypoints '''
+    def __init__(self):
+        self.waypoints = []
+        self.index = None
+
+    def store_waypoints(self, waypoints):
+        self.waypoints.append(waypoints)
+        
+    def get_waypoints(self):
+        return self.waypoints[self.idx]
 
 class OfflineCarlaDataset(Dataset):
     """ Offline dataset """
@@ -77,7 +90,7 @@ class OfflineCarlaDataset(Dataset):
         # additional_state: change in wall time
         # delta: change in x, y, yaw, speed, steer
         self.obs, self.additional_state, self.delta = [], [], []
-        self.waypoints = []
+        # self.waypoints = []
 
         self.actions, self.rewards, self.terminals = [], [], []
         self.vehicle_poses = []
@@ -89,18 +102,18 @@ class OfflineCarlaDataset(Dataset):
             "delta" : None,
             "action" : None
         }
-
     
         print("Loading data")
 
+        # self.waypoint_module = WaypointCollector()
+        self.waypoints = []
         # Don't calculate gradients for descriptive statistics
         with torch.no_grad():
             # Loop over all trajectories
-            for trajectory_path in tqdm(trajectory_paths[:1]):
+            for trajectory_path in tqdm(trajectory_paths[:2]):
                 samples = []
                 json_paths = sorted(glob.glob('{}/measurements/*.json'.format(trajectory_path)))
                 traj_length = len(json_paths)
-
                 # Loop over files and load in each timestep (represented by a single json file) for each trajectory
                 for i in range(traj_length):
                     with open(json_paths[i]) as f:
@@ -111,6 +124,7 @@ class OfflineCarlaDataset(Dataset):
                 # Exit if the trajectory is too short
                 if traj_length <= (self.frame_stack + 1):
                     continue
+
 
                 # Construct observations across all timesteps i in trajectory
                 for i in range(self.frame_stack - 1, traj_length-1):
@@ -136,6 +150,7 @@ class OfflineCarlaDataset(Dataset):
 
                         # Action taken
                         action.append(torch.FloatTensor(samples[i-j]['action']))
+
 
 
                     # vehicle pose at timestep t
@@ -167,19 +182,22 @@ class OfflineCarlaDataset(Dataset):
                                                 samples[i+1]['speed'] - samples[i]['speed'],
                                                 samples[i+1]['steer'] - samples[i]['steer']])
 
-                    waypoints = torch.FloatTensor(samples[i]['waypoints'])
-                    # Convert stacked frame list to torch tensor
+                    # convert stacked frame list to torch tensor
                     self.obs.append(torch.stack(obs))
-
                     self.additional_state.append(torch.stack(additional_state))
                     self.actions.append(torch.stack(action))
                     self.delta.append(delta)
-                    self.waypoints.append(waypoints)
+                    # self.waypoints.append(waypoints)
                     self.vehicle_poses.append(vehicle_pose_cur)
 
                     # rewards, terminal at each timestep
-                    self.rewards.append(samples[i]['reward'])
+                    self.rewards.append(torch.FloatTensor([samples[i]['reward']]))
                     self.terminals.append(samples[i]['done'])
+
+                    # get waypoints for current timestep
+                    waypoints = torch.FloatTensor(samples[i]['waypoints'])
+                    # self.waypoint_module.store_waypoints(waypoints)
+                    self.waypoints.append(waypoints)
             
             self.obs = torch.stack(self.obs)
             self.actions = torch.stack(self.actions)
@@ -187,113 +205,57 @@ class OfflineCarlaDataset(Dataset):
             self.delta = torch.stack(self.delta)
             self.vehicle_poses = torch.stack(self.vehicle_poses)
 
-            print('delta full orig', self.delta)
-            print('actions full orig', self.actions)
             # normalize using z-score 
             if normalize_data:
                 n = len(self.rewards)
-                # get last frame from each timestep to build all frames across trajectory 
-                # shape [timesteps x frames x values]
+
+                # get last frame from each timestep
                 traj_obs              = self.obs[:,-1,:] 
                 traj_actions          = self.actions[:,-1,:]
                 traj_additional_state = self.additional_state[:,-1, :] 
-                traj_delta            = self.delta[:, -1].unsqueeze(-1)
-                print("before normalize...\n")
+                # no need to index because deltas are not stacked
+                traj_delta            = self.delta
 
-                print('obs', self.obs.shape) # S x F x 2
-                print('act', self.actions.shape) # S x F x 2
-                print('addstate', self.additional_state.shape) # S x F x 1
-
-                # not stacked 
-                print('delta', self.delta.shape) # S x 5
-                print('vehpose', self.vehicle_poses.shape) # S x 3
-
-                print('calc mean std obs\n')
+                # calculate mean, stdev across all trajectories 
                 self.normalization_stats["obs"]              = compute_mean_std(traj_obs,n)
-                print('calc mean std addstate\n')
                 self.normalization_stats["additional_state"] = compute_mean_std(traj_additional_state, n)
-                print('calc mean std action\n')
                 self.normalization_stats["action"]           = compute_mean_std(traj_actions, n)
-                print('calc mean std delta\n')
                 self.normalization_stats["delta"]            = compute_mean_std(traj_delta, n)
 
+                # normalize
+                self.obs = (self.obs - self.normalization_stats["obs"]["mean"]) / self.normalization_stats["obs"]["std"]
+                self.additional_state = (self.additional_state - self.normalization_stats["additional_state"]["mean"]) / self.normalization_stats["additional_state"]["std"]
+                self.actions =  (self.actions - self.normalization_stats["action"]["mean"]) / self.normalization_stats["action"]["std"]
+                self.delta = (self.delta - self.normalization_stats["delta"]["mean"]) / self.normalization_stats["delta"]["std"]
 
-                # normalize 
-                print("Normalize obs\n")
-                print('orig', self.obs)
-                self.obs -= self.normalization_stats["obs"]["mean"]
-                self.obs /= self.normalization_stats["obs"]["std"]
-                print('x-u /std', self.normalization_stats["obs"]["std"].expand_as(self.obs), self.obs)
-            
-                print("Normalize addstate\n")
-                print('orig', self.additional_state)
-                self.additional_state -= self.normalization_stats["additional_state"]["mean"]
-                print('x-u', self.normalization_stats["additional_state"]["mean"], self.additional_state)
-                self.additional_state /=  self.normalization_stats["additional_state"]["std"]
-                print('x-u/std', self.normalization_stats["additional_state"]["std"], self.additional_state)
-
-                print("normalize actions\n")
-                print('orig', self.actions)
-                
-                if not 0 in self.normalization_stats["action"]["std"]:
-                    self.actions -= self.normalization_stats["action"]["mean"]
-                    print('x-u', self.actions)
-                    self.actions /= self.normalization_stats["action"]["std"]
-                    print('x-u/std', self.actions)
-                else: print("Found 0 stdev for action")
-
-                print("normalize delta\n")
-                print('orig', self.delta)
-                self.delta -= self.normalization_stats["delta"]["mean"]
-                print('x-u', self.normalization_stats["delta"]["mean"], self.delta)
-                self.delta /= self.normalization_stats["delta"]["std"] 
-                print('x-u/std', self.normalization_stats["delta"]["std"], self.delta)
- 
-                print("after normalize...\n\n\n")
-
-                print('obs', self.obs.shape)
-                print('act', self.actions.shape)
-                print('addstate', self.additional_state.shape)
-
-                # not stacked 
-                print('delta', self.delta.shape)
-                print('vehpose', self.vehicle_poses.shape)
-
-
-
-        # print("Getting item....\n")
-
-        # print('obs',self.obs)
-        # print('adst', self.additional_state)
-        # print('act', self.actions)
-        # print('delta', self.delta)
-        # print('rew', self.rewards)
-        # print('vp', self.vehicle_poses)
-        
-        print('Number of samples: {}'.format(len(self)))
 
     def __getitem__(self, idx):
         '''
-        mlp_features: (<frame_stack>,3) [[speed_t, steer_t, Δtime_t], [speed_t-1, steer_t-1, Δtime_t-1], ...... ]
-        waypoints:    (<traj_len>,2)    [[wp1x, wp1y], [wp2_x, wp2_y], [wp3_x, wp_3y].....[wpT_x, wpT_y]]
-        action:       (<frame_stack>)   [a_t, a_t-1, a_t-2, ....]
-        reward:                         reward_t
-        done:                           done_t
-        vehicle_pose:                   [x, y, θ]
+        obs:              B x F x 2
+        additional_state: B x F x 1
+        mlp_features:     B x F x 3 
+        action:           B x F x 2   
+        reward:           B x 1           
+        done:             B x 1           
+        vehicle_pose:     B x 3         
+        delta:            B x 5           
         '''
 
         obs = self.obs[idx]
         additional_state = self.additional_state[idx]
 
         mlp_features = torch.cat([obs, additional_state.reshape(-1,1)], dim = 1)
-        waypoints = self.waypoints[idx]
         action = self.actions[idx]
         delta = self.delta[idx]
         reward = self.rewards[idx]
         done = self.terminals[idx]
         vehicle_pose = self.vehicle_poses[idx]
+        # self.waypoint_module.index = idx
+        waypoints = self.waypoints[idx]
+        num_waypoints = len(waypoints)
+   
 
-        return mlp_features, action, reward, delta, done, 0,0,0#waypoints, len(waypoints), vehicle_pose
+        return mlp_features, action, reward, delta, done, waypoints, num_waypoints, vehicle_pose
 
     def __len__(self):
         return len(self.rewards)
@@ -303,39 +265,42 @@ class OfflineCarlaDataset(Dataset):
         idx = np.random.randint(len(self))
         return self[idx]
 
-        
+
+''' improved collate_fn'''
+def collate_fn_new(batch):
+    mlp_features, action, reward, delta, done, waypoints, num_wps_list, vehicle_pose = zip(*batch)
+    padded_waypoints = torch.nn.utils.rnn.pad_sequence(waypoints, batch_first=True)
+    new_batch = mlp_features, action, reward, delta, done, padded_waypoints, num_wps_list, vehicle_pose
+    return new_batch
+
 ''' Pads waypoints with zeros so that all waypoints sequences are same length
 @param: batch of data
 @out:   original features but with padded waypoints
 '''
 def collate_fn(batch):
-    mlp_features, action, reward, delta, done, waypoints, num_wps_list, vehicle_pose = [list(x) for x in zip(*batch)]  
+    mlp_features, action, reward, delta, done, waypoints, num_wps_list, vehicle_pose = [list(x) for x in zip(*batch)]
     # waypoint feature is at the fifth index
     wp_idx = 5
     # get maximum number of waypoints across all sequences
     max_wps = max(num_wps_list)
     # get innermost dimension of each wp
     wp_dim = batch[0][wp_idx].size(-1)
-    # create padding 
+    # create padding
     padded_waypoints = torch.zeros((len(batch), max_wps, wp_dim))
-
-    # padded_waypoints = pad_sequence(waypoints, batch_first=True, padding_value=0)
     for i in range(len(waypoints)):
         wp = waypoints[i]
         num_wps, wp_dim = batch[i][wp_idx].size()
         padded_waypoints[i] = torch.cat([wp, torch.zeros((max_wps - num_wps, wp_dim))])
-    
-<<<<<<< Updated upstream
-    # convert to tensors 
-=======
->>>>>>> Stashed changes
+
+    print('padded with collate',padded_waypoints.shape, padded_waypoints)
+    # convert to tensors
     mlp_features = torch.stack(mlp_features)
     action       = torch.stack(action)
     delta        = torch.stack(delta)
     vehicle_pose = torch.stack(vehicle_pose)
+
     new_batch = mlp_features, action, reward, delta, done, padded_waypoints, num_wps_list, vehicle_pose
     return new_batch
-
 
 
 class OfflineCarlaDataModule():
@@ -355,9 +320,13 @@ class OfflineCarlaDataModule():
 
     def setup(self):
         # Create a dataset for each trajectory
+
+        # torch.multiprocessing.set_start_method('spawn', force=True)
+        # torch.multiprocessing.set_sharing_strategy('file_system')
         datasets = [OfflineCarlaDataset(path=path, frame_stack=self.frame_stack) for path in self.paths]
         # Create a single dataset that concatenates all of the trajectory datasets
         self.dataset = torch.utils.data.ConcatDataset(datasets)
+        # self.waypoint_module = WaypointCollector()
 
         #TODO Decide the proper order in which to cinfugre this
         self.state_dim_in = datasets[0].obs_dim + datasets[0].additional_state_dim
@@ -376,7 +345,7 @@ class OfflineCarlaDataModule():
         sampler = None
         if(weighted):
             for i in range(len(self.train_data)):
-                _, _, _, deltas, _, _, _, _ = self.train_data[i]
+                _, _, _, deltas, _, _ = self.train_data[i]
                 weights[i] = torch.abs(deltas[0]) + 0.1
 
             sampler = torch.utils.data.WeightedRandomSampler(
@@ -402,27 +371,25 @@ class OfflineCarlaDataModule():
             batch_size = self.batch_size
         else:
             batch_size = batch_size_override
+        print('numworkers', self.num_workers)
+        print('batch', batch_size)
 
         return DataLoader(self.train_data,
-<<<<<<< Updated upstream
-                            collate_fn=collate_fn,
-=======
+                            # CALLS COLLATE FN
+                            collate_fn=collate_fn_new,\
                             pin_memory=True,
-                            # collate_fn=collate_fn,
->>>>>>> Stashed changes
                             batch_size=batch_size,
                             num_workers=self.num_workers,
                             sampler = sampler)
 
     def val_dataloader(self):
         return DataLoader(self.val_data,\
-<<<<<<< Updated upstream
-                          collate_fn=collate_fn, \
-=======
+                          # CALLS COLLATE FN
+                          collate_fn=collate_fn_new,\
                           pin_memory=True,
-                        #   collate_fn=collate_fn, \
->>>>>>> Stashed changes
-                          batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
+                          batch_size=self.batch_size,
+                          shuffle=False,
+                          num_workers=self.num_workers)
 
 
 """
