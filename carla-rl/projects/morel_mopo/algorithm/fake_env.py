@@ -206,9 +206,7 @@ class FakeEnv(gym.Env):
         ################################################
         self.offline_data_module = self.dynamics.get_data_module()
         self.frame_stack = self.offline_data_module.frame_stack
-        self.dataloader = self.offline_data_module.train_dataloader(weighted = False, batch_size_override = 1)
         self.dynamics.to(self.device)
-        self.data_iter = iter(self.dataloader)
 
         ################################################
         # MOReL hyperparameters
@@ -243,11 +241,7 @@ class FakeEnv(gym.Env):
 
     # sample from dataset 
     def sample(self):
-        try:
-            return next(self.data_iter)
-        except StopIteration:
-            self.data_iter = iter(self.dataloader)
-            return next(self.data_iter)
+        return self.offline_data_module.sample()
 
 
     ''' 

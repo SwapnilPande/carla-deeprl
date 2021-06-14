@@ -8,7 +8,6 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader, IterableDataset
 from tqdm import tqdm
-torch.multiprocessing.set_sharing_strategy('file_system')
 
 """
 Offline dataset handling
@@ -99,7 +98,7 @@ class OfflineCarlaDataset(Dataset):
         # Don't calculate gradients for descriptive statistics
         with torch.no_grad():
             # Loop over all trajectories
-            for trajectory_path in tqdm(trajectory_paths):
+            for trajectory_path in tqdm(trajectory_paths[:2]):
                 samples = []
                 json_paths = sorted(glob.glob('{}/measurements/*.json'.format(trajectory_path)))
                 traj_length = len(json_paths)
