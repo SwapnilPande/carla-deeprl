@@ -98,6 +98,7 @@ class DynamicsMLP(nn.Module):
 
 
     def forward(self, x):
+        x = torch.flatten(x)
         # Shared layers
         for layer in self.shared_layers:
             x = layer(x)

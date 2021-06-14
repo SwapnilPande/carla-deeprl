@@ -44,6 +44,7 @@ def get_dot_product_and_angle(vehicle_pose, waypoint, device):
     angle = torch.acos(torch.clip(dot /
                                 (torch.linalg.norm(w_vec) * torch.linalg.norm(v_vec)), -1.0, 1.0))
 
+
     assert(torch.isclose(torch.cos(angle), torch.clip(torch.dot(w_vec, v_vec) / \
         (torch.linalg.norm(w_vec) * torch.linalg.norm(v_vec)), -1.0, 1.0), atol=1e-3))
 
@@ -58,7 +59,7 @@ def get_dot_product_and_angle(vehicle_pose, waypoint, device):
         angle *= -1.0
     
     # assert cross product a x b = |a||b|sin(angle)
-    assert(torch.isclose(_cross[2], torch.norm(v_vec_3d) * torch.norm(w_vec_3d) * torch.sin(angle), atol=1e-3))
+    # assert(torch.isclose(_cross[2], torch.norm(v_vec_3d) * torch.norm(w_vec_3d) * torch.sin(angle), atol=1e-2))
 
     return dot, angle, w_vec
 
@@ -180,7 +181,6 @@ def process_waypoints(waypoints, vehicle_pose, device):
 
 class FakeEnv(gym.Env):
     def __init__(self, dynamics,
-                        dyn_config,
                         logger = None,
                         uncertainty_threshold = 0.5,
                         uncertain_penalty = -100,
@@ -193,13 +193,13 @@ class FakeEnv(gym.Env):
         # Dynamics parameters
         ################################################
         self.dynamics = dynamics 
-        self.dyn_config = dyn_config
         self.input_dim = self.dynamics.state_dim_in
         self.output_dim = self.dynamics.state_dim_out
+        self.action_dim = self.dynamics.action_dim
         print(f'Input dim: {self.input_dim}, Output dim: {self.output_dim}')
 
         # device 
-        self.device_num = self.dyn_config.gpu
+        self.device_num = self.dynamics.gpu
         self.device = "cuda:{}".format(self.device_num) if torch.cuda.is_available() else "cpu"
         print('Device: ', self.device)
 
@@ -211,6 +211,7 @@ class FakeEnv(gym.Env):
         # Dataset comes from dynamics
         ################################################
         self.offline_data_module = self.dynamics.data_module
+        self.norm_stats = None
         self.frame_stack = self.offline_data_module.frame_stack
         self.dynamics.to(self.device)
 
@@ -239,11 +240,12 @@ class FakeEnv(gym.Env):
         # Action, observation space
         ################################################
         self.action_space = Box(low=np.tile(np.array([-0.5, -0.5]), (self.frame_stack, 1)),\
-                                high=np.tile(np.array([0.5, 0.5]), (self.frame_stack, 1)), shape=(self.frame_stack, 2), dtype=np.float32)
+                                high=np.tile(np.array([0.5, 0.5]), (self.frame_stack, 1)), shape=(self.frame_stack, self.action_dim), dtype=np.float32)
         # speed steer delta_time
         self.obs_space = Box(low=np.tile(np.array([0.0, -0.5, -np.inf]), (self.frame_stack,1)),\
                              high=np.tile(np.array([1.0, 0.5, np.inf]), (self.frame_stack,1)), shape=(self.frame_stack, 3), dtype=np.float32)
 
+        
 
     # sample from dataset 
     def sample(self):
@@ -269,7 +271,7 @@ class FakeEnv(gym.Env):
         print("Resetting environment...\n")
         
         if obs is None:
-            obs, action, _, _, _, waypoints, vehicle_pose = self.sample() 
+            ((obs, action, _, _, _, waypoints, vehicle_pose), self.norm_stats) = self.sample() 
             self.obs = torch.squeeze(obs).to(self.device)
             self.past_action = torch.squeeze(action).to(self.device)
             self.waypoints = torch.squeeze(waypoints).to(self.device)
@@ -325,13 +327,12 @@ class FakeEnv(gym.Env):
         # unsqueeze to form batch dimension for dynamics input
         dynamics_input = torch.cat([obs, action.reshape(-1,2)], dim = 1).unsqueeze(0).float()
         # predicts normalized deltas for random model
-        print('dynamics input', dynamics_input.shape)
         model_idx = np.random.choice(self.dynamics.n_models)
         predictions = torch.squeeze(self.dynamics.forward(dynamics_input, model_idx))
         # output delta: [Δx_t+1, Δy_t+1, Δtheta_t+1, Δspeed_t+1, Δsteer_t+1]
         delta = torch.clone(predictions[model_idx])
-        delta = self.unnormalize_delta(delta, device) 
-
+        delta = self.unnormalize_delta(delta, self.device) 
+        
         # predicted change in x, y, th
         delta_vehicle_pose = delta[:3]
         # change in speed, steer 
@@ -380,7 +381,7 @@ class FakeEnv(gym.Env):
         next_obs     = policy_input
 
         # renormalize state for next round of dynamics prediction
-        self.state = self.normalize_state(self.state, device)
+        self.state = self.normalize_state(self.state, self.device)
         return next_obs, reward_out, (uncertain or timeout), {"delta" : delta, "uncertain" : 100*uncertain}
 
 

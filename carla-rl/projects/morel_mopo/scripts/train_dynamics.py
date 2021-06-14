@@ -6,7 +6,7 @@ sys.path.append(os.path.abspath(os.path.join('../../../')))
 
 # from common.loggers.comet_logger import CometLogger
 # from projects.morel_mopo.config.logger_config import CometLoggerConfig
-from projects.morel_mopo.config.dynamics_ensemble_config import DefaultDynamicsEnsembleConfig, BaseDynamicsEnsembleConfig
+from projects.morel_mopo.config.dynamics_ensemble_config import DefaultDynamicsEnsembleConfig, BaseDynamicsEnsembleConfig, DefaultDynamicsModuleConfig, BaseDynamicsModuleConfig
 from projects.morel_mopo.algorithm.dynamics_ensemble_module import DynamicsEnsemble
 from projects.morel_mopo.algorithm.data_modules import OfflineCarlaDataModule
 from projects.morel_mopo.algorithm.fake_env import FakeEnv
@@ -31,20 +31,28 @@ def main():
     data_config = TempDataModuleConfig()
     data_module = OfflineCarlaDataModule(data_config)
 
-    dyn_config = DefaultDynamicsEnsembleConfig()
+    dyn_ensemble_config = DefaultDynamicsEnsembleConfig()
+    dyn_module_config = DefaultDynamicsModuleConfig()
 
     dynamics = DynamicsEnsemble(
+        config=dyn_ensemble_config,
+        gpu=dyn_ensemble_config.gpu,
         data_module = data_module,
-        config = dyn_config,
-        # logger = logger
-    )
+        state_dim_in = dyn_module_config.state_dim_in,
+        state_dim_out = dyn_module_config.state_dim_out,
+        action_dim = 2,
+        frame_stack = dyn_module_config.frame_stack,
+        logger = None,
+        log_freq = 100)
 
 
     # Train for 500 epochs
-    dynamics.train(500)
+    # dynamics.train(500)
 
+    #############################################################
+    #             Test integration of fake env
+    ##############################################################
     # env = FakeEnv(dynamics,
-    #             dyn_config=dyn_config,
     #             logger = None,
     #             uncertainty_threshold = 0.5,
     #             uncertain_penalty = -100,
@@ -53,6 +61,7 @@ def main():
 
     # env.reset()
     # env.step(torch.Tensor([-0.5,0.8]))
+  
 
 
 

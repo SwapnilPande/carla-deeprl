@@ -278,7 +278,7 @@ class OfflineCarlaDataModule():
         # selects a timestep along trajectory to sample from 
         num_timesteps = len(dataset)
         idx = np.random.randint(num_timesteps)
-        return dataset.sample(idx)
+        return (dataset.sample(idx), dataset.normalization_stats)
   
 """
 Online dataset handling
