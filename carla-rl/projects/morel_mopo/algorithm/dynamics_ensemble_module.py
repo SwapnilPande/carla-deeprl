@@ -119,8 +119,12 @@ class DynamicsMLP(nn.Module):
         return output
 
 class DynamicsEnsemble(nn.Module):
+    log_dir = "dynamics_ensemble"
+    model_log_dir = os.path.join(log_dir, "models")
+
     def __init__(self,
                     config,
+                    gpu,
                     data_module = None,
                     state_dim_in = None,
                     state_dim_out = None,
@@ -133,19 +137,18 @@ class DynamicsEnsemble(nn.Module):
 
         self.config = config
 
-        if self.config.gpu == -1:
+        self.gpu = gpu
+        if self.gpu == -1:
             self.device = "cpu"
         else:
-            self.device = "cuda:{}".format(self.config.gpu)
+            self.device = "cuda:{}".format(self.gpu)
 
         # Save the logger
         self.logger = logger
-        self.log_dir = "dynamics_ensemble"
-        self.model_log_dir = os.path.join(self.log_dir, "models")
 
         # Save config to load in the future
         if logger is not None:
-            self.logger.pickle_save(self.config, self.log_dir, "config.pkl")
+            self.logger.pickle_save(self.config, DynamicsEnsemble.log_dir, "config.pkl")
 
 
         self.log_freq = log_freq
@@ -186,7 +189,7 @@ class DynamicsEnsemble(nn.Module):
                             self.state_dim_out,
                             self.action_dim,
                             self.frame_stack)
-            self.logger.pickle_save(state_params, self.log_dir, "state_params.pkl")
+            self.logger.pickle_save(state_params, DynamicsEnsemble.log_dir, "state_params.pkl")
 
         # Model parameters
         self.n_models = config.n_models
@@ -219,18 +222,6 @@ class DynamicsEnsemble(nn.Module):
                 activation = self.network_cfg.activation
             ))
             self.models[-1].to(self.device)
-
-    # def create_log_directories(self):
-    #     # Construct the dynamics_ensemble log dir
-    #     # Base log dir
-    #     self.log_dir = os.path.join(self.logger.log_dir, "dynamics_ensmemble")
-    #     os.mkdir(self.log_dir)
-
-    #     # Log dir for models
-    #     self.model_log_dir = os.path.join(self.log_dir, "models")
-    #     os.mkdir(self.model_log_dir)
-
-
 
     def forward(self, x, model_idx = None):
         return self.models[model_idx](x)
@@ -401,24 +392,35 @@ class DynamicsEnsemble(nn.Module):
         print("DYNAMICS ENSEMBLE: Saving model {}".format(model_name))
 
         # Save model
-        self.logger.torch_save(self.state_dict(), self.model_log_dir, model_name)
+        self.logger.torch_save(self.state_dict(), DynamicsEnsemble.model_log_dir, model_name)
 
-    # @classmethod
-    # def load(cls, model_path, data_module):
-    #     # To load the model, we first need to build an instance of this class
-    #     # We want to keep the same config parameters, so we will build it from the pickled config
-    #     # Also, we will load the dimensional parameters of the model from the saved dimensions
-    #     # This allows us to avoid loading a dataloader every time we want to do inference
+    @classmethod
+    def load(cls, logger, model_name, gpu):
+        # To load the model, we first need to build an instance of this class
+        # We want to keep the same config parameters, so we will build it from the pickled config
+        # Also, we will load the dimensional parameters of the model from the saved dimensions
+        # This allows us to avoid loading a dataloader every time we want to do inference
 
-    #     # Get pickle first
-    #     # Get model directory
-    #     model_dir, _ = os.path.split(model_path)
-    #     # Pickle is one directory up from where models are saved
-    #     dynamics_dir = os.path.normpath(os.path.join(model_dir, ".."))
+        print("DYNAMICS ENSEMBLE: Loading dynamics model {}".format(model_name))
+        # Get config from pickle first
+        config = logger.pickle_load(DynamicsEnsemble.log_dir, "config.pkl")
 
-    #     # Load Config from pickle
-    #     config = BaseDynamicsEnsembleConfig.from_pickle(os.path.join(dynamics_dir, "config.pkl"))
+        # Next, get pickle containing the state parameters
+        state_dim_in, state_dim_out, action_dim, frame_stack = logger.pickle_load(DynamicsEnsemble.log_dir, "state_params.pkl")
+        print("DYNAMICS ENSEMBLE: state_dim_in: {}\tstate_dim_out: {}\taction_dim: {}\tframe_stack: {}".format(
+            state_dim_in,
+            state_dim_out,
+            action_dim,
+            frame_stack
+        ))
 
+        # Create a configured dynamics ensemble object
+        return cls(config = config,
+                    state_dim_in = state_dim_in,
+                    state_dim_out = state_dim_out,
+                    action_dim = action_dim,
+                    frame_stack = frame_stack,
+                    gpu = gpu)
 
 
 

@@ -23,7 +23,7 @@ class CometLogger(BaseLogger):
             self.logger = Experiment(api_key = self.config.api_key,
                                     workspace = self.config.workspace,
                                     project_name = self.config.project_name,
-                                    auto_metric_logging = False)
+                                    auto_metric_logging = True)
 
             # Set name of experiment
             self.logger.set_name(self.experiment_name)

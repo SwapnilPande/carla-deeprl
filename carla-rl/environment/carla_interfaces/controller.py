@@ -39,12 +39,12 @@ class PIDLongitudinalController():
         else:
             _de = 0.0
             _ie = 0.0
-        
+
         if enable_brake:
             throttle_min_clip = -1.0
         else:
             throttle_min_clip = 0.0
-        
+
         return np.clip((self._K_P * _e) + (self._K_D * _de / self._dt) + (self._K_I * _ie * self._dt), throttle_min_clip, 1.0)
 
 class PIDLateralController():
