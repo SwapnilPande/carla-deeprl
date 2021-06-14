@@ -2,8 +2,6 @@
 from common.loggers.base_logger_config import BaseLoggerConfig
 
 
-
-
 class BaseCometLoggerConfig(BaseLoggerConfig):
     def __init__(self):
         super().__init__()

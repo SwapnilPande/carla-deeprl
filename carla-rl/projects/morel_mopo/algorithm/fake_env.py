@@ -180,22 +180,28 @@ def process_waypoints(waypoints, vehicle_pose, device):
 
 class FakeEnv(gym.Env):
     def __init__(self, dynamics,
+                        dyn_config,
                         logger = None,
                         uncertainty_threshold = 0.5,
                         uncertain_penalty = -100,
                         timeout_steps = 1,
                         uncertainty_params = [0.0045574815320799725, 1.9688976602303934e-05, 0.2866033549975823]):
 
+        self.logger = logger
+
         ################################################
         # Dynamics parameters
         ################################################
         self.dynamics = dynamics 
-        self.input_dim, self.output_dim = self.dynamics.get_input_output_dim()
-        print(self.input_dim, self.output_dim)
-        self.device_num = self.dynamics.get_gpu()
+        self.dyn_config = dyn_config
+        self.input_dim = self.dynamics.state_dim_in
+        self.output_dim = self.dynamics.state_dim_out
+        print(f'Input dim: {self.input_dim}, Output dim: {self.output_dim}')
+
+        # device 
+        self.device_num = self.dyn_config.gpu
         self.device = "cuda:{}".format(self.device_num) if torch.cuda.is_available() else "cpu"
         print('Device: ', self.device)
-        self.logger = logger
 
         self.state = None
         self.vehicle_pose = None
@@ -204,7 +210,7 @@ class FakeEnv(gym.Env):
         ################################################
         # Dataset comes from dynamics
         ################################################
-        self.offline_data_module = self.dynamics.get_data_module()
+        self.offline_data_module = self.dynamics.data_module
         self.frame_stack = self.offline_data_module.frame_stack
         self.dynamics.to(self.device)
 
@@ -242,6 +248,7 @@ class FakeEnv(gym.Env):
     # sample from dataset 
     def sample(self):
         return self.offline_data_module.sample()
+
 
 
     ''' 
@@ -317,10 +324,10 @@ class FakeEnv(gym.Env):
         # input [[speed_t, steer_t, Δtime_t, action_t], [speed_t-1, steer_t-1, Δt-1, action_t-1]]
         # unsqueeze to form batch dimension for dynamics input
         dynamics_input = torch.cat([obs, action.reshape(-1,2)], dim = 1).unsqueeze(0).float()
-        # predicts normalized deltas across models 
-        predictions = torch.squeeze(self.dynamics.predict(dynamics_input))
-        # randomly sample a model
+        # predicts normalized deltas for random model
+        print('dynamics input', dynamics_input.shape)
         model_idx = np.random.choice(self.dynamics.n_models)
+        predictions = torch.squeeze(self.dynamics.forward(dynamics_input, model_idx))
         # output delta: [Δx_t+1, Δy_t+1, Δtheta_t+1, Δspeed_t+1, Δsteer_t+1]
         delta = torch.clone(predictions[model_idx])
         delta = self.unnormalize_delta(delta, device) 

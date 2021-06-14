@@ -98,7 +98,7 @@ class OfflineCarlaDataset(Dataset):
         # Don't calculate gradients for descriptive statistics
         with torch.no_grad():
             # Loop over all trajectories
-            for trajectory_path in tqdm(trajectory_paths[:2]):
+            for trajectory_path in tqdm(trajectory_paths):
                 samples = []
                 json_paths = sorted(glob.glob('{}/measurements/*.json'.format(trajectory_path)))
                 traj_length = len(json_paths)
@@ -259,9 +259,10 @@ class OfflineCarlaDataModule():
         self.datasets = None
         self.train_data = None
         self.val_data = None
+
+
     def setup(self):
         # Create a dataset for each trajectory
-       
         self.datasets = [OfflineCarlaDataset(path=path, frame_stack=self.frame_stack) for path in self.paths]
         # Dimensions
         self.state_dim_in = self.datasets[0].obs_dim + self.datasets[0].additional_state_dim

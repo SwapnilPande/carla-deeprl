@@ -1,8 +1,6 @@
 # Use Base Config from environment to build config
 from environment.config.base_config import BaseConfig
 
-
-
 class BaseLoggerConfig(BaseConfig):
     def __init__(self):
         ##### These fields should be populated every experiment

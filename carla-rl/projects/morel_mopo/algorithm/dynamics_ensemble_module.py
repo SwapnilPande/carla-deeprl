@@ -231,9 +231,17 @@ class DynamicsEnsemble(nn.Module):
     #     os.mkdir(self.model_log_dir)
 
 
+    # 
+    def forward(self, x, model_idx=None):
+        if not model_idx:
+            # predict for all models 
+            predictions = [model(x) for model in self.models]
+            model_idx = np.random.randint(self.n_models)
+            return self.models[model_idx](x)
 
-    def forward(self, x, model_idx = None):
-        return self.models[model_idx](x)
+        else:
+            # predict for specified model
+            return self.models[model_idx](x)
 
 
     def prepare_batch(self, state_in, actions, delta, reward):
@@ -418,9 +426,6 @@ class DynamicsEnsemble(nn.Module):
 
     #     # Load Config from pickle
     #     config = BaseDynamicsEnsembleConfig.from_pickle(os.path.join(dynamics_dir, "config.pkl"))
-
-
-
 
 
 
