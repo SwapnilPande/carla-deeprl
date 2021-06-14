@@ -206,9 +206,7 @@ class FakeEnv(gym.Env):
         ################################################
         self.offline_data_module = self.dynamics.get_data_module()
         self.frame_stack = self.offline_data_module.frame_stack
-        self.dataloader = self.offline_data_module.train_dataloader(weighted = False, batch_size_override = 1)
         self.dynamics.to(self.device)
-        self.data_iter = iter(self.dataloader)
 
         ################################################
         # MOReL hyperparameters
@@ -243,11 +241,7 @@ class FakeEnv(gym.Env):
 
     # sample from dataset 
     def sample(self):
-        try:
-            return next(self.data_iter)
-        except StopIteration:
-            self.data_iter = iter(self.dataloader)
-            return next(self.data_iter)
+        return self.offline_data_module.sample()
 
 
     ''' 
@@ -263,22 +257,19 @@ class FakeEnv(gym.Env):
         off_route = torch.abs(dist_to_trajectory) > 10
         return torch.unsqueeze(speed - 1.2*torch.abs(dist_to_trajectory) - (off_route * 50.), dim = 0)
 
-
     ''' Resets environment '''
     def reset(self, obs = None, action = None):
         print("Resetting environment...\n")
+        
         if obs is None:
-            obs, action, _, _, _, waypoints, num_waypoints, vehicle_pose = self.sample()
-            num_waypoints = num_waypoints[0] # this is used to eliminate padding from dataloader
- 
-
+            obs, action, _, _, _, waypoints, vehicle_pose = self.sample() 
             self.obs = torch.squeeze(obs).to(self.device)
             self.past_action = torch.squeeze(action).to(self.device)
-            self.waypoints = torch.squeeze(waypoints[:, :num_waypoints]).to(self.device)
+            self.waypoints = torch.squeeze(waypoints).to(self.device)
             self.vehicle_pose = torch.squeeze(vehicle_pose).to(self.device)
             # state only includes speed, steer
             self.state =  self.obs[:, :2].to(self.device)
-
+        
         print('obs', self.obs)
         print('action', self.past_action)
         print('waypoints', self.waypoints)

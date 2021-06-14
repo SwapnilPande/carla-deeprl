@@ -3,14 +3,11 @@
 import glob
 from pathlib import Path
 import json
-
 import cv2
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader, IterableDataset
-
 from tqdm import tqdm
-torch.multiprocessing.set_sharing_strategy('file_system')
 
 """
 Offline dataset handling
@@ -38,6 +35,17 @@ def compute_mean_std(data, n):
     mean        = data_sum/n
     std         =  np.sqrt(data_sum_sq/n - torch.square(mean))
     return {"mean" : mean, "std" : std}
+
+
+''' Instantiate WaypointModule for each dataset'''
+class WaypointModule():
+    ''' init waypoints '''
+    def __init__(self):
+        self.waypoints = []
+    def store_waypoints(self, waypoints):
+        self.waypoints.append(waypoints)
+    def get_waypoints(self, idx):
+        return self.waypoints[idx]
 
 
 class OfflineCarlaDataset(Dataset):
@@ -73,8 +81,6 @@ class OfflineCarlaDataset(Dataset):
         # additional_state: change in wall time
         # delta: change in x, y, yaw, speed, steer
         self.obs, self.additional_state, self.delta = [], [], []
-        self.waypoints = []
-
         self.actions, self.rewards, self.terminals = [], [], []
         self.vehicle_poses = []
         self.red_light = []
@@ -85,14 +91,14 @@ class OfflineCarlaDataset(Dataset):
             "delta" : None,
             "action" : None
         }
+        self.waypoint_module = WaypointModule()
 
 
         print("Loading data")
-
         # Don't calculate gradients for descriptive statistics
         with torch.no_grad():
             # Loop over all trajectories
-            for trajectory_path in tqdm(trajectory_paths[0:2]):
+            for trajectory_path in tqdm(trajectory_paths[:2]):
                 samples = []
                 json_paths = sorted(glob.glob('{}/measurements/*.json'.format(trajectory_path)))
                 traj_length = len(json_paths)
@@ -163,18 +169,17 @@ class OfflineCarlaDataset(Dataset):
                                                 delta_theta,
                                                 samples[i+1]['speed'] - samples[i]['speed'],
                                                 samples[i+1]['steer'] - samples[i]['steer']])
-                    # get waypoints
-                    waypoints = torch.FloatTensor(samples[i]['waypoints'])
-
-
+               
                     # convert stacked frame list to torch tensor
                     self.obs.append(torch.stack(obs))
                     self.additional_state.append(torch.stack(additional_state))
                     self.actions.append(torch.stack(action))
                     self.delta.append(delta)
-                    self.waypoints.append(waypoints)
                     self.vehicle_poses.append(vehicle_pose_cur)
-
+                    # get waypoints for current timestep
+                    waypoints = torch.FloatTensor(samples[i]['waypoints'])
+                    self.waypoint_module.store_waypoints(waypoints)
+            
                     # rewards, terminal at each timestep
                     self.rewards.append(torch.FloatTensor([samples[i]['reward']]))
                     self.terminals.append(samples[i]['done'])
@@ -216,126 +221,64 @@ class OfflineCarlaDataset(Dataset):
         mlp_features:     B x F x 3
         action:           B x F x 2
         reward:           B x 1
+        delta:            B x 5
         done:             B x 1
         vehicle_pose:     B x 3
-        delta:            B x 5
         '''
 
         obs = self.obs[idx]
         additional_state = self.additional_state[idx]
 
         mlp_features = torch.cat([obs, additional_state.reshape(-1,1)], dim = 1)
-        waypoints = self.waypoints[idx]
         action = self.actions[idx]
-        delta = self.delta[idx]
         reward = self.rewards[idx]
+        delta = self.delta[idx]
         done = self.terminals[idx]
+        waypoints = self.waypoint_module.get_waypoints(idx)
         vehicle_pose = self.vehicle_poses[idx]
 
-        return mlp_features, action, reward, delta, done, 0, len(waypoints), vehicle_pose
+        return mlp_features, action, reward, delta, done, waypoints, vehicle_pose
 
     def __len__(self):
         return len(self.rewards)
 
     ''' randomly sample from dataset '''
-    def sample(self):
-        idx = np.random.randint(len(self))
+    def sample(self, idx):
         return self[idx]
-
-
-''' Pads waypoints with zeros so that all waypoints sequences are same length
-@param: batch of data
-@out:   original features but with padded waypoints
-'''
-def collate_fn(batch):
-    mlp_features, action, reward, delta, done, waypoints, num_wps_list, vehicle_pose = [list(x) for x in zip(*batch)]
-    # waypoint feature is at the fifth index
-    wp_idx = 5
-    # get maximum number of waypoints across all sequences
-    max_wps = max(num_wps_list)
-    # get innermost dimension of each wp
-    wp_dim = batch[0][wp_idx].size(-1)
-    # create padding
-    padded_waypoints = torch.zeros((len(batch), max_wps, wp_dim))
-    for i in range(len(waypoints)):
-        wp = waypoints[i]
-        num_wps, wp_dim = batch[i][wp_idx].size()
-        padded_waypoints[i] = torch.cat([wp, torch.zeros((max_wps - num_wps, wp_dim))])
-
-    # convert to tensors
-    mlp_features = torch.stack(mlp_features)
-    action       = torch.stack(action)
-    delta        = torch.stack(delta)
-    vehicle_pose = torch.stack(vehicle_pose)
-
-    new_batch = mlp_features, action, reward, delta, done, padded_waypoints, num_wps_list, vehicle_pose
-    return new_batch
-
-
 
 class OfflineCarlaDataModule():
     """ Datamodule for offline driving data """
-
     def __init__(self, cfg):
         super().__init__()
         self.paths = cfg.dataset_paths
+        self.num_paths = len(self.paths)
         self.batch_size = cfg.batch_size
         self.frame_stack = cfg.frame_stack
         self.num_workers = cfg.num_workers
         self.train_val_split = cfg.train_val_split
-
-        self.dataset = None
+        self.datasets = None
         self.train_data = None
         self.val_data = None
-
     def setup(self):
         # Create a dataset for each trajectory
-        datasets = [OfflineCarlaDataset(path=path, frame_stack=self.frame_stack) for path in self.paths]
-        # Create a single dataset that concatenates all of the trajectory datasets
-        self.dataset = torch.utils.data.ConcatDataset(datasets)
-
-        #TODO Decide the proper order in which to cinfugre this
-        self.state_dim_in = datasets[0].obs_dim + datasets[0].additional_state_dim
-        self.state_dim_out = datasets[0].state_dim_out
-        self.action_dim = datasets[0].action_dim
+       
+        self.datasets = [OfflineCarlaDataset(path=path, frame_stack=self.frame_stack) for path in self.paths]
+        # Dimensions
+        self.state_dim_in = self.datasets[0].obs_dim + self.datasets[0].additional_state_dim
+        self.state_dim_out = self.datasets[0].state_dim_out
+        self.action_dim = self.datasets[0].action_dim
         self.frame_stack = self.frame_stack
-
-        # self.dataset = OfflineCarlaDataset(use_images=self.use_images, path=self.path, frame_stack=self.frame_stack)
-        train_size = int(len(self.dataset) * self.train_val_split)
-        val_size = len(self.dataset) - train_size
-        self.train_data, self.val_data = torch.utils.data.random_split(self.dataset, (train_size, val_size))
-
-    def train_dataloader(self, weighted = False, batch_size_override = None):
-        weights = torch.ones(size = (len(self.train_data),))
-
-        sampler = None
-        if(weighted):
-            for i in range(len(self.train_data)):
-                _, _, _, deltas, _, _, _, _ = self.train_data[i]
-                weights[i] = torch.abs(deltas[0]) + 0.1
-
-            sampler = torch.utils.data.WeightedRandomSampler(
-                weights=weights,
-                num_samples=len(weights),
-                replacement=True
-            )
-
-        if(batch_size_override is None):
-            batch_size = self.batch_size
-        else:
-            batch_size = batch_size_override
-
-        return DataLoader(self.train_data,
-                            #collate_fn=collate_fn,
-                            pin_memory=True,
-                            batch_size=batch_size,
-                            num_workers=self.num_workers,
-                            sampler = sampler)
-
-    def val_dataloader(self):
-        return DataLoader(self.val_data,
-                          #collate_fn=collate_fn,
-                          pin_memory=True,
-                          batch_size=self.batch_size,
-                          shuffle=False,
-                          num_workers=self.num_workers)
+    
+    def sample(self):
+        # selects a trajectory path
+        path_idx = np.random.randint(self.num_paths)
+        dataset = self.datasets[path_idx]
+        
+        # selects a timestep along trajectory to sample from 
+        num_timesteps = len(dataset)
+        idx = np.random.randint(num_timesteps)
+        return dataset.sample(idx)
+  
+"""
+Online dataset handling
+"""
