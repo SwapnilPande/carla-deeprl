@@ -49,9 +49,7 @@ class CarlaServer():
         # import ipdb; ipdb.set_trace()
         # Try to launch
         print("Attempting to start carla on GPU {0}".format(self.carla_gpu))
-        print(type(self.launch_command[0]))
-        print(type(self.launch_command[1]))
-        print(self.launch_command)
+
         try:
             self.server_process = subprocess.Popen(self.launch_command,
                 preexec_fn=os.setsid, env=self.carla_env)
