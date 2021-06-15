@@ -391,7 +391,8 @@ class FakeEnv(gym.Env):
         # renormalize state for next round of dynamics prediction
         self.state = self.normalize_state(self.state, self.device)
         return next_obs, reward_out, (uncertain or timeout), {"delta" : delta, \
-          "uncertain" : self.config.uncertainty_config.uncertainty_coeff * uncertain}, all_predictions
+          "uncertain" : self.config.uncertainty_config.uncertainty_coeff * uncertain, \
+          "predictions": all_predictions}
 
 
     # speed, steer
