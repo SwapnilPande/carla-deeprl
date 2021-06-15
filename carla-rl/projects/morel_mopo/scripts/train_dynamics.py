@@ -50,30 +50,30 @@ def main():
         log_freq = 100)
 
 
-    # Train for 500 epochs
-    # dynamics.train(500)
+    Train for 500 epochs
+    dynamics.train(500)
 
-
-    # env setup (obs, action, reward)
-    fake_env_config = DefaultMainConfig()
-    fake_env_config.populate_config(\
-        obs_config = "DefaultObservationConfig", \
-        action_config = "DefaultActionConfig",\
-        reward_config="DefaultRewardConfig")
 
     #############################################################
     #             Test integration of fake env
     ##############################################################
-    env = FakeEnv(dynamics,
-                config=fake_env_config,
-                logger = None,
-                uncertainty_threshold = 0.5,
-                uncertain_penalty = -100,
-                timeout_steps = 1,
-                uncertainty_params = [0.0045574815320799725, 1.9688976602303934e-05, 0.2866033549975823])
+    # env setup (obs, action, reward)
+    # fake_env_config = DefaultMainConfig()
+    # fake_env_config.populate_config(\
+    #     obs_config = "DefaultObservationConfig", \
+    #     action_config = "DefaultActionConfig",\
+    #     reward_config="DefaultRewardConfig")
 
-    env.reset()
-    env.step(torch.Tensor([-0.5,0.8]))
+    # env = FakeEnv(dynamics,
+    #             config=fake_env_config,
+    #             logger = None,
+    #             uncertainty_threshold = 0.5,
+    #             uncertain_penalty = -100,
+    #             timeout_steps = 1,
+    #             uncertainty_params = [0.0045574815320799725, 1.9688976602303934e-05, 0.2866033549975823])
+
+    # env.reset()
+    # env.step(torch.Tensor([-0.5,0.8]))
   
 
 
