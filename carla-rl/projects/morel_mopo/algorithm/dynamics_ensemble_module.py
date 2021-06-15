@@ -131,6 +131,7 @@ class DynamicsEnsemble(nn.Module):
                     state_dim_out = None,
                     action_dim = None,
                     frame_stack = None,
+                    norm_stats = None,
 
                     logger = None,
                     log_freq = 100):
@@ -167,6 +168,7 @@ class DynamicsEnsemble(nn.Module):
             self.state_dim_out = self.data_module.state_dim_out
             self.action_dim = self.data_module.action_dim
             self.frame_stack = self.data_module.frame_stack
+            self.norm_stats = self.data_module.normalization_stats
         else:
             # Validate that all of these inputs are passed
             self.state_dim_in = state_dim_in
@@ -185,11 +187,16 @@ class DynamicsEnsemble(nn.Module):
             if(self.frame_stack is None):
                 raise Exception("frame_stack is None, this must be passed if data_module is None")
 
+            self.norm_stats = norm_stats
+            if(self.norm_stats is None):
+                raise Exception("norm_stats is None, this must be passed if data_module is None")
+
         if logger is not None:
             state_params = (self.state_dim_in,
                             self.state_dim_out,
                             self.action_dim,
-                            self.frame_stack)
+                            self.frame_stack,
+                            self.norm_stats)
             self.logger.pickle_save(state_params, DynamicsEnsemble.log_dir, "state_params.pkl")
 
         # Model parameters
@@ -235,10 +242,10 @@ class DynamicsEnsemble(nn.Module):
     #     os.mkdir(self.model_log_dir)
 
 
-    # 
+    #
     def forward(self, x, model_idx=None):
         if not model_idx:
-            # predict for all models 
+            # predict for all models
             predictions = [model(x) for model in self.models]
             return predictions
 
@@ -279,7 +286,7 @@ class DynamicsEnsemble(nn.Module):
 
         # Split batch into componenets
         obs, actions, rewards, delta, done, vehicle_pose = batch
-       
+
         # print('obs', obs.shape, obs)
         # print('actions', actions.shape, actions)
         # print('rew', rewards.shape, rewards)
@@ -434,12 +441,12 @@ class DynamicsEnsemble(nn.Module):
         config = logger.pickle_load(DynamicsEnsemble.log_dir, "config.pkl")
 
         # Next, get pickle containing the state parameters
-        state_dim_in, state_dim_out, action_dim, frame_stack = logger.pickle_load(DynamicsEnsemble.log_dir, "state_params.pkl")
+        state_dim_in, state_dim_out, action_dim, frame_stack, norm_stats = logger.pickle_load(DynamicsEnsemble.log_dir, "state_params.pkl")
         print("DYNAMICS ENSEMBLE: state_dim_in: {}\tstate_dim_out: {}\taction_dim: {}\tframe_stack: {}".format(
             state_dim_in,
             state_dim_out,
             action_dim,
-            frame_stack
+            frame_stack,
         ))
 
         # Create a configured dynamics ensemble object
@@ -448,6 +455,7 @@ class DynamicsEnsemble(nn.Module):
                     state_dim_out = state_dim_out,
                     action_dim = action_dim,
                     frame_stack = frame_stack,
+                    norm_stats = norm_stats
                     gpu = gpu)
 
 

@@ -29,12 +29,11 @@ def main():
             self.num_workers = 2
             self.train_val_split = 0.95
 
-    # data config 
+    # data config
     data_config = TempDataModuleConfig()
-    frame_stack = data_config.frame_stack
     data_module = OfflineCarlaDataModule(data_config)
 
-    # dynamics config 
+    # dynamics config
     dyn_ensemble_config = DefaultDynamicsEnsembleConfig()
     dyn_module_config = DefaultDynamicsModuleConfig()
     dynamics = DynamicsEnsemble(
@@ -74,7 +73,7 @@ def main():
 
     env.reset()
     env.step(torch.Tensor([-0.5,0.8]))
-  
+
 
 
 

@@ -5,24 +5,25 @@ import glob
 
 # Import other necessary configs
 from environment.config.base_config import BaseConfig
-from projects.morel_mopo.config import observation_configs, action_configs, reward_configs, uncertainty_configs
+from environment.config import observation_configs, action_configs, reward_configs
 
 
-class BaseMainConfig(BaseConfig):
+class BaseFakeEnvConfig(BaseConfig):
     """Base Class defining the parameters required in main config.
 
     DO NOT instantiate this directly. Instead, using DefaultMainConfig
     """
     def __init__(self):
-        #TODO These are all parameters that need to be set at each run
         self.reward_config = None
         self.obs_config = None
         self.action_config = None
         self.uncertainty_config = None
 
+        self.uncertainty_coeff = None
+        self.timeout_steps = None
 
-    def populate_config(self, obs_config = "DefaultObservationConfig", action_config ="DefaultActionConfig", \
-                            reward_config="DefaultRewardConfig",uncertainty_config="DefaultUncertaintyConfig"):
+
+    def populate_config(self, observation_config = 'LowDimObservationConfig', action_config = 'MergedSpeedTanhConfig', reward_config = 'Simple2RewardConfig'):
         """Fill in the config parameters that are not set by default
 
         For each type of config, the parameter can be either passed in as a string containing the class name or
@@ -30,15 +31,15 @@ class BaseMainConfig(BaseConfig):
         Ex: observation_config can be a string "LowDimObsConfig" or it can be a class (or subclass) of type BaseObsConfig
         """
         # Observation Config
-        if(isinstance(obs_config, str)):
+        if(isinstance(observation_config, str)):
             # Get reference to object
-            config_type = getattr(observation_configs, obs_config)
+            config_type = getattr(observation_configs, observation_config)
 
             # Instantiate Object
             self.obs_config = config_type()
-        elif(isinstance(obs_config, observation_configs.BaseObservationConfig)):
+        elif(isinstance(observation_config, observation_configs.BaseObservationConfig)):
             # Just save object, since it is already instantiated
-            self.obs_config = obs_config
+            self.obs_config = observation_config
         else:
             # Invalid Argument
             raise Exception("Invalid argument for observation_config")
@@ -70,7 +71,7 @@ class BaseMainConfig(BaseConfig):
         else:
             # Invalid Argument
             raise Exception("Invalid argument for reward_config")
-        
+
         # Uncertainty Config
         if(isinstance(uncertainty_config, str)):
             # Get reference to object
@@ -86,6 +87,6 @@ class BaseMainConfig(BaseConfig):
             raise Exception("Invalid argument for uncertainty_config")
 
 
-class DefaultMainConfig(BaseMainConfig):
+class DefaultFakeEnvConfig(BaseFakeEnvConfig):
     def __init__(self):
         super().__init__()

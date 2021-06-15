@@ -193,7 +193,8 @@ class Carla910Interface():
         distance_to_goal_trajec, \
         self.next_waypoints, \
         self.next_wp_angles, \
-        self.next_wp_vectors = self.global_planner.get_next_orientation_new(ego_vehicle_transform)
+        self.next_wp_vectors, \
+        self.all_waypoints = self.global_planner.get_next_orientation_new(ego_vehicle_transform)
 
         sensor_readings = self.actor_fleet.sensor_manager.get_sensor_readings(world_frame)
 
@@ -205,7 +206,8 @@ class Carla910Interface():
             'next_waypoints' : self.next_waypoints,
             'dist_to_goal' : ego_vehicle_transform.location.distance(self.destination_transform.location),
             'ego_vehicle_location' : ego_vehicle_transform,
-            'ego_vehicle_velocity' : ego_vehicle_velocity
+            'ego_vehicle_velocity' : ego_vehicle_velocity,
+            'waypoints' : self.all_waypoints
         }
 
         control = {
@@ -245,7 +247,8 @@ class Carla910Interface():
         distance_to_goal_trajec, \
         self.next_waypoints, \
         self.next_wp_angles, \
-        self.next_wp_vectors = self.global_planner.get_next_orientation_new(ego_vehicle_transform)
+        self.next_wp_vectors, \
+        self.all_waypoints = self.global_planner.get_next_orientation_new(ego_vehicle_transform)
 
         ep_measurements = {
             'next_orientation' : next_orientation,
@@ -255,7 +258,8 @@ class Carla910Interface():
             'dist_to_goal' : ego_vehicle_transform.location.distance(self.destination_transform.location),
             'ego_vehicle_location' : ego_vehicle_transform,
             'ego_vehicle_velocity' : ego_vehicle_velocity,
-            'location' : location
+            'location' : location,
+            'waypoints' : self.all_waypoints
         }
 
         obs = {**control, **ep_measurements, **sensor_readings}
@@ -457,7 +461,8 @@ class Carla910Interface_Leaderboard:
         distance_to_goal_trajec, \
         self.next_waypoints, \
         self.next_wp_angles, \
-        self.next_wp_vectors = self.global_planner.get_next_orientation_new(ego_vehicle_transform)
+        self.next_wp_vectors, \
+        self.all_waypoints = self.global_planner.get_next_orientation_new(ego_vehicle_transform)
 
         sensor_readings = self.actor_fleet.sensor_manager.get_sensor_readings(world_frame)
 
@@ -469,7 +474,8 @@ class Carla910Interface_Leaderboard:
             'next_waypoints' : self.next_waypoints,
             'dist_to_goal' : ego_vehicle_transform.location.distance(self.destination_transform.location),
             'ego_vehicle_location' : ego_vehicle_transform,
-            'ego_vehicle_velocity' : ego_vehicle_velocity
+            'ego_vehicle_velocity' : ego_vehicle_velocity,
+            'waypoints' : self.all_waypoints
         }
 
         control = {
@@ -518,7 +524,8 @@ class Carla910Interface_Leaderboard:
         distance_to_goal_trajec, \
         self.next_waypoints, \
         self.next_wp_angles, \
-        self.next_wp_vectors = self.global_planner.get_next_orientation_new(ego_vehicle_transform)
+        self.next_wp_vectors, \
+        self.all_waypoints = self.global_planner.get_next_orientation_new(ego_vehicle_transform)
 
         ep_measurements = {
             'next_orientation' : next_orientation,
@@ -528,7 +535,8 @@ class Carla910Interface_Leaderboard:
             'dist_to_goal' : ego_vehicle_transform.location.distance(self.destination_transform.location),
             'ego_vehicle_location' : ego_vehicle_transform,
             'ego_vehicle_velocity' : ego_vehicle_velocity,
-            'location' : location
+            'location' : location,
+            "waypoints" : self.all_waypoints
         }
 
         obs = {**control, **ep_measurements, **sensor_readings}

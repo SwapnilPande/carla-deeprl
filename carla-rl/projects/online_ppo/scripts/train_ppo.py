@@ -19,7 +19,7 @@ from common.loggers.logger_callbacks import PPOLoggerCallback
 # Environment
 from environment.env import CarlaEnv
 from environment.config.config import DefaultMainConfig
-EXPERIMENT_NAME = "NO_CRASH_EMPTY_FIRST_TEST"
+EXPERIMENT_NAME = "swapnil_NO_CRASH_EMPTY"
 
 logger_conf = CometLoggerConfig()
 logger_conf.populate(experiment_name = EXPERIMENT_NAME, tags = ["Online_PPO"])
@@ -47,11 +47,11 @@ env = CarlaEnv(config = config, logger = logger, log_dir = "/home/scratch/swapni
 # Parallel environments
 dummy_env = DummyVecEnv([lambda: env])
 
-eval_env = env.get_eval_env(eval_frequency = 1)
+eval_env = env.get_eval_env(eval_frequency = 5000)
 dummy_eval_env = DummyVecEnv([lambda: eval_env])
 
 eval_callback = EvalCallback(dummy_eval_env, best_model_save_path=os.path.join(logger.log_dir, "policy", "models"),
-                             log_path=os.path.join(logger.log_dir, "policy"), eval_freq=500,
+                             log_path=os.path.join(logger.log_dir, "policy"), eval_freq=5000,
                              deterministic=False, render=False,
                              n_eval_episodes=config.scenario_config.num_episodes)
 

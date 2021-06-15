@@ -10,7 +10,6 @@ class BaseObservationConfig(BaseConfig):
 
 class DefaultObservationConfig(BaseObservationConfig):
     def __init__(self):
-        self.frame_stack = 2  # TODO
         self.obs_dim = 3
         # speed steer delta_time
         self.obs_space = Box(low=np.tile(np.array([0.0, -0.5, -np.inf]), (self.frame_stack,1)),\

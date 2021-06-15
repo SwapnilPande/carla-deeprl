@@ -143,6 +143,7 @@ class CometLogger(BaseLogger):
     def log_model(self, comet_path, file):
         self.logger.log_model(comet_path, file)
 
+
     def log_asset(self, comet_path, file):
         _, file_name = os.path.split(file)
         self.logger.log_asset(file, file_name = os.path.join(comet_path, file_name))

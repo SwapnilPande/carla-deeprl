@@ -193,6 +193,13 @@ class GlobalPlanner():
 
     #     return angle, self.dist_to_trajectory
 
+    def waypoints_to_list(self):
+        wp_list = []
+        for waypoint in self._waypoints_queue:
+            wp_list.append([waypoint[0].transform.location.x, waypoint[0].transform.location.y, waypoint[0].transform.rotation.yaw])
+
+        return wp_list
+
     def get_next_orientation_new(self, vehicle_transform):
 
         next_waypoints_angles = []
@@ -306,7 +313,7 @@ class GlobalPlanner():
         # Below is an approximation of dist_to_goal which was used earlier.
         dist_to_goal_approx = len(self._waypoints_queue) *self._hop_resolution
 
-        return angle, self.dist_to_trajectory, dist_to_goal, next_waypoints, next_waypoints_angles, next_waypoints_vectors
+        return angle, self.dist_to_trajectory, dist_to_goal, next_waypoints, next_waypoints_angles, next_waypoints_vectors, self.waypoints_to_list()
 
     def get_dot_product_and_angle(self, vehicle_transform, waypoint):
 
