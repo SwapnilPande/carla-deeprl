@@ -234,17 +234,17 @@ class OfflineCarlaDataset(Dataset):
         reward = self.rewards[idx]
         delta = self.delta[idx]
         done = self.terminals[idx]
-        waypoints = self.waypoint_module.get_waypoints(idx)
         vehicle_pose = self.vehicle_poses[idx]
 
-        return mlp_features, action, reward, delta, done, waypoints, vehicle_pose
+        return mlp_features, action, reward, delta, done, vehicle_pose
 
     def __len__(self):
         return len(self.rewards)
 
     ''' randomly sample from dataset '''
-    def sample(self, idx):
-        return self[idx]
+    def sample_with_waypoints(self, idx):
+        return self[idx], self.waypoint_module.get_waypoints(idx)
+
 
 class OfflineCarlaDataModule():
     """ Datamodule for offline driving data """
@@ -260,17 +260,25 @@ class OfflineCarlaDataModule():
         self.train_data = None
         self.val_data = None
 
-
     def setup(self):
         # Create a dataset for each trajectory
         self.datasets = [OfflineCarlaDataset(path=path, frame_stack=self.frame_stack) for path in self.paths]
+
         # Dimensions
         self.state_dim_in = self.datasets[0].obs_dim + self.datasets[0].additional_state_dim
         self.state_dim_out = self.datasets[0].state_dim_out
         self.action_dim = self.datasets[0].action_dim
         self.frame_stack = self.frame_stack
-    
-    def sample(self):
+
+
+        # concat datasets across all trajectories to create train, val datasets for dynamics training
+        self.concat_dataset = torch.utils.data.ConcatDataset(self.datasets)
+        train_size = int(len(self.concat_dataset) * self.train_val_split)
+        val_size = len(self.concat_dataset) - train_size
+        self.train_data, self.val_data = torch.utils.data.random_split(self.concat_dataset, (train_size, val_size))
+ 
+    ''' This is used in FakeEnv for dynamics evaluation (with waypoints, batch size = 1) '''
+    def sample_with_waypoints(self):
         # selects a trajectory path
         path_idx = np.random.randint(self.num_paths)
         dataset = self.datasets[path_idx]
@@ -278,8 +286,48 @@ class OfflineCarlaDataModule():
         # selects a timestep along trajectory to sample from 
         num_timesteps = len(dataset)
         idx = np.random.randint(num_timesteps)
-        return (dataset.sample(idx), dataset.normalization_stats)
-  
+        return dataset.sample_with_waypoints(idx), dataset.normalization_stats
+
+
+    ''' This is used for dynamics training (no waypoint input needed, batch size set)'''
+    def train_dataloader(self, weighted = False, batch_size_override = None):
+        weights = torch.ones(size = (len(self.train_data),))
+        sampler = None
+        if(weighted):
+            for i in range(len(self.train_data)):
+                _, _, _, deltas, _, _,  = self.train_data[i]
+                weights[i] = torch.abs(deltas[0]) + 0.1
+
+            sampler = torch.utils.data.WeightedRandomSampler(
+                weights=weights,
+                num_samples=len(weights),
+                replacement=True
+            )
+        else:
+
+            sampler = None #torch.utils.data.WeightedRandomSampler(
+            #    weights=weights,
+            #    num_samples=len(weights),
+            #    replacement=True
+            #)
+
+        if(batch_size_override is None):
+            batch_size = self.batch_size
+        else:
+            batch_size = batch_size_override
+
+        return DataLoader(self.train_data,
+                            batch_size=batch_size,
+                            num_workers=self.num_workers,
+                            sampler = sampler)
+
+    def val_dataloader(self):
+        return DataLoader(self.val_data,\
+                          batch_size=self.batch_size,
+                          shuffle=False,
+                          num_workers=self.num_workers)
+
+
 """
 Online dataset handling
 """

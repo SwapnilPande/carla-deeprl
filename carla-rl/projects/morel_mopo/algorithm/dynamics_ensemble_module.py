@@ -98,7 +98,7 @@ class DynamicsMLP(nn.Module):
 
 
     def forward(self, x):
-        x = torch.flatten(x)
+        # x = torch.flatten(x)
         # Shared layers
         for layer in self.shared_layers:
             x = layer(x)
@@ -266,10 +266,10 @@ class DynamicsEnsemble(nn.Module):
                                 (-1, self.frame_stack * (self.state_dim_in + self.action_dim)
                             )
                       )
+
         # Concatenate delta and reward if we are predicting reward
         if(self.network_cfg.predict_reward):
             return feed_tensor, torch.cat([delta,reward], dim = 1)
-
         # Else, just return delta
         return feed_tensor, delta
 
@@ -279,7 +279,14 @@ class DynamicsEnsemble(nn.Module):
         self.optimizers[model_idx].zero_grad()
 
         # Split batch into componenets
-        obs, actions, rewards, delta, done, waypoints, num_wps_list, vehicle_pose = batch
+        obs, actions, rewards, delta, done, vehicle_pose = batch
+       
+        # print('obs', obs.shape, obs)
+        # print('actions', actions.shape, actions)
+        # print('rew', rewards.shape, rewards)
+        # print('delt', delta.shape, delta)
+        # print('done', done.shape, done)
+        # print('vehpose', vehicle_pose.shape, vehicle_pose)
 
         # Combine tensors and reshape batch to flat inputs
         feed, target = self.prepare_batch(obs, actions, delta, rewards)
@@ -303,7 +310,7 @@ class DynamicsEnsemble(nn.Module):
     def validation_step(self, batch, model_idx = 0):
 
         # Split batch into componenets
-        obs, actions, rewards, delta, done, waypoints, num_wps_list, vehicle_pose = batch
+        obs, actions, rewards, delta, done, vehicle_pose = batch
 
         # Combine tensors and reshape batch to flat inputs
         feed, target = self.prepare_batch(obs, actions, delta, rewards)
@@ -334,21 +341,22 @@ class DynamicsEnsemble(nn.Module):
         num_val_batches = len(val_dataloader)
 
         # Log hyperparameters
-        self.logger.log_hyperparameters({
-            "dyn_ens/lr" : self.lr,
-            "dyn_ens/optimizer" : str(self.optimizer_type),
-            "dyn_ens/n_models" : self.n_models,
-            "dyn_ens/batch_size" : train_dataloader.batch_size,
-            "dyn_ens/train_val_split" : self.data_module.train_val_split,
-            "dyn_ens/epochs" : epochs,
-            "dyn_ens/predict_reward" : self.network_cfg.predict_reward,
-            "dyn_ens/n_neurons" : self.network_cfg.n_neurons,
-            "dyn_ens/n_hidden_layers" : self.network_cfg.n_hidden_layers,
-            "dyn_ens/n_head_layers" : self.network_cfg.n_head_layers,
-            "dyn_ens/drop_prob" : self.network_cfg.drop_prob,
-            "dyn_ens/activation" : str(self.network_cfg.activation)
+        if self.logger is not None:
+            self.logger.log_hyperparameters({
+                "dyn_ens/lr" : self.lr,
+                "dyn_ens/optimizer" : str(self.optimizer_type),
+                "dyn_ens/n_models" : self.n_models,
+                "dyn_ens/batch_size" : train_dataloader.batch_size,
+                "dyn_ens/train_val_split" : self.data_module.train_val_split,
+                "dyn_ens/epochs" : epochs,
+                "dyn_ens/predict_reward" : self.network_cfg.predict_reward,
+                "dyn_ens/n_neurons" : self.network_cfg.n_neurons,
+                "dyn_ens/n_hidden_layers" : self.network_cfg.n_hidden_layers,
+                "dyn_ens/n_head_layers" : self.network_cfg.n_head_layers,
+                "dyn_ens/drop_prob" : self.network_cfg.drop_prob,
+                "dyn_ens/activation" : str(self.network_cfg.activation)
 
-        })
+            })
 
 
         # Configure the optimizers

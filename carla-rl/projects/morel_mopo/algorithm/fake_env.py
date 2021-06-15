@@ -254,21 +254,24 @@ class FakeEnv(gym.Env):
 
     # sample from dataset 
     def sample(self):
-        return self.offline_data_module.sample()
+        return self.offline_data_module.sample_with_waypoints()
 
-    ''' Resets environment '''
-    def reset(self, obs = None, action = None):
+    ''' Resets environment. If no input is passed in, sample from dataset '''
+    def reset(self, inp=None):
         print("Resetting environment...\n")
         
-        if obs is None:
-            ((obs, action, _, _, _, waypoints, vehicle_pose), self.norm_stats) = self.sample() 
-            self.obs = torch.squeeze(obs).to(self.device)
-            self.past_action = torch.squeeze(action).to(self.device)
-            self.waypoints = torch.squeeze(waypoints).to(self.device)
-            self.vehicle_pose = torch.squeeze(vehicle_pose).to(self.device)
-            # state only includes speed, steer
-            self.state =  self.obs[:, :2].to(self.device)
-        
+        if inp is None:
+            (((obs, action, _, _, _, vehicle_pose), waypoints), self.norm_stats) = self.sample() 
+        else:
+            (((obs, action, _, _, _, vehicle_pose), waypoints), self.norm_stats) = inp
+            
+        self.obs = torch.squeeze(obs).to(self.device)
+        self.past_action = torch.squeeze(action).to(self.device)
+        self.waypoints = torch.squeeze(waypoints).to(self.device)
+        self.vehicle_pose = torch.squeeze(vehicle_pose).to(self.device)
+        # state only includes speed, steer
+        self.state =  self.obs[:, :2].to(self.device)
+
         print('obs', self.obs)
         print('action', self.past_action)
         print('waypoints', self.waypoints)
@@ -318,7 +321,8 @@ class FakeEnv(gym.Env):
         dynamics_input = torch.cat([obs, action.reshape(-1,2)], dim = 1).unsqueeze(0).float()
         # predicts normalized deltas for random model
         model_idx = np.random.choice(self.dynamics.n_models)
-        predictions = torch.squeeze(self.dynamics.forward(dynamics_input, model_idx))
+        # flatten dynamics input
+        predictions = torch.squeeze(self.dynamics.forward(torch.flatten(dynamics_input), model_idx))
         # output delta: [Δx_t+1, Δy_t+1, Δtheta_t+1, Δspeed_t+1, Δsteer_t+1]
         delta = torch.clone(predictions[model_idx])
         delta = self.unnormalize_delta(delta, self.device) 
