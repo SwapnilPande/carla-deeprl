@@ -10,6 +10,8 @@ from projects.morel_mopo.config.dynamics_ensemble_config import DefaultDynamicsE
 from projects.morel_mopo.algorithm.dynamics_ensemble_module import DynamicsEnsemble
 from projects.morel_mopo.algorithm.data_modules import OfflineCarlaDataModule
 from projects.morel_mopo.algorithm.fake_env import FakeEnv
+from projects.morel_mopo.config.fake_env_config import DefaultMainConfig
+
 EXPERIMENT_NAME = "first_test"
 TAGS = ["dyn_only"]
 
@@ -28,12 +30,14 @@ def main():
             self.num_workers = 2
             self.train_val_split = 0.95
 
+    # data config 
     data_config = TempDataModuleConfig()
+    frame_stack = data_config.frame_stack
     data_module = OfflineCarlaDataModule(data_config)
 
+    # dynamics config 
     dyn_ensemble_config = DefaultDynamicsEnsembleConfig()
     dyn_module_config = DefaultDynamicsModuleConfig()
-
     dynamics = DynamicsEnsemble(
         config=dyn_ensemble_config,
         gpu=dyn_ensemble_config.gpu,
@@ -49,18 +53,27 @@ def main():
     # Train for 500 epochs
     # dynamics.train(500)
 
+
+    # env setup (obs, action, reward)
+    fake_env_config = DefaultMainConfig()
+    fake_env_config.populate_config(\
+        obs_config = "DefaultObservationConfig", \
+        action_config = "DefaultActionConfig",\
+        reward_config="DefaultRewardConfig")
+
     #############################################################
     #             Test integration of fake env
     ##############################################################
-    # env = FakeEnv(dynamics,
-    #             logger = None,
-    #             uncertainty_threshold = 0.5,
-    #             uncertain_penalty = -100,
-    #             timeout_steps = 1,
-    #             uncertainty_params = [0.0045574815320799725, 1.9688976602303934e-05, 0.2866033549975823])
+    env = FakeEnv(dynamics,
+                config=fake_env_config,
+                logger = None,
+                uncertainty_threshold = 0.5,
+                uncertain_penalty = -100,
+                timeout_steps = 1,
+                uncertainty_params = [0.0045574815320799725, 1.9688976602303934e-05, 0.2866033549975823])
 
-    # env.reset()
-    # env.step(torch.Tensor([-0.5,0.8]))
+    env.reset()
+    env.step(torch.Tensor([-0.5,0.8]))
   
 
 

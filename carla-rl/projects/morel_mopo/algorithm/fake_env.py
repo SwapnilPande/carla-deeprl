@@ -5,9 +5,11 @@ import scipy.spatial
 
 import torch
 from torch.utils.data import Dataset, DataLoader, IterableDataset
-
 import gym
 from gym.spaces import Box, Discrete, Tuple
+
+# compute reward
+from projects.morel_mopo.algorithm.reward import compute_reward
 
 ''' 
 Calculates L2 distance between waypoint, vehicle
@@ -181,6 +183,7 @@ def process_waypoints(waypoints, vehicle_pose, device):
 
 class FakeEnv(gym.Env):
     def __init__(self, dynamics,
+                        config=None,
                         logger = None,
                         uncertainty_threshold = 0.5,
                         uncertain_penalty = -100,
@@ -188,6 +191,12 @@ class FakeEnv(gym.Env):
                         uncertainty_params = [0.0045574815320799725, 1.9688976602303934e-05, 0.2866033549975823]):
 
         self.logger = logger
+
+        # config 
+        if config is None:
+            raise Exception("Empty Config")
+        self.config = config
+        self.config.verify()
 
         ################################################
         # Dynamics parameters
@@ -237,34 +246,15 @@ class FakeEnv(gym.Env):
         # self.beta_max = 2
 
         ################################################
-        # Action, observation space
+        # Creating Action and Observation spaces
         ################################################
-        self.action_space = Box(low=np.tile(np.array([-0.5, -0.5]), (self.frame_stack, 1)),\
-                                high=np.tile(np.array([0.5, 0.5]), (self.frame_stack, 1)), shape=(self.frame_stack, self.action_dim), dtype=np.float32)
-        # speed steer delta_time
-        self.obs_space = Box(low=np.tile(np.array([0.0, -0.5, -np.inf]), (self.frame_stack,1)),\
-                             high=np.tile(np.array([1.0, 0.5, np.inf]), (self.frame_stack,1)), shape=(self.frame_stack, 3), dtype=np.float32)
+        self.action_space = self.config.action_config.action_space
 
-        
+        self.obs_space = self.config.obs_config.obs_space 
 
     # sample from dataset 
     def sample(self):
         return self.offline_data_module.sample()
-
-
-
-    ''' 
-    Calculates reward according to distance to trajectory 
-    @params next_state:   vehicle state after taking action
-            dist_to_traj: distance from vehicle to current trajectory
-    '''
-    def calculate_reward(self, next_state, dist_to_traj):
-        speed = next_state[0]*15
-        dist_to_trajectory = dist_to_traj *10
-
-        # reward for speed, penalize for straying from target trajectory 
-        off_route = torch.abs(dist_to_trajectory) > 10
-        return torch.unsqueeze(speed - 1.2*torch.abs(dist_to_trajectory) - (off_route * 50.), dim = 0)
 
     ''' Resets environment '''
     def reset(self, obs = None, action = None):
@@ -351,7 +341,7 @@ class FakeEnv(gym.Env):
 
         ################## calc reward with penalty for uncertainty ##############################
 
-        reward_out = self.calculate_reward(self.state, dist_to_trajectory)
+        reward_out = compute_reward(self.state, dist_to_trajectory, self.config)
 
         uncertain = 0 # self.usad(predictions.cpu().numpy())    # TODO: FILL IN
         reward_out[0] = reward_out[0] - uncertain * 150

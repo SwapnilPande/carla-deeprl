@@ -65,7 +65,7 @@ class OfflineCarlaDataset(Dataset):
             raise Exception("Frame stack must be greater than or equal to 1")
 
         trajectory_paths = glob.glob('{}/*'.format(path))
-        assert len(trajectory_paths) > 0, 'No trajectories found in {}'.format(path)
+        # assert len(trajectory_paths) > 0, 'No trajectories found in {}'.format(path)
 
         self.path = path
         self.use_images = use_images
