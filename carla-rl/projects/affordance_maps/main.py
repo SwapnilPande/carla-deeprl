@@ -46,7 +46,7 @@ try:
         # action = np.array([0,-1])
         obs, _, done, _ = env.step(action)
         image = env.render()
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
         # get waypoint annotations
         # annotations = []
@@ -58,7 +58,14 @@ try:
 
         pixel_x, pixel_y = np.meshgrid(np.arange(64), np.arange(64))
         pixel_xy = np.stack([pixel_x.flatten(), pixel_y.flatten(), np.ones(64*64)], axis=-1)
-        world_pts = np.linalg.inv(calibration).dot(pixel_xy.T).T * camera_actor.get_transform().location.z
+        world_pts = np.linalg.inv(calibration).dot(pixel_xy.T).T[:,:2]
+
+        # yaw = np.radians(((base_transform.rotation.yaw + 180) % 360) - 180)
+        yaw = -(((np.radians(base_transform.rotation.yaw) + np.pi) % (2*np.pi)) - np.pi)
+        rot_matrix = np.array([[np.cos(yaw), -np.sin(yaw)], [np.sin(yaw), np.cos(yaw)]])
+        world_pts = world_pts.dot(rot_matrix)
+
+        world_pts *= camera_actor.get_transform().location.z
         world_pts[:,0] += camera_actor.get_transform().location.x
         world_pts[:,1] += camera_actor.get_transform().location.y
 
@@ -91,7 +98,7 @@ try:
 
         # check for vehicle collisions
         actors = [actor for actor in env.carla_interface.actor_fleet.actor_list 
-            if 'vehicle' in actor.type_id and actor.get_transform().location.distance(base_transform.location) < 30]
+            if 'vehicle' in actor.type_id and actor.get_transform().location.distance(base_transform.location) < 15]
 
         bounding_boxes = [[(actor.bounding_box.extent.x, actor.bounding_box.extent.y),
                            (actor.bounding_box.extent.x, -actor.bounding_box.extent.y),
@@ -121,11 +128,14 @@ try:
         reward_map = np.zeros((64,64))
         reward_map[pixel_xy[:,0].astype(int), pixel_xy[:,1].astype(int)] = labels
 
+        reward_map = reward_map[::-1]
+
         plt.clf()
+        fig = plt.figure(1)
+        fig.add_subplot(1,2,1)
         plt.imshow(reward_map)
-        # plt.scatter(positions[:,0], positions[:,1], color=labels)
-        # plt.scatter([base_transform.location.x], [base_transform.location.y], color='green')
-        # plt.colorbar()
+        fig.add_subplot(1,2,2)
+        plt.imshow(image)
         plt.show(block=False)
         plt.pause(.01)
 
@@ -139,8 +149,8 @@ try:
         #     for i in range(1):
         #         cv2.circle(image, (box[i,0], box[i,1]), radius=1, color=(0,255,0), thickness=-1)
 
-        cv2.imshow('pov', image)
-        cv2.waitKey(1)
+        # cv2.imshow('pov', image)
+        # cv2.waitKey(1)
 
         if done:
             env.reset()

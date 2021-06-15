@@ -210,7 +210,7 @@ class CarlaEnv(gym.Env):
 
             sensors = [k for k in self.config.obs_config.sensors if 'sensor.camera' in k]
             for sensor_name in sensors:
-                image = carla_obs[sensor_name]
+                image = carla_obs[sensor_name]['image']
                 self.episode_measurements[sensor_name] = image
 
             # rgb_bev = carla_obs['sensor.camera.rgb/top']['image']
@@ -1163,7 +1163,7 @@ class CarlaEnv(gym.Env):
 
     def render(self, mode='rgb_array', camera='sensor.camera.rgb/top'):
         try:
-            return self.episode_measurements[camera]['image']
+            return self.episode_measurements[camera]
         except KeyError:
             print('Cannot render {} -- key error'.format(camera))
             return None

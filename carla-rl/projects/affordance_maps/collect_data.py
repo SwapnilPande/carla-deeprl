@@ -13,6 +13,8 @@ from shapely.geometry import Point, Polygon
 
 # from carla_env import CarlaEnv
 from environment import CarlaEnv
+from environment.config.config import DefaultMainConfig
+from environment.config.observation_configs import *
 # from agents.navigation.behavior_agent import BehaviorAgent
 
 
@@ -30,6 +32,7 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
     segmentation_path = os.path.join(save_path, 'segmentation')
     topdown_path = os.path.join(save_path, 'topdown')
     reward_path = os.path.join(save_path, 'reward')
+    world_path = os.path.join(save_path, 'world')
     measurements_path = os.path.join(save_path, 'measurements')
 
     # check for conflicts
@@ -43,6 +46,7 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
     os.mkdir(segmentation_path)
     os.mkdir(topdown_path)
     os.mkdir(reward_path)
+    os.mkdir(world_path)
     os.mkdir(measurements_path)
 
     obs = env.reset()
@@ -59,12 +63,12 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
     # camera_actor.calibration = calibration
 
     for step in range(max_path_length):
-        action = env.get_autopilot_action(speed)
+        action = np.random.uniform([-.5, -1], [.5, 1], (2,)) # env.get_autopilot_action(speed)
         next_obs, reward, done, info = env.step(action)
 
-        rgb = info['rgb_front']
-        segmentation = info['sem_bev']
-        topdown = info['rgb_bev']
+        rgb = info['sensor.camera.rgb/front']
+        segmentation = info['sensor.camera.semantic_segmentation/top']
+        topdown = info['sensor.camera.rgb/top']
 
         # load dense reward maps
         positions = []
@@ -75,7 +79,14 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
 
         pixel_x, pixel_y = np.meshgrid(np.arange(64), np.arange(64))
         pixel_xy = np.stack([pixel_x.flatten(), pixel_y.flatten(), np.ones(64*64)], axis=-1)
-        world_pts = np.linalg.inv(calibration).dot(pixel_xy.T).T * camera_actor.get_transform().location.z
+        world_pts = np.linalg.inv(calibration).dot(pixel_xy.T).T[:,:2]
+
+        # yaw = np.radians(((base_transform.rotation.yaw + 180) % 360) - 180)
+        yaw = -(((np.radians(base_transform.rotation.yaw) + np.pi) % (2*np.pi)) - np.pi)
+        rot_matrix = np.array([[np.cos(yaw), -np.sin(yaw)], [np.sin(yaw), np.cos(yaw)]])
+        world_pts = world_pts.dot(rot_matrix)
+
+        world_pts *= camera_actor.get_transform().location.z
         world_pts[:,0] += camera_actor.get_transform().location.x
         world_pts[:,1] += camera_actor.get_transform().location.y
 
@@ -108,7 +119,7 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
 
         # check for vehicle collisions
         actors = [actor for actor in env.carla_interface.actor_fleet.actor_list 
-            if 'vehicle' in actor.type_id and actor.get_transform().location.distance(base_transform.location) < 30]
+            if 'vehicle' in actor.type_id and actor.get_transform().location.distance(base_transform.location) < 15]
 
         bounding_boxes = [[(actor.bounding_box.extent.x, actor.bounding_box.extent.y),
                            (actor.bounding_box.extent.x, -actor.bounding_box.extent.y),
@@ -137,6 +148,7 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
 
         reward_map = np.zeros((64,64))
         reward_map[pixel_xy[:,0].astype(int), pixel_xy[:,1].astype(int)] = labels
+        reward_map = reward_map[::-1]
 
         experience = {
             'obs': obs.tolist(),
@@ -151,6 +163,7 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
             'speed': info['speed']
         }
 
+        np.save(os.path.join(save_path, 'world', '{:04d}.png'.format(step)), world_pts)
         save_env_state(rgb, segmentation, topdown, reward_map, experience, save_path, step)
 
         if done:
@@ -187,7 +200,18 @@ def transform_to_list(transform):
 
 
 def main(args):
-    env = CarlaEnv(log_dir='{}'.format(args.path))
+    config = DefaultMainConfig()
+    obs_config = LowDimObservationConfig()
+    obs_config.sensors['sensor.camera.rgb/top'] = {
+        'x':13.0,
+        'z':18.0,
+        'pitch':270,
+        'sensor_x_res':'64',
+        'sensor_y_res':'64',
+        'fov':'90', \
+        'sensor_tick': '0.0'}
+    config.populate_config(observation_config=obs_config)
+    env = CarlaEnv(config=config, log_dir=args.path + '/')
     try:
         total_samples = 0
         while total_samples < args.n_samples:
