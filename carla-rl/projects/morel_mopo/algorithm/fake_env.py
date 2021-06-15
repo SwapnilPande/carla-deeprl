@@ -220,7 +220,8 @@ class FakeEnv(gym.Env):
         # Dataset comes from dynamics
         ################################################
         self.offline_data_module = self.dynamics.data_module
-        self.norm_stats = None
+        self.norm_stats = self.offline_data_module.normalization_stats
+        print('Norm stats', self.norm_stats)
         self.frame_stack = self.offline_data_module.frame_stack
         self.dynamics.to(self.device)
 
@@ -249,7 +250,6 @@ class FakeEnv(gym.Env):
         # Creating Action and Observation spaces
         ################################################
         self.action_space = self.config.action_config.action_space
-
         self.obs_space = self.config.obs_config.obs_space 
 
     # sample from dataset 
@@ -261,9 +261,9 @@ class FakeEnv(gym.Env):
         print("Resetting environment...\n")
         
         if inp is None:
-            (((obs, action, _, _, _, vehicle_pose), waypoints), self.norm_stats) = self.sample() 
+            ((obs, action, _, _, _, vehicle_pose), waypoints) = self.sample() 
         else:
-            (((obs, action, _, _, _, vehicle_pose), waypoints), self.norm_stats) = inp
+            ((obs, action, _, _, _, vehicle_pose), waypoints) = inp
             
         self.obs = torch.squeeze(obs).to(self.device)
         self.past_action = torch.squeeze(action).to(self.device)
@@ -272,11 +272,11 @@ class FakeEnv(gym.Env):
         # state only includes speed, steer
         self.state =  self.obs[:, :2].to(self.device)
 
-        print('obs', self.obs)
-        print('action', self.past_action)
-        print('waypoints', self.waypoints)
-        print('vehicle pose', self.vehicle_pose)
-        print('state', self.state)
+        print('obs', self.obs.shape)
+        print('action', self.past_action.shape)
+        print('waypoints', self.waypoints.shape)
+        print('vehicle pose', self.vehicle_pose.shape)
+        print('state', self.state.shape)
 
         self.steps_elapsed = 0
 

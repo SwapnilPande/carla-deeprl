@@ -55,7 +55,6 @@ class OfflineCarlaDataset(Dataset):
                     path,
                     use_images=True,
                     frame_stack=1,
-                    normalize_data = True,
                     obs_dim = 2,
                     additional_state_dim = 1,
                     action_dim = 2,
@@ -85,12 +84,6 @@ class OfflineCarlaDataset(Dataset):
         self.vehicle_poses = []
         self.red_light = []
 
-        self.normalization_stats = {
-            "obs": None,
-            "additional_state" : None,
-            "delta" : None,
-            "action" : None
-        }
         self.waypoint_module = WaypointModule()
 
 
@@ -190,29 +183,6 @@ class OfflineCarlaDataset(Dataset):
             self.delta = torch.stack(self.delta)
             self.vehicle_poses = torch.stack(self.vehicle_poses)
 
-            # normalize using z-score
-            if normalize_data:
-                n = len(self.rewards)
-
-                # get last frame from each timestep
-                traj_obs              = self.obs[:,-1,:]
-                traj_actions          = self.actions[:,-1,:]
-                traj_additional_state = self.additional_state[:,-1, :]
-                # no need to index because deltas are not stacked
-                traj_delta            = self.delta
-
-                # calculate mean, stdev across all trajectories
-                self.normalization_stats["obs"]              = compute_mean_std(traj_obs,n)
-                self.normalization_stats["additional_state"] = compute_mean_std(traj_additional_state, n)
-                self.normalization_stats["action"]           = compute_mean_std(traj_actions, n)
-                self.normalization_stats["delta"]            = compute_mean_std(traj_delta, n)
-
-                # normalize
-                self.obs = (self.obs - self.normalization_stats["obs"]["mean"]) / self.normalization_stats["obs"]["std"]
-                self.additional_state = (self.additional_state - self.normalization_stats["additional_state"]["mean"]) / self.normalization_stats["additional_state"]["std"]
-                self.actions =  (self.actions - self.normalization_stats["action"]["mean"]) / self.normalization_stats["action"]["std"]
-                self.delta = (self.delta - self.normalization_stats["delta"]["mean"]) / self.normalization_stats["delta"]["std"]
-
 
     def __getitem__(self, idx):
         '''
@@ -248,8 +218,9 @@ class OfflineCarlaDataset(Dataset):
 
 class OfflineCarlaDataModule():
     """ Datamodule for offline driving data """
-    def __init__(self, cfg):
+    def __init__(self, cfg, normalize_data = True):
         super().__init__()
+        self.normalize_data = normalize_data
         self.paths = cfg.dataset_paths
         self.num_paths = len(self.paths)
         self.batch_size = cfg.batch_size
@@ -259,20 +230,54 @@ class OfflineCarlaDataModule():
         self.datasets = None
         self.train_data = None
         self.val_data = None
+        self.normalization_stats = {
+            "obs": None,
+            "additional_state" : None,
+            "delta" : None,
+            "action" : None
+        }
 
     def setup(self):
         # Create a dataset for each trajectory
         self.datasets = [OfflineCarlaDataset(path=path, frame_stack=self.frame_stack) for path in self.paths]
-
         # Dimensions
         self.state_dim_in = self.datasets[0].obs_dim + self.datasets[0].additional_state_dim
         self.state_dim_out = self.datasets[0].state_dim_out
         self.action_dim = self.datasets[0].action_dim
         self.frame_stack = self.frame_stack
 
+        # normalize across all trajectories
+        if self.normalize_data:
+            # number of total timesteps 
+            n = sum(len(d.rewards) for d in self.datasets)
+            
+            traj_obs              = torch.vstack([d.obs[:,-1,:] for d in self.datasets])
+            traj_actions          = torch.vstack([d.actions[:,-1,:] for d in self.datasets])
+            traj_additional_state = torch.vstack([d.additional_state[:,-1, :] for d in self.datasets])
+            # no need to index because deltas are not stacked
+            traj_delta            = torch.vstack([d.delta for d in self.datasets])
 
-        # concat datasets across all trajectories to create train, val datasets for dynamics training
+
+            # calculate mean, stdev across all trajectories
+            self.normalization_stats["obs"]              = compute_mean_std(traj_obs,n)
+            self.normalization_stats["additional_state"] = compute_mean_std(traj_additional_state, n)
+            self.normalization_stats["action"]           = compute_mean_std(traj_actions, n)
+            self.normalization_stats["delta"]            = compute_mean_std(traj_delta, n)
+
+            # normalize
+            for i in range(len(self.datasets)):
+                self.datasets[i].obs= (self.datasets[i].obs - self.normalization_stats["obs"]["mean"]) / self.normalization_stats["obs"]["std"]
+                self.datasets[i].additional_state = (self.datasets[i].additional_state - self.normalization_stats["additional_state"]["mean"]) / self.normalization_stats["additional_state"]["std"]
+                self.datasets[i].actions =  (self.datasets[i].actions - self.normalization_stats["action"]["mean"]) / self.normalization_stats["action"]["std"]
+                self.datasets[i].delta = (self.datasets[i].delta - self.normalization_stats["delta"]["mean"]) / self.normalization_stats["delta"]["std"]
+
+
+
+
+        # concat datasets across all trajectories (used for dynamics training)
         self.concat_dataset = torch.utils.data.ConcatDataset(self.datasets)
+
+        # split into train, val datasets for dynamics training
         train_size = int(len(self.concat_dataset) * self.train_val_split)
         val_size = len(self.concat_dataset) - train_size
         self.train_data, self.val_data = torch.utils.data.random_split(self.concat_dataset, (train_size, val_size))
@@ -286,7 +291,7 @@ class OfflineCarlaDataModule():
         # selects a timestep along trajectory to sample from 
         num_timesteps = len(dataset)
         idx = np.random.randint(num_timesteps)
-        return dataset.sample_with_waypoints(idx), dataset.normalization_stats
+        return dataset.sample_with_waypoints(idx)
 
 
     ''' This is used for dynamics training (no waypoint input needed, batch size set)'''
