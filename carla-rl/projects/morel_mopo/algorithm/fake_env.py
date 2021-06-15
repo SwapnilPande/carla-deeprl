@@ -282,6 +282,19 @@ class FakeEnv(gym.Env):
 
         return self.state
 
+
+    def calc_disc(self, predictions):
+        # Compute the pairwise distances between all predictions
+        return scipy.spatial.distance_matrix(predictions, predictions)
+
+
+    def usad(self, predictions):
+        # thres = self.mean + (self.uncertain_threshold * self.beta_max) * (self.std)
+
+        # max_discrep = np.amax(self.calc_disc(predictions)
+        # If maximum is greater than threshold, return true
+        return np.amax(self.calc_disc(predictions))
+
    
     '''
     Updates state vector according to dynamics prediction 
@@ -314,19 +327,20 @@ class FakeEnv(gym.Env):
         if not obs:
             obs = self.obs
        
-        ############ feed predictions (normalized) through dynamics model ##############
+        ############ feed obs, action into dynamics model for prediction ##############
 
         # input [[speed_t, steer_t, Δtime_t, action_t], [speed_t-1, steer_t-1, Δt-1, action_t-1]]
         # unsqueeze to form batch dimension for dynamics input
         dynamics_input = torch.cat([obs, action.reshape(-1,2)], dim = 1).unsqueeze(0).float()
-        # predicts normalized deltas for random model
+
+        # Get predictions across all models
+        all_predictions = torch.stack(self.dynamics.forward(torch.flatten(dynamics_input)))
+
+        # Delta: prediction from one randomly selected model
+        # [Δx_t+1, Δy_t+1, Δtheta_t+1, Δspeed_t+1, Δsteer_t+1] 
         model_idx = np.random.choice(self.dynamics.n_models)
-        # flatten dynamics input
-        predictions = torch.squeeze(self.dynamics.forward(torch.flatten(dynamics_input), model_idx))
-        # output delta: [Δx_t+1, Δy_t+1, Δtheta_t+1, Δspeed_t+1, Δsteer_t+1]
-        delta = torch.clone(predictions[model_idx])
+        delta = torch.clone(all_predictions[model_idx])
         delta = self.unnormalize_delta(delta, self.device) 
-        
         # predicted change in x, y, th
         delta_vehicle_pose = delta[:3]
         # change in speed, steer 
@@ -347,8 +361,8 @@ class FakeEnv(gym.Env):
 
         reward_out = compute_reward(self.state, dist_to_trajectory, self.config)
 
-        uncertain = 0 # self.usad(predictions.cpu().numpy())    # TODO: FILL IN
-        reward_out[0] = reward_out[0] - uncertain * 150
+        uncertain =  self.usad(all_predictions.detach().cpu().numpy())
+        reward_out[0] = reward_out[0] - uncertain * self.config.uncertainty_config.uncertainty_penalty_coeff 
         reward_out = torch.squeeze(reward_out)
 
         # advance time 
@@ -358,9 +372,9 @@ class FakeEnv(gym.Env):
         # log 
         if(uncertain and self.logger is not None):
             # self.logger.get_metric("average_halt")
-            self.logger.log_metrics({"halts" : 1})
+            self.logger.log_hyperparameters({"halts" : 1})
         elif(timeout and self.logger is not None):
-            self.logger.log_metrics({"halts" : 0})
+            self.logger.log_hyperparameters({"halts" : 0})
 
 
         ######################### build policy input ##########################
@@ -376,7 +390,8 @@ class FakeEnv(gym.Env):
 
         # renormalize state for next round of dynamics prediction
         self.state = self.normalize_state(self.state, self.device)
-        return next_obs, reward_out, (uncertain or timeout), {"delta" : delta, "uncertain" : 100*uncertain}
+        return next_obs, reward_out, (uncertain or timeout), {"delta" : delta, \
+          "uncertain" : self.config.uncertainty_config.uncertainty_coeff * uncertain}, all_predictions
 
 
     # speed, steer

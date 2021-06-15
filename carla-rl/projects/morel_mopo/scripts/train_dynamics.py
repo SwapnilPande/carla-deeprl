@@ -12,16 +12,15 @@ from projects.morel_mopo.algorithm.fake_env import FakeEnv
 from projects.morel_mopo.config.fake_env_config import DefaultMainConfig
 
 import torch
-EXPERIMENT_NAME = "first_test"
+EXPERIMENT_NAME = "Vivian - Dynamics eval with uncertainty penalty"
 TAGS = ["dyn_only"]
 
 def main():
-    # logger_conf = CometLoggerConfig()
-    # logger_conf.populate(experiment_name = EXPERIMENT_NAME, tags = TAGS)
+    logger_conf = CometLoggerConfig()
+    logger_conf.populate(experiment_name = EXPERIMENT_NAME, tags = TAGS)
 
 
-    # logger = CometLogger(logger_conf)
-
+    logger = CometLogger(logger_conf)
     class TempDataModuleConfig():
         def __init__(self):
             self.dataset_paths = ["/zfsauton/datasets/ArgoRL/swapnilp/new_state_space"]
@@ -46,12 +45,12 @@ def main():
         state_dim_out = dyn_module_config.state_dim_out,
         action_dim = 2,
         frame_stack = dyn_module_config.frame_stack,
-        logger = None,
+        logger = logger,
         log_freq = 100)
 
 
     # Train for 500 epochs
-    dynamics.train(50)
+    # dynamics.train(500)
 
 
     #############################################################
@@ -62,11 +61,12 @@ def main():
     fake_env_config.populate_config(\
         obs_config = "DefaultObservationConfig", \
         action_config = "DefaultActionConfig",\
-        reward_config="DefaultRewardConfig")
+        reward_config="DefaultRewardConfig",\
+        uncertainty_config="DefaultUncertaintyConfig")
 
     env = FakeEnv(dynamics,
                 config=fake_env_config,
-                logger = None,
+                logger = logger,
                 uncertainty_threshold = 0.5,
                 uncertain_penalty = -100,
                 timeout_steps = 1,
