@@ -240,8 +240,7 @@ class DynamicsEnsemble(nn.Module):
         if not model_idx:
             # predict for all models 
             predictions = [model(x) for model in self.models]
-            model_idx = np.random.randint(self.n_models)
-            return self.models[model_idx](x)
+            return predictions
 
         else:
             # predict for specified model

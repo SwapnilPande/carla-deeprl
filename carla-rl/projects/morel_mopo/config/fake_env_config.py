@@ -5,7 +5,7 @@ import glob
 
 # Import other necessary configs
 from environment.config.base_config import BaseConfig
-from projects.morel_mopo.config import observation_configs, action_configs, reward_configs
+from projects.morel_mopo.config import observation_configs, action_configs, reward_configs, uncertainty_configs
 
 
 class BaseMainConfig(BaseConfig):
@@ -18,9 +18,11 @@ class BaseMainConfig(BaseConfig):
         self.reward_config = None
         self.obs_config = None
         self.action_config = None
+        self.uncertainty_config = None
 
 
-    def populate_config(self, obs_config = "DefaultObservationConfig", action_config ="DefaultActionConfig", reward_config="DefaultRewardConfig"):
+    def populate_config(self, obs_config = "DefaultObservationConfig", action_config ="DefaultActionConfig", \
+                            reward_config="DefaultRewardConfig",uncertainty_config="DefaultUncertaintyConfig"):
         """Fill in the config parameters that are not set by default
 
         For each type of config, the parameter can be either passed in as a string containing the class name or
@@ -68,6 +70,20 @@ class BaseMainConfig(BaseConfig):
         else:
             # Invalid Argument
             raise Exception("Invalid argument for reward_config")
+        
+        # Uncertainty Config
+        if(isinstance(uncertainty_config, str)):
+            # Get reference to object
+            config_type = getattr(uncertainty_configs, uncertainty_config)
+
+            # Instantiate Object
+            self.uncertainty_config = config_type()
+        elif(isinstance(uncertainty_config, uncertainty_configs.BaseUncertaintyConfig)):
+            # Just save object, since it is already instantiated
+            self.uncertainty_config = uncertainty_config
+        else:
+            # Invalid Argument
+            raise Exception("Invalid argument for uncertainty_config")
 
 
 class DefaultMainConfig(BaseMainConfig):
