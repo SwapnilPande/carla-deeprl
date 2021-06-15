@@ -240,6 +240,10 @@ class FakeEnv(gym.Env):
         self.uncertainty_coeff = self.config.uncertainty_coeff
         self.timeout_steps = self.config.timeout_steps
 
+        if(self.logger is not None):
+            self.logger.log_scalar("mopo/uncertainty_coeff", self.uncertainty_coeff)
+            self.logger.log_scalar("mopo/rollout_length", self.timeout_steps)
+
 
     # sample from dataset
     def sample(self):
@@ -353,7 +357,7 @@ class FakeEnv(gym.Env):
         reward_out = compute_reward(self.state, dist_to_trajectory, self.config)
 
         uncertain =  self.usad(all_predictions.detach().cpu().numpy())
-        reward_out[0] = reward_out[0] - uncertain * self.config.uncertainty_config.uncertainty_penalty_coeff
+        reward_out[0] = reward_out[0] - uncertain * self.config.uncertainty_coeff
         reward_out = torch.squeeze(reward_out)
 
         # advance time
