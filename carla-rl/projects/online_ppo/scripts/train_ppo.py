@@ -12,7 +12,7 @@ import gym
 from algorithms import PPO
 from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.env_util import DummyVecEnv
-from common.loggers.logger_callbacks import PPOLoggerCallback
+#from common.loggers.logger_callbacks import PPOLoggerCallback
 
 
 
