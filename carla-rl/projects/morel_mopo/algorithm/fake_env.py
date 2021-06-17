@@ -230,8 +230,7 @@ class FakeEnv(gym.Env):
 
         # Get norm stats and frame_stack from dynamics
         # This will be the same as the norm stats from the original dataset, on which the dynamics model was trained
-        self.norm_stats = self.dynamics.normalization_stats
-        print('FAKE_ENV: Norm stats', self.norm_stats)
+        self.norm_stats = self.offline_data_module.normalization_stats
         self.frame_stack = self.dynamics.frame_stack
 
         ################################################

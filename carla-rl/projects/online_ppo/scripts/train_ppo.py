@@ -14,18 +14,13 @@ from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.env_util import DummyVecEnv
 #from common.loggers.logger_callbacks import PPOLoggerCallback
 
-
-
 # Environment
 from environment.env import CarlaEnv
 from environment.config.config import DefaultMainConfig
-EXPERIMENT_NAME = "swapnil_NO_CRASH_EMPTY"
+EXPERIMENT_NAME = "vivian_NO_CRASH_EMPTY"
 
 logger_conf = CometLoggerConfig()
 logger_conf.populate(experiment_name = EXPERIMENT_NAME, tags = ["Online_PPO"])
-
-
-
 
 
 logger = CometLogger(logger_conf)
@@ -43,7 +38,7 @@ config.populate_config(
 # logger_callback = PPOLoggerCallback(logger)
 
 
-env = CarlaEnv(config = config, logger = logger, log_dir = "/home/scratch/swapnilp/carla_test")
+env = CarlaEnv(config = config, logger = logger, log_dir = "/home/scratch/vccheng/carla_test")
 # Parallel environments
 dummy_env = DummyVecEnv([lambda: env])
 

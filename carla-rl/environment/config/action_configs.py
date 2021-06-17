@@ -32,7 +32,7 @@ class MergedSpeedScaledTanhConfig(BaseActionConfig):
         self.discrete_actions = False
         self.frame_skip = 1
         self.use_pid_in_frame_skip = True
-        self.target_speed = 20
+        self.target_speed = 40
 
 class MergedSpeedTanhConfig(BaseActionConfig):
     def __init__(self):
@@ -42,4 +42,4 @@ class MergedSpeedTanhConfig(BaseActionConfig):
         self.discrete_actions = False
         self.frame_skip = 1
         self.use_pid_in_frame_skip = True
-        self.target_speed = 20
+        self.target_speed = 40

@@ -22,12 +22,20 @@ import torch.nn.functional as F
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join('../../../')))
+
+# Policy
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import DummyVecEnv
+
 # Environment
 sys.path.append(os.path.abspath(os.path.join('../../../')))
-from environment.config.config import DefaultMainConfig
-from environment.env import CarlaEnv
+from projects.morel_mopo.config.fake_env_config import DefaultFakeEnvConfig
+
+# Dynamics 
+from projects.morel_mopo.config.dynamics_ensemble_config import DefaultDynamicsEnsembleConfig, BaseDynamicsEnsembleConfig, DefaultDynamicsModuleConfig, BaseDynamicsModuleConfig
+from projects.morel_mopo.algorithm.dynamics_ensemble_module import DynamicsEnsemble
+
+# Data 
 sys.path.append(os.path.abspath(os.path.join('')))
 from data_modules import OfflineCarlaDataModule
 #debug
@@ -36,16 +44,12 @@ from pprint import pprint
 
 
 class Morel():
-    def __init__(self,  obs_dim,
-                        action_dim,
-                        uncertainty_threshold,
+    def __init__(self,  uncertainty_threshold,
                         uncertainty_penalty,
                         dynamics_epochs,
                         policy_epochs,
                         logger):
 
-        self.obs_dim = obs_dim
-        self.action_dim = action_dim
 
         self.uncertainty_threshold = uncertainty_threshold
         self.uncertainty_penalty = uncertainty_penalty
@@ -56,66 +60,26 @@ class Morel():
         self.logger = logger
 
         print("---------------- Instantiate Data module ----------------")
+        
+        class TempDataModuleConfig():
+            def __init__(self):
+                self.dataset_paths = ["/zfsauton/datasets/ArgoRL/swapnilp/new_state_space"]
+                self.batch_size = 512
+                self.frame_stack = 2
+                self.num_workers = 2
+                self.train_val_split = 0.95
         # data config
         data_config = TempDataModuleConfig()
-        data_module = OfflineCarlaDataModule(data_config)
-
-
-        print("---------------- Instantiate Real environment ----------------")
- 
-        env_config = DefaultMainConfig()
-        env_config.populate_config(
-            observation_config = "LowDimObservationConfig",
-            action_config = "MergedSpeedScaledTanhConfig",
-            reward_config = "Simple2RewardConfig",
-            scenario_config = "NoCrashEmptyTown01Config",
-            testing = False,
-            carla_gpu = 0
-        )
-        # logger_callback = PPOLoggerCallback(logger)
-        self.env = CarlaEnv(config = env_config, logger = logger, log_dir = "/home/scratch/vccheng/carla_test")
-
-        print("---------------- Instantiate Fake environment ----------------")
-        
-        fake_env_config = DefaultMainConfig()
-        fake_env_config.populate_config(\
-            obs_config = "DefaultObservationConfig", \
-            action_config = "DefaultActionConfig",\
-            reward_config="DefaultRewardConfig",\
-            uncertainty_config="DefaultUncertaintyConfig")
-            
-        fake_env = FakeEnv(dynamics,
-                        config=fake_env_config,
-                        logger = logger,
-                        uncertainty_threshold = 0.5,
-                        uncertain_penalty = -100,
-                        timeout_steps = 1,
-                        uncertainty_params = [0.0045574815320799725, 1.9688976602303934e-05, 0.2866033549975823])
-
-
-
-
+        data_module = OfflineCarlaDataModule(data_config)        
 
         #self.dynamics = hydra.utils.instantiate(dynamics_cfg)
         #self.policy = hydra.utils.instantiate(policy_cfg)
 
 
-
-        print("---------------- Real Dynamics  ----------------")
-
-        dynamics_cfg = DefaultMainConfig()
-        dynamics_cfg.populate_config(observation_config = "LowDimObservationConfig",
-            action_config = "MergedSpeedScaledTanhConfig",
-            reward_config = "Simple2RewardConfig",
-            scenario_config = "NoCrashEmptyTown01Config",
-            testing = False,
-            carla_gpu = 0)
-        
-
-        print("--------------- Fake Dynamics Model ----------------")
-        fake_dyn_ensemble_config = DefaultDynamicsEnsembleConfig()
-        fake_dyn_module_config = DefaultDynamicsModuleConfig()
-        self.fake_dynamics = DynamicsEnsemble(
+        print("---------------  Dynamics Model ----------------")
+        dyn_ensemble_config = DefaultDynamicsEnsembleConfig()
+        dyn_module_config = DefaultDynamicsModuleConfig()
+        self.dynamics = DynamicsEnsemble(
             config=dyn_ensemble_config,
             gpu=dyn_ensemble_config.gpu,
             data_module = data_module,
@@ -127,13 +91,27 @@ class Morel():
             log_freq = 100)
 
 
+        print("---------------- Instantiate Fake environment ----------------")
+        
+        fake_env_config = DefaultFakeEnvConfig()
+        fake_env_config.populate_config(\
+            observation_config = "DefaultObservationConfig", \
+            action_config = "DefaultActionConfig",\
+            reward_config="DefaultRewardConfig",\
+            uncertainty_config="DefaultUncertaintyConfig")
+            
+        self.fake_env = FakeEnv(self.dynamics,
+                        config=fake_env_config,
+                        logger = self.logger)
+
         print("---------------- Instantiate PPO Policy  ----------------")
 
         # POLICY (from stable baselines)
-        self.policy = PPO("MlpPolicy", self.policyEnv, verbose=1, policy_epochs = policy_epochs, \
+        # TODO: replace with train_ppo
+        self.policy = PPO("MlpPolicy", self.fake_env, verbose=1)# , policy_epochs = self.policy_epochs)#, \
                     # , batch_size = online_data_module_cfg.batch_size,\
                     #  n_epochs = online_data_module_cfg.epochs_per_experience, \
-                     device = device(type='gpu', index=gpu_number))
+                    #  device = torch.device(type='gpu', index=dyn_ensemble_config.gpu))
 
 
 
@@ -146,8 +124,8 @@ class Morel():
             raise Exception("Precision must be 16 or 32")
 
         print("---------------- Beginning Logger ----------------")
-        logger.step = 0
-        logger.log_hyperparams({
+        self.logger.step = 0
+        self.logger.log_hyperparams({
             "uncertainty_threshold (morel)" : self.uncertainty_threshold,
             "uncertainty_penatly (morel)" : self.uncertainty_penalty,
             "offline_batch_size (morel)" : offline_data_module_cfg.batch_size,
@@ -205,44 +183,3 @@ class Morel():
     def load(self, load_dir):
         self.policy.load(load_dir)
         # self.dynamics.load(load_dir)
-
-#testing
-obs_dim = gym.spaces.Box( np.array([-1,0,0]), np.array([+1,+1,+1]))
-action_dim = gym.spaces.Box( np.array([-1,0,0]), np.array([+1,+1,+1]))
-uncertainty_threshold = 1
-uncertainty_penalty = 1
-
-dynamics_cfg = DefaultMainConfig()
-dynamics_cfg.populate_config(observation_config = "LowDimObservationConfig",
-    action_config = "MergedSpeedScaledTanhConfig",
-    reward_config = "Simple2RewardConfig",
-    scenario_config = "NoCrashEmptyTown01Config",
-    testing = False,
-    carla_gpu = 0)
-
-policy_cfg = DefaultMainConfig()
-policy_cfg.populate_config(observation_config = "LowDimObservationConfig",
-    action_config = "MergedSpeedScaledTanhConfig",
-    reward_config = "Simple2RewardConfig",
-    scenario_config = "NoCrashEmptyTown01Config",
-    testing = False,
-    carla_gpu = 0)
-
-dynamics_epochs = 10
-policy_epochs = 10
-
-
-
-obj = Morel(obs_dim,
-            action_dim,
-            uncertainty_threshold,
-            uncertainty_penalty,
-            dynamics_cfg,
-            policy_cfg,
-            dynamics_epochs,
-            policy_epochs)
-off_data = OfflineCarlaDataModule(dynamics_cfg)
-#on_data = OnlineCarlaDataset(policy_cfg)
-#obj.train(off_data, on_data, obj.logger)
-
-

@@ -455,7 +455,7 @@ class DynamicsEnsemble(nn.Module):
                     state_dim_out = state_dim_out,
                     action_dim = action_dim,
                     frame_stack = frame_stack,
-                    norm_stats = norm_stats
+                    norm_stats = norm_stats,
                     gpu = gpu)
 
 
