@@ -86,8 +86,24 @@ class Morel():
         print("---------------- Ending Logger ----------------")
 
         print("---------------- Beginning Dynamics Training ----------------")
-        self.dynamics = PPO("MlpPolicy", self.dynamicsEnv, verbose=1, policy_epochs = dynamics_epochs, batch_size = offline_data_module_cfg.batch_size, n_epochs = offline_data_module_cfg.epochs_per_experience, device = device(type='gpu', index=gpu_number))
-        self.dynamics.learn(total_timesteps=25000)
+        # self.dynamics = PPO("MlpPolicy", self.dynamicsEnv, verbose=1, policy_epochs = dynamics_epochs, batch_size = offline_data_module_cfg.batch_size, n_epochs = offline_data_module_cfg.epochs_per_experience, device = device(type='gpu', index=gpu_number))
+        # self.dynamics.learn(total_timesteps=25000)
+
+
+    # dynamics config
+        dyn_ensemble_config = DefaultDynamicsEnsembleConfig()
+        dyn_module_config = DefaultDynamicsModuleConfig()
+        self.dynamics = DynamicsEnsemble(
+            config=dyn_ensemble_config,
+            gpu=dyn_ensemble_config.gpu,
+            data_module = data_module,
+            state_dim_in = dyn_module_config.state_dim_in,
+            state_dim_out = dyn_module_config.state_dim_out,
+            action_dim = 2,
+            frame_stack = dyn_module_config.frame_stack,
+            logger = logger,
+            log_freq = 100)
+        self.dynamics.train(epochs)
 
 
 
