@@ -1,14 +1,12 @@
 # morel imports
-# from offline_rl.ppo2 import PPO2
-#from offline_rl.fake_env import FakeEnv
-from fake_env import FakeEnv
-
 import hydra
 
 import numpy as np
 from tqdm import tqdm
 
 import gym
+import gym.spaces
+from fake_env import FakeEnv
 
 # torch imports
 import torch
@@ -103,11 +101,13 @@ class Morel():
         self.fake_env = FakeEnv(self.dynamics,
                         config=fake_env_config,
                         logger = self.logger)
-
+                      
+     
         print("---------------- Instantiate PPO Policy  ----------------")
 
         # POLICY (from stable baselines)
         # TODO: replace with train_ppo
+        # fake_env = DummyVecEnv([lambda : gym.make('FakeEnv-v0')])
         self.policy = PPO("MlpPolicy", self.fake_env, verbose=1)# , policy_epochs = self.policy_epochs)#, \
                     # , batch_size = online_data_module_cfg.batch_size,\
                     #  n_epochs = online_data_module_cfg.epochs_per_experience, \
