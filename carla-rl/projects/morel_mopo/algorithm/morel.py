@@ -36,12 +36,11 @@ from pprint import pprint
 
 
 class Morel():
-    def __init__(self, obs_dim,
+    def __init__(self, env, fake_env
+                        obs_dim,
                         action_dim,
                         uncertainty_threshold,
                         uncertainty_penalty,
-                        dynamics_cfg,
-                        policy_cfg,
                         dynamics_epochs,
                         policy_epochs):
 
@@ -51,6 +50,8 @@ class Morel():
         self.uncertainty_threshold = uncertainty_threshold
         self.uncertainty_penalty = uncertainty_penalty
 
+        self.env = env
+        self.fake_env = fake_env
 
         #self.dynamics = hydra.utils.instantiate(dynamics_cfg)
         #self.policy = hydra.utils.instantiate(policy_cfg)
@@ -90,7 +91,7 @@ class Morel():
         # self.dynamics.learn(total_timesteps=25000)
 
 
-    # dynamics config
+        # dynamics config
         dyn_ensemble_config = DefaultDynamicsEnsembleConfig()
         dyn_module_config = DefaultDynamicsModuleConfig()
         self.dynamics = DynamicsEnsemble(
@@ -117,13 +118,14 @@ class Morel():
         print("---------------- Ending Dynamics Training ----------------")
 
         print("---------------- Beginning Dynamics Analysis ----------------")
-        env = FakeEnv(
-            self.dynamics,
-            logger,
-            uncertainty_threshold = self.uncertainty_threshold,
-            uncertain_penalty = self.uncertainty_penalty,
-            timeout_steps = 1
-        )
+
+        # dynamics: predicting the change in state/vehicle pose
+        # policy: maps obs -> action
+        obs = fake_env.reset()
+        while True:
+            action = model.predict(obs)
+            next_obs, reward_out, dones, info = fake_env.step(action)
+
         print("---------------- Ending Dynamics Analysis ----------------")
 
         print("---------------- Beginning Policy Training ----------------")
