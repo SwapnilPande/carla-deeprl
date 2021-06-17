@@ -24,7 +24,7 @@ EXPERIMENT_NAME = "vivian_NO_CRASH_EMPTY"
 ########################################## logger  ####################################
 
 # logger_conf = CometLoggerConfig()
-# logger_conf.populate(experiment_name = EXPERIMENT_NAME, tags = ["Online_PPO"])
+# logger_conf.populate(experiment_name = EXPERIMENT_NAME, tags = ["MOReL"])
 # logger = CometLogger(logger_conf)
 # print(logger.log_dir)
 

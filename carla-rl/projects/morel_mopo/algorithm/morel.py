@@ -6,6 +6,7 @@ from tqdm import tqdm
 
 import gym
 import gym.spaces
+
 from fake_env import FakeEnv
 
 # torch imports
@@ -23,7 +24,9 @@ sys.path.append(os.path.abspath(os.path.join('../../../')))
 
 # Policy
 from stable_baselines3 import PPO
+
 from stable_baselines3.common.env_util import DummyVecEnv
+from stable_baselines3.common.env_checker import check_env
 
 # Environment
 sys.path.append(os.path.abspath(os.path.join('../../../')))
@@ -68,7 +71,7 @@ class Morel():
                 self.train_val_split = 0.95
         # data config
         data_config = TempDataModuleConfig()
-        data_module = OfflineCarlaDataModule(data_config)        
+        self.data_module = OfflineCarlaDataModule(data_config)        
 
         #self.dynamics = hydra.utils.instantiate(dynamics_cfg)
         #self.policy = hydra.utils.instantiate(policy_cfg)
@@ -80,7 +83,7 @@ class Morel():
         self.dynamics = DynamicsEnsemble(
             config=dyn_ensemble_config,
             gpu=dyn_ensemble_config.gpu,
-            data_module = data_module,
+            data_module = self.data_module,
             state_dim_in = dyn_module_config.state_dim_in,
             state_dim_out = dyn_module_config.state_dim_out,
             action_dim = 2,
@@ -102,12 +105,12 @@ class Morel():
                         config=fake_env_config,
                         logger = self.logger)
                       
-     
+        # check_env(self.fake_env)
+
         print("---------------- Instantiate PPO Policy  ----------------")
 
         # POLICY (from stable baselines)
-        # TODO: replace with train_ppo
-        # fake_env = DummyVecEnv([lambda : gym.make('FakeEnv-v0')])
+
         self.policy = PPO("MlpPolicy", self.fake_env, verbose=1)# , policy_epochs = self.policy_epochs)#, \
                     # , batch_size = online_data_module_cfg.batch_size,\
                     #  n_epochs = online_data_module_cfg.epochs_per_experience, \
@@ -116,29 +119,22 @@ class Morel():
 
 
     def train(self,
-            logger,
-            gpu_number = None,
             precision = 16):
 
         if(precision != 16 and precision != 32):
             raise Exception("Precision must be 16 or 32")
 
         print("---------------- Beginning Logger ----------------")
-        self.logger.step = 0
-        self.logger.log_hyperparams({
-            "uncertainty_threshold (morel)" : self.uncertainty_threshold,
-            "uncertainty_penatly (morel)" : self.uncertainty_penalty,
-            "offline_batch_size (morel)" : offline_data_module_cfg.batch_size,
-            "offline_buffer_size (morel)" : offline_data_module_cfg.buffer_size,
-            "offline_epochs_per_experience (morel)"  : offline_data_module_cfg.epochs_per_experience,
-            "online_batch_size (morel)" : online_data_module_cfg.batch_size,
-            "online_buffer_size (morel)" : online_data_module_cfg.buffer_size,
-            "online_epochs_per_experience (morel)"  : online_data_module_cfg.epochs_per_experience
-        })
+        # self.logger.step = 0
+        # self.logger.log_hyperparameters({
+        #     "uncertainty_threshold (morel)" : self.uncertainty_threshold,
+        #     "uncertainty_penalty (morel)" : self.uncertainty_penalty,
+        #     "offline_batch_size (morel)" : self.data_module.data_cfg.batch_size,
+        # })
 
         print("---------------- Beginning Dynamics Training ----------------")
         # dynamics is DynamicsEnsembleModule
-        self.dynamics.train(epochs)
+        self.dynamics.train(self.dynamics_epochs)
 
         # self.dynamics.train(
         #     offline_data_module_cfg,
@@ -147,19 +143,6 @@ class Morel():
         #     precision = precision
         # )
         # (cfg.data_module, logger, gpu_number = cfg.gpu, precision = cfg.trainer.precision, epochs = cfg.epochs)
-
-
-        print("---------------- Beginning Dynamics Analysis ----------------")
-
-        # dynamics: predicting the change in state/vehicle pose
-        # policy: maps obs -> action
-        obs = self.fake_env.reset()
-
-        while True:
-            # policy maps input obs to action
-            action = self.policy.predict(obs)
-            # step in fake env to advance timestep 
-            next_obs, reward_out, dones, info = self.fake_env.step(action)
 
 
         print("---------------- Beginning Policy Training ----------------")
@@ -171,6 +154,21 @@ class Morel():
         #     gpu_number = gpu_number,
         #     precision = precision
         # )
+
+        print("---------------- Beginning Dynamics Analysis ----------------")
+
+        # dynamics: predicting the change in state/vehicle pose
+        # policy: maps obs -> action
+        obs = self.fake_env.reset()
+        for i in range(self.policy_epochs):
+            while True:
+                # policy maps input obs to action
+                action, _states  = self.policy.predict(obs)
+                # step in fake env to advance timestep 
+                obs, reward, done, info = self.fake_env.step(torch.from_numpy(action))
+                # termination
+                if done: break
+
 
 
     def save(self, save_dir):

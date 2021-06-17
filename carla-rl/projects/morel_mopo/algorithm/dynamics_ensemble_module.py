@@ -202,6 +202,7 @@ class DynamicsEnsemble(nn.Module):
         # Model parameters
         self.n_models = config.n_models
         self.network_cfg = config.network_cfg
+        self.batch_size = self.data_module.train_dataloader().batch_size
 
 
         self.lr = config.lr
@@ -244,13 +245,12 @@ class DynamicsEnsemble(nn.Module):
 
     #
     def forward(self, x, model_idx=None):
-        if not model_idx:
+        if model_idx is None:
             # predict for all models
             predictions = [model(x) for model in self.models]
             return predictions
-
         else:
-            # predict for specified model
+            # predict for specified model            
             return self.models[model_idx](x)
 
 
@@ -261,7 +261,7 @@ class DynamicsEnsemble(nn.Module):
         # action is [batch_size, frame_stack, action_dim]
         # feed tensor is [batch_size, frame_stack * (state_dim + action_dim)]
 
-        # Conver to cuda first
+        # Convert to cuda first
         state_in = state_in.to(self.device)
         actions = actions.to(self.device)
         delta = delta.to(self.device)
@@ -272,7 +272,10 @@ class DynamicsEnsemble(nn.Module):
                                 (-1, self.frame_stack * (self.state_dim_in + self.action_dim)
                             )
                       )
-
+        # print('state in', state_in.shape)
+        # print('act',actions.shape)
+        # print('feed tensor should be (-1, B x f(s + a)', feed_tensor.shape)
+        # print('delta', delta.shape)
         # Concatenate delta and reward if we are predicting reward
         if(self.network_cfg.predict_reward):
             return feed_tensor, torch.cat([delta,reward], dim = 1)
@@ -323,7 +326,7 @@ class DynamicsEnsemble(nn.Module):
 
         # Predictions by each model
         y_hat = self.forward(feed, model_idx = model_idx)
-
+        
         # Compute loss
         loss = self.loss(y_hat, target)
         mse_loss = self.mse_loss(y_hat, target)

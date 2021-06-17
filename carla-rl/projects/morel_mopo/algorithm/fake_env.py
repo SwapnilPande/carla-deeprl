@@ -215,7 +215,7 @@ class FakeEnv(gym.Env):
         # Creating Action and Observation spaces
         ################################################
         self.action_space = self.config.action_config.action_space
-        self.obs_space = self.config.obs_config.obs_space
+        self.observation_space = self.config.obs_config.obs_space
 
         self.state = None
         self.vehicle_pose = None
@@ -274,7 +274,10 @@ class FakeEnv(gym.Env):
 
         self.steps_elapsed = 0
 
-        return self.state
+        # dist to traj, orientation, self.state
+        wp_features = np.array([np.inf, 90])
+        obs = np.hstack((wp_features, torch.flatten(self.state[0, :]).cpu().detach().numpy()))
+        return obs
 
 
     def calc_disc(self, predictions):
@@ -310,8 +313,7 @@ class FakeEnv(gym.Env):
     @ returns next_obs, reward_out, (uncertain or timeout), {"delta" : delta, "uncertain" : 100*uncertain}
     '''
     def step(self, new_action, obs = None):
-        new_action.to(self.device)
-
+        new_action = torch.tensor(new_action).squeeze().to(self.device)
         # clamp new action to safe range
         new_action = torch.clamp(new_action, -1, 1).to(self.device)
         # insert new action at front, delete oldest action
@@ -333,7 +335,7 @@ class FakeEnv(gym.Env):
         # Delta: prediction from one randomly selected model
         # [Δx_t+1, Δy_t+1, Δtheta_t+1, Δspeed_t+1, Δsteer_t+1]
         model_idx = np.random.choice(self.dynamics.n_models)
-        delta = torch.clone(all_predictions[model_idx])
+        delta = all_predictions[model_idx]
         delta = self.unnormalize_delta(delta, self.device)
         # predicted change in x, y, th
         delta_vehicle_pose = delta[:3]
@@ -384,10 +386,11 @@ class FakeEnv(gym.Env):
 
         # renormalize state for next round of dynamics prediction
         self.state = self.normalize_state(self.state, self.device)
-        return next_obs, reward_out, (uncertain or timeout), {"delta" : delta, \
+        info = {"delta" : delta, \
           "uncertain" : self.config.uncertainty_config.uncertainty_coeff * uncertain, \
-          "predictions": all_predictions}
-
+          "predictions": all_predictions} 
+        res = next_obs.cpu().detach().numpy(), float(reward_out[0].item()), bool(uncertain or timeout), info
+        return res
 
     # speed, steer
     def unnormalize_state(self, obs, device):
