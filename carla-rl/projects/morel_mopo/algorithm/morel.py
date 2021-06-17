@@ -167,7 +167,10 @@ class Morel():
                 # step in fake env to advance timestep 
                 obs, reward, done, info = self.fake_env.step(torch.from_numpy(action))
                 # termination
-                if done: break
+                print('done', done)
+                if done == True:
+                    print("DONE\n")
+                    break
 
 
 

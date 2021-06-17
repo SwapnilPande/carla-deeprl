@@ -389,7 +389,7 @@ class FakeEnv(gym.Env):
         info = {"delta" : delta, \
           "uncertain" : self.config.uncertainty_config.uncertainty_coeff * uncertain, \
           "predictions": all_predictions} 
-        res = next_obs.cpu().detach().numpy(), float(reward_out[0].item()), bool(uncertain or timeout), info
+        res = next_obs.cpu().detach().numpy(), float(reward_out[0].item()), bool(uncertain or timeout), {}
         return res
 
     # speed, steer
