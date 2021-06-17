@@ -36,34 +36,108 @@ from pprint import pprint
 
 
 class Morel():
-    def __init__(self, env, fake_env
-                        obs_dim,
+    def __init__(self,  obs_dim,
                         action_dim,
                         uncertainty_threshold,
                         uncertainty_penalty,
                         dynamics_epochs,
-                        policy_epochs):
+                        policy_epochs,
+                        logger):
 
         self.obs_dim = obs_dim
         self.action_dim = action_dim
 
         self.uncertainty_threshold = uncertainty_threshold
         self.uncertainty_penalty = uncertainty_penalty
+        
+        self.dynamics_epochs = dynamics_epochs
+        self.policy_epochs = policy_epochs
 
-        self.env = env
-        self.fake_env = fake_env
+        self.logger = logger
+
+        print("---------------- Instantiate Data module ----------------")
+        # data config
+        data_config = TempDataModuleConfig()
+        data_module = OfflineCarlaDataModule(data_config)
+
+
+        print("---------------- Instantiate Real environment ----------------")
+ 
+        env_config = DefaultMainConfig()
+        env_config.populate_config(
+            observation_config = "LowDimObservationConfig",
+            action_config = "MergedSpeedScaledTanhConfig",
+            reward_config = "Simple2RewardConfig",
+            scenario_config = "NoCrashEmptyTown01Config",
+            testing = False,
+            carla_gpu = 0
+        )
+        # logger_callback = PPOLoggerCallback(logger)
+        self.env = CarlaEnv(config = env_config, logger = logger, log_dir = "/home/scratch/vccheng/carla_test")
+
+        print("---------------- Instantiate Fake environment ----------------")
+        
+        fake_env_config = DefaultMainConfig()
+        fake_env_config.populate_config(\
+            obs_config = "DefaultObservationConfig", \
+            action_config = "DefaultActionConfig",\
+            reward_config="DefaultRewardConfig",\
+            uncertainty_config="DefaultUncertaintyConfig")
+            
+        fake_env = FakeEnv(dynamics,
+                        config=fake_env_config,
+                        logger = logger,
+                        uncertainty_threshold = 0.5,
+                        uncertain_penalty = -100,
+                        timeout_steps = 1,
+                        uncertainty_params = [0.0045574815320799725, 1.9688976602303934e-05, 0.2866033549975823])
+
+
+
+
 
         #self.dynamics = hydra.utils.instantiate(dynamics_cfg)
         #self.policy = hydra.utils.instantiate(policy_cfg)
-        #set the environment
-        self.dynamicsEnv = CarlaEnv(config = dynamics_cfg, log_dir = "/home/scratch/swapnilp/carla_test")
-        self.policyEnv = CarlaEnv(config = policy_cfg, log_dir = "/home/scratch/swapnilp/carla_test")
+
+
+
+        print("---------------- Real Dynamics  ----------------")
+
+        dynamics_cfg = DefaultMainConfig()
+        dynamics_cfg.populate_config(observation_config = "LowDimObservationConfig",
+            action_config = "MergedSpeedScaledTanhConfig",
+            reward_config = "Simple2RewardConfig",
+            scenario_config = "NoCrashEmptyTown01Config",
+            testing = False,
+            carla_gpu = 0)
         
+
+        print("--------------- Fake Dynamics Model ----------------")
+        fake_dyn_ensemble_config = DefaultDynamicsEnsembleConfig()
+        fake_dyn_module_config = DefaultDynamicsModuleConfig()
+        self.fake_dynamics = DynamicsEnsemble(
+            config=dyn_ensemble_config,
+            gpu=dyn_ensemble_config.gpu,
+            data_module = data_module,
+            state_dim_in = dyn_module_config.state_dim_in,
+            state_dim_out = dyn_module_config.state_dim_out,
+            action_dim = 2,
+            frame_stack = dyn_module_config.frame_stack,
+            logger = logger,
+            log_freq = 100)
+
+
+        print("---------------- Instantiate PPO Policy  ----------------")
+
+        # POLICY (from stable baselines)
+        self.policy = PPO("MlpPolicy", self.policyEnv, verbose=1, policy_epochs = policy_epochs, \
+                    # , batch_size = online_data_module_cfg.batch_size,\
+                    #  n_epochs = online_data_module_cfg.epochs_per_experience, \
+                     device = device(type='gpu', index=gpu_number))
+
 
 
     def train(self,
-            offline_data_module_cfg,
-            online_data_module_cfg,
             logger,
             gpu_number = None,
             precision = 16):
@@ -84,29 +158,9 @@ class Morel():
             "online_epochs_per_experience (morel)"  : online_data_module_cfg.epochs_per_experience
         })
 
-        print("---------------- Ending Logger ----------------")
-
         print("---------------- Beginning Dynamics Training ----------------")
-        # self.dynamics = PPO("MlpPolicy", self.dynamicsEnv, verbose=1, policy_epochs = dynamics_epochs, batch_size = offline_data_module_cfg.batch_size, n_epochs = offline_data_module_cfg.epochs_per_experience, device = device(type='gpu', index=gpu_number))
-        # self.dynamics.learn(total_timesteps=25000)
-
-
-        # dynamics config
-        dyn_ensemble_config = DefaultDynamicsEnsembleConfig()
-        dyn_module_config = DefaultDynamicsModuleConfig()
-        self.dynamics = DynamicsEnsemble(
-            config=dyn_ensemble_config,
-            gpu=dyn_ensemble_config.gpu,
-            data_module = data_module,
-            state_dim_in = dyn_module_config.state_dim_in,
-            state_dim_out = dyn_module_config.state_dim_out,
-            action_dim = 2,
-            frame_stack = dyn_module_config.frame_stack,
-            logger = logger,
-            log_freq = 100)
+        # dynamics is DynamicsEnsembleModule
         self.dynamics.train(epochs)
-
-
 
         # self.dynamics.train(
         #     offline_data_module_cfg,
@@ -115,21 +169,22 @@ class Morel():
         #     precision = precision
         # )
         # (cfg.data_module, logger, gpu_number = cfg.gpu, precision = cfg.trainer.precision, epochs = cfg.epochs)
-        print("---------------- Ending Dynamics Training ----------------")
+
 
         print("---------------- Beginning Dynamics Analysis ----------------")
 
         # dynamics: predicting the change in state/vehicle pose
         # policy: maps obs -> action
-        obs = fake_env.reset()
-        while True:
-            action = model.predict(obs)
-            next_obs, reward_out, dones, info = fake_env.step(action)
+        obs = self.fake_env.reset()
 
-        print("---------------- Ending Dynamics Analysis ----------------")
+        while True:
+            # policy maps input obs to action
+            action = self.policy.predict(obs)
+            # step in fake env to advance timestep 
+            next_obs, reward_out, dones, info = self.fake_env.step(action)
+
 
         print("---------------- Beginning Policy Training ----------------")
-        self.policy = PPO("MlpPolicy", self.policyEnv, verbose=1, policy_epochs = policy_epochs, batch_size = online_data_module_cfg.batch_size, n_epochs = online_data_module_cfg.epochs_per_experience, device = device(type='gpu', index=gpu_number))
         self.policy.learn(total_timesteps=25000)
         # self.policy.train(
         #     data_module_cfg = online_data_module_cfg,
@@ -138,7 +193,6 @@ class Morel():
         #     gpu_number = gpu_number,
         #     precision = precision
         # )
-        print("---------------- Ending Policy Training ----------------")
 
 
     def save(self, save_dir):
