@@ -5,7 +5,7 @@ import glob
 
 # Import other necessary configs
 from environment.config.base_config import BaseConfig
-from environment.config import observation_configs, action_configs, reward_configs
+from projects.morel_mopo.config import observation_configs, action_configs, reward_configs, uncertainty_configs
 
 
 class BaseFakeEnvConfig(BaseConfig):
@@ -23,7 +23,10 @@ class BaseFakeEnvConfig(BaseConfig):
         self.timeout_steps = None
 
 
-    def populate_config(self, observation_config = 'LowDimObservationConfig', action_config = 'MergedSpeedTanhConfig', reward_config = 'Simple2RewardConfig'):
+    def populate_config(self, observation_config = 'DefaultObsevationConfig',\
+                              action_config = 'DefaultActionConfig',\
+                              reward_config = 'DefaultRewardConfig',\
+                              uncertainty_config='DefaultUncertaintyConfig'):
         """Fill in the config parameters that are not set by default
 
         For each type of config, the parameter can be either passed in as a string containing the class name or

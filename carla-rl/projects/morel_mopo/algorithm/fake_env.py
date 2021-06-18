@@ -17,7 +17,8 @@ Calculates L2 distance between waypoint, vehicle
         vehicle_pose: torch.Tensor([x, y, yaw])
 '''
 def distance_vehicle(waypoint, vehicle_pose, device):
-    waypoint = torch.FloatTensor(waypoint).to(device)
+    if not torch.is_tensor(waypoint):
+        waypoint = torch.FloatTensor(waypoint).to(device)
     vehicle_loc = vehicle_pose[:2].to(device) # get x, y
     dist = torch.dist(waypoint, vehicle_loc).item()
     return dist
@@ -72,8 +73,14 @@ Gets distance of vehicle to a line formed by two waypoints
        vehicle_pose:  torch.Tensor([x,y, yaw])
 '''
 def vehicle_to_line_distance(vehicle_pose, waypoint1, waypoint2, device):
+
     waypoint1 = torch.FloatTensor(waypoint1).to(device)
     waypoint2 = torch.FloatTensor(waypoint2).to(device)
+
+    if torch.allclose(waypoint1, waypoint2):
+        distance = distance_vehicle(waypoint1, vehicle_pose, device)
+        return abs(distance)
+  
 
     vehicle_loc   = vehicle_pose[:2] # x, y coords
 
@@ -85,7 +92,9 @@ def vehicle_to_line_distance(vehicle_pose, waypoint1, waypoint2, device):
     b_vec_3d = torch.hstack((b_vec, torch.Tensor([0]).to(device)))
 
     dist_vec = torch.cross(a_vec_3d, b_vec_3d) / torch.linalg.norm(a_vec_3d)
-    return abs(dist_vec[2]) # dist
+    distance =  abs(dist_vec[2]) # dist
+    # print("Distance: ", distance, '\n')
+    return distance
 
 '''
 Calculate dist to trajectory, angle
@@ -110,7 +119,8 @@ def process_waypoints(waypoints, vehicle_pose, device):
     for i, waypoint in enumerate(waypoints):
         # find wp that yields min dist between itself and car
         dist_i = distance_vehicle(waypoint, vehicle_pose, device)
-        if dist_i < min_dist:
+        # print(f'wp {i},  {waypoint}, dist: {dist_i}')
+        if dist_i <= min_dist:
             min_dist_index = i
             min_dist = dist_i
 
@@ -125,8 +135,7 @@ def process_waypoints(waypoints, vehicle_pose, device):
             elif i == wp_len - 2:
                 second_last_waypoint = waypoint
 
-
-
+    remaining_waypoints = waypoints
     # only keep next N waypoints
     for i, waypoint in enumerate(waypoints[:num_next_waypoints]):
         # dist to waypoint
@@ -137,10 +146,10 @@ def process_waypoints(waypoints, vehicle_pose, device):
             next_waypoints = [waypoint]
             next_waypoints_vectors = [w_vec]
         else:
+            # add back waypoints
             next_waypoints_angles.append(angle)
             next_waypoints.append(waypoint)
             next_waypoints_vectors.append(w_vec)
-
 
     # get mean of all angles to figure out which direction to turn
     if len(next_waypoints_angles) > 0:
@@ -148,6 +157,8 @@ def process_waypoints(waypoints, vehicle_pose, device):
     else:
         print("No next waypoint found!")
         angle = 0
+    
+
 
     if len(next_waypoints) > 1:
         # get dist from vehicle to a line formed by the next two wps
@@ -159,14 +170,14 @@ def process_waypoints(waypoints, vehicle_pose, device):
 
     # if only one next waypoint, use it and second to last
     elif len(next_waypoints) > 0:
+
         dist_to_trajectory = vehicle_to_line_distance(
                                 vehicle_pose,
                                 second_last_waypoint,
                                 next_waypoints[0],
                                 device)
 
-    else:
-
+    else: # Run out of wps
         if second_last_waypoint and last_waypoint:
             dist_to_trajectory = vehicle_to_line_distance(
                                     vehicle_pose,
@@ -175,9 +186,9 @@ def process_waypoints(waypoints, vehicle_pose, device):
                                     device)
 
         else:
-            dist_to_trajectory = 0
+            dist_to_trajectory = 0.0
 
-    return angle, dist_to_trajectory, next_waypoints, next_waypoints_angles, next_waypoints_vectors
+    return angle, dist_to_trajectory, next_waypoints, next_waypoints_angles, next_waypoints_vectors, remaining_waypoints
 
 
 
@@ -215,7 +226,7 @@ class FakeEnv(gym.Env):
         # Creating Action and Observation spaces
         ################################################
         self.action_space = self.config.action_config.action_space
-        self.obs_space = self.config.obs_config.obs_space
+        self.observation_space = self.config.obs_config.obs_space
 
         self.state = None
         self.vehicle_pose = None
@@ -230,8 +241,7 @@ class FakeEnv(gym.Env):
 
         # Get norm stats and frame_stack from dynamics
         # This will be the same as the norm stats from the original dataset, on which the dynamics model was trained
-        self.norm_stats = self.dynamics.normalization_stats
-        print('FAKE_ENV: Norm stats', self.norm_stats)
+        self.norm_stats = self.offline_data_module.normalization_stats
         self.frame_stack = self.dynamics.frame_stack
 
         ################################################
@@ -251,7 +261,7 @@ class FakeEnv(gym.Env):
 
     ''' Resets environment. If no input is passed in, sample from dataset '''
     def reset(self, inp=None):
-        print("FAKE_ENV: Resetting environment...\n")
+        # print("FAKE_ENV: Resetting environment...\n")
 
         if inp is None:
             if(self.offline_data_module is None):
@@ -267,15 +277,15 @@ class FakeEnv(gym.Env):
         # state only includes speed, steer
         self.state =  self.obs[:, :2].to(self.device)
 
-        print('obs', self.obs.shape)
-        print('action', self.past_action.shape)
-        print('waypoints', self.waypoints.shape)
-        print('vehicle pose', self.vehicle_pose.shape)
-        print('state', self.state.shape)
+        # print('obs', self.obs)
+        # print('action', self.past_action)
+        # print('waypoints', self.waypoints.shape)
+        # print('vehicle pose', self.vehicle_pose)
 
         self.steps_elapsed = 0
 
-        return self.state
+        # reset to random observation
+        return self.observation_space.sample()
 
 
     def calc_disc(self, predictions):
@@ -311,8 +321,7 @@ class FakeEnv(gym.Env):
     @ returns next_obs, reward_out, (uncertain or timeout), {"delta" : delta, "uncertain" : 100*uncertain}
     '''
     def step(self, new_action, obs = None):
-        new_action.to(self.device)
-
+        new_action = torch.tensor(new_action).squeeze().to(self.device)
         # clamp new action to safe range
         new_action = torch.clamp(new_action, -1, 1).to(self.device)
         # insert new action at front, delete oldest action
@@ -334,7 +343,7 @@ class FakeEnv(gym.Env):
         # Delta: prediction from one randomly selected model
         # [Δx_t+1, Δy_t+1, Δtheta_t+1, Δspeed_t+1, Δsteer_t+1]
         model_idx = np.random.choice(self.dynamics.n_models)
-        delta = torch.clone(all_predictions[model_idx])
+        delta = all_predictions[model_idx]
         delta = self.unnormalize_delta(delta, self.device)
         # predicted change in x, y, th
         delta_vehicle_pose = delta[:3]
@@ -350,8 +359,18 @@ class FakeEnv(gym.Env):
         ###################### calculate waypoint features (in global frame)  ##############################
 
         self.waypoints = self.waypoints[:, :2] # get x,y coords for each waypoint
-        angle, dist_to_trajectory, _, _, _ = process_waypoints(self.waypoints, self.vehicle_pose, self.device)
+        angle, dist_to_trajectory, next_waypoints, _, _, remaining_waypoints= process_waypoints(self.waypoints, self.vehicle_pose, self.device)
+        
+        # check if at goal 
+        at_goal = (dist_to_trajectory == 0.0)
 
+        # convert to tensors
+        self.waypoints = torch.FloatTensor(remaining_waypoints)
+        dist_to_trajectory = torch.Tensor([dist_to_trajectory]).to(self.device)
+        angle              = torch.Tensor([angle]).to(self.device)
+
+
+        # update waypoints list
         ################## calc reward with penalty for uncertainty ##############################
 
         reward_out = compute_reward(self.state, dist_to_trajectory, self.config)
@@ -375,20 +394,16 @@ class FakeEnv(gym.Env):
         ######################### build policy input ##########################
 
         # Policy input (unnormalized): dist_to_trajectory, next orientation, speed, steer
-        dist_to_trajectory = torch.Tensor([dist_to_trajectory]).to(self.device)
-        angle              = torch.Tensor([angle]).to(self.device)
-
-
-        # combine most recent state with waypoint features to form policy input
         policy_input = torch.cat([dist_to_trajectory, angle, torch.flatten(self.state[0, :])], dim=0).float().to(self.device)
         next_obs     = policy_input
 
         # renormalize state for next round of dynamics prediction
         self.state = self.normalize_state(self.state, self.device)
-        return next_obs, reward_out, (uncertain or timeout), {"delta" : delta, \
+        info = {"delta" : delta.cpu().detach().numpy(), \
           "uncertain" : self.config.uncertainty_config.uncertainty_coeff * uncertain, \
-          "predictions": all_predictions}
-
+          "predictions": all_predictions.cpu().detach().numpy()} 
+        res = next_obs.cpu().detach().numpy(), float(reward_out[0].item()), bool(timeout or at_goal), info
+        return res
 
     # speed, steer
     def unnormalize_state(self, obs, device):

@@ -81,7 +81,7 @@ class DefaultDynamicsModuleConfig(BaseConfig):
         self.n_head_layers = 2
         self.drop_prob = 0.15
         self.activation = nn.ReLU
-
+        
 
 
 
