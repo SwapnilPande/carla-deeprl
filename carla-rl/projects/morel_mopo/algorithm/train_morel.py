@@ -23,13 +23,13 @@ EXPERIMENT_NAME = "vivian_NO_CRASH_EMPTY"
 
 ########################################## logger  ####################################
 
-# logger_conf = CometLoggerConfig()
-# logger_conf.populate(experiment_name = EXPERIMENT_NAME, tags = ["MOReL"])
-# logger = CometLogger(logger_conf)
-# print(logger.log_dir)
+logger_conf = CometLoggerConfig()
+logger_conf.populate(experiment_name = EXPERIMENT_NAME, tags = ["MOReL"])
+logger = CometLogger(logger_conf)
+print(logger.log_dir)
 
-# tb_log_dir = os.path.join(logger.log_dir, "ppo_tb_logs")
-# os.makedirs(tb_log_dir)
+tb_log_dir = os.path.join(logger.log_dir, "morel_tb_logs")
+os.makedirs(tb_log_dir)
 
 ################################# pass in envs and instantiate model ######################################
 uncertainty_threshold = 0.5
@@ -41,7 +41,7 @@ model = Morel(uncertainty_threshold,
             uncertainty_penalty,
             dynamics_epochs,
             policy_epochs,
-            logger=None)#logger)
+            logger=logger)
 
 # train MOReL
 model.train()
