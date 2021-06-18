@@ -74,16 +74,11 @@ Gets distance of vehicle to a line formed by two waypoints
 '''
 def vehicle_to_line_distance(vehicle_pose, waypoint1, waypoint2, device):
 
-    # print('WP1', waypoint1)
-    # print('WP2', waypoint2)
-    # print('vehicle_pose', vehicle_pose)
     waypoint1 = torch.FloatTensor(waypoint1).to(device)
     waypoint2 = torch.FloatTensor(waypoint2).to(device)
 
     if torch.allclose(waypoint1, waypoint2):
-        print('next 2 waypoints equal')
         distance = distance_vehicle(waypoint1, vehicle_pose, device)
-        print('dist', distance)
         return abs(distance)
   
 
@@ -128,7 +123,6 @@ def process_waypoints(waypoints, vehicle_pose, device):
         if dist_i <= min_dist:
             min_dist_index = i
             min_dist = dist_i
-            print(f'min {i}: {min_dist}')
 
     wp_len = len(waypoints)
     if min_dist_index >= 0:
@@ -157,23 +151,16 @@ def process_waypoints(waypoints, vehicle_pose, device):
             next_waypoints.append(waypoint)
             next_waypoints_vectors.append(w_vec)
 
-    print('Len next_wps list', len(next_waypoints_angles))
     # get mean of all angles to figure out which direction to turn
     if len(next_waypoints_angles) > 0:
         angle = torch.mean(torch.FloatTensor(next_waypoints_angles))
-        print("Mean angle", angle)
     else:
         print("No next waypoint found!")
         angle = 0
     
 
-    print('last', last_waypoint)
-    print('seclast', second_last_waypoint)
-
 
     if len(next_waypoints) > 1:
-        print('len next > 1, using n[0],n[1] for dist')
-        print(next_waypoints[0], next_waypoints[1])
         # get dist from vehicle to a line formed by the next two wps
         dist_to_trajectory = vehicle_to_line_distance(
                                 vehicle_pose,
@@ -183,8 +170,7 @@ def process_waypoints(waypoints, vehicle_pose, device):
 
     # if only one next waypoint, use it and second to last
     elif len(next_waypoints) > 0:
-        print('len next == 1,  second last,next[0] for dist')
-        print(second_last_waypoint, next_waypoints[0])
+
         dist_to_trajectory = vehicle_to_line_distance(
                                 vehicle_pose,
                                 second_last_waypoint,
@@ -192,22 +178,14 @@ def process_waypoints(waypoints, vehicle_pose, device):
                                 device)
 
     else: # Run out of wps
-        print('run out of next wps')
-
         if second_last_waypoint and last_waypoint:
-            print('second last and last exist')
-            print(second_last_waypoint, last_waypoint)
             dist_to_trajectory = vehicle_to_line_distance(
                                     vehicle_pose,
                                     second_last_waypoint,
                                     last_waypoint,
                                     device)
-            print('dist2traj', dist_to_trajectory)
 
         else:
-            print('not second last and last ')
-            print('dist to traj is 0')
-            # TODO: DONE 
             dist_to_trajectory = 0.0
 
     return angle, dist_to_trajectory, next_waypoints, next_waypoints_angles, next_waypoints_vectors, remaining_waypoints
@@ -283,7 +261,7 @@ class FakeEnv(gym.Env):
 
     ''' Resets environment. If no input is passed in, sample from dataset '''
     def reset(self, inp=None):
-        print("FAKE_ENV: Resetting environment...\n")
+        # print("FAKE_ENV: Resetting environment...\n")
 
         if inp is None:
             if(self.offline_data_module is None):
@@ -381,13 +359,16 @@ class FakeEnv(gym.Env):
         ###################### calculate waypoint features (in global frame)  ##############################
 
         self.waypoints = self.waypoints[:, :2] # get x,y coords for each waypoint
-        print('len wps', self.waypoints.shape)
         angle, dist_to_trajectory, next_waypoints, _, _, remaining_waypoints= process_waypoints(self.waypoints, self.vehicle_pose, self.device)
+        
+        # check if at goal 
+        at_goal = (dist_to_trajectory == 0.0)
+
+        # convert to tensors
         self.waypoints = torch.FloatTensor(remaining_waypoints)
         dist_to_trajectory = torch.Tensor([dist_to_trajectory]).to(self.device)
         angle              = torch.Tensor([angle]).to(self.device)
 
-        at_goal = (dist_to_trajectory == 0.0)
 
         # update waypoints list
         ################## calc reward with penalty for uncertainty ##############################
@@ -418,10 +399,10 @@ class FakeEnv(gym.Env):
 
         # renormalize state for next round of dynamics prediction
         self.state = self.normalize_state(self.state, self.device)
-        info = {"delta" : delta, \
+        info = {"delta" : delta.cpu().detach().numpy(), \
           "uncertain" : self.config.uncertainty_config.uncertainty_coeff * uncertain, \
-          "predictions": all_predictions} 
-        res = next_obs.cpu().detach().numpy(), float(reward_out[0].item()), bool(timeout or at_goal), {}
+          "predictions": all_predictions.cpu().detach().numpy()} 
+        res = next_obs.cpu().detach().numpy(), float(reward_out[0].item()), bool(timeout or at_goal), info
         return res
 
     # speed, steer
