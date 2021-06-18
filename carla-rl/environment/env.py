@@ -14,7 +14,7 @@ import json
 import numpy as np
 import math
 import copy
-import cv2
+# import cv2
 import collections
 import queue
 import time
@@ -303,7 +303,6 @@ class CarlaEnv(gym.Env):
             self.obstacle_dist_array.append(self.episode_measurements['obstacle_dist'])
             self.obstacle_speed_array.append(self.episode_measurements['obstacle_speed'])
             self.wp_orientation_array.append(self.episode_measurements['next_orientation'])
-            self.input_steer_array.append(self.episode_measurements['control_steer'])
             self.throttles_array.append(self.episode_measurements['control_throttle'])
             self.steers_array.append(self.episode_measurements['control_steer'])
             self.brakes_array.append(self.episode_measurements['control_brake'])
@@ -1001,7 +1000,6 @@ class CarlaEnv(gym.Env):
         self.steers_array = []
         self.brakes_array = []
         self.wp_orientation_array = []
-        self.input_steer_array = []
         self.obstacle_dist_array = []
         self.step_reward_array = []
         self.collision_reward_array = []

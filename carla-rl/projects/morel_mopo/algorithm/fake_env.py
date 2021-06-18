@@ -80,7 +80,7 @@ def vehicle_to_line_distance(vehicle_pose, waypoint1, waypoint2, device):
     if torch.allclose(waypoint1, waypoint2):
         distance = distance_vehicle(waypoint1, vehicle_pose, device)
         return abs(distance)
-  
+
 
     vehicle_loc   = vehicle_pose[:2] # x, y coords
 
@@ -157,7 +157,7 @@ def process_waypoints(waypoints, vehicle_pose, device):
     else:
         print("No next waypoint found!")
         angle = 0
-    
+
 
 
     if len(next_waypoints) > 1:
@@ -226,7 +226,7 @@ class FakeEnv(gym.Env):
         # Creating Action and Observation spaces
         ################################################
         self.action_space = self.config.action_config.action_space
-        self.observation_space = self.config.obs_config.obs_space
+        self.observation_space = self.config.obs_config.observation_space
 
         self.state = None
         self.vehicle_pose = None
@@ -241,7 +241,7 @@ class FakeEnv(gym.Env):
 
         # Get norm stats and frame_stack from dynamics
         # This will be the same as the norm stats from the original dataset, on which the dynamics model was trained
-        self.norm_stats = self.offline_data_module.normalization_stats
+        self.norm_stats = self.dynamics.normalization_stats
         self.frame_stack = self.dynamics.frame_stack
 
         ################################################
@@ -270,6 +270,24 @@ class FakeEnv(gym.Env):
         else:
             (obs, action, vehicle_pose, waypoints) = inp
 
+            # Convert numpy arrays, or lists, to torch tensors
+            if(not isinstance(obs, torch.Tensor)):
+                obs = torch.FloatTensor(obs)
+
+            # Convert numpy arrays, or lists, to torch tensors
+            if(not isinstance(action, torch.Tensor)):
+                action = torch.FloatTensor(action)
+
+            # Convert numpy arrays, or lists, to torch tensors
+            if(not isinstance(vehicle_pose, torch.Tensor)):
+                vehicle_pose = torch.FloatTensor(vehicle_pose)
+
+            # Convert numpy arrays, or lists, to torch tensors
+            if(not isinstance(waypoints, torch.Tensor)):
+                waypoints = torch.FloatTensor(waypoints)
+
+
+
         self.obs = torch.squeeze(obs).to(self.device)
         self.past_action = torch.squeeze(action).to(self.device)
         self.waypoints = torch.squeeze(waypoints).to(self.device)
@@ -284,8 +302,7 @@ class FakeEnv(gym.Env):
 
         self.steps_elapsed = 0
 
-        # reset to random observation
-        return self.observation_space.sample()
+        return self.state.cpu().numpy()
 
 
     def calc_disc(self, predictions):
@@ -310,10 +327,10 @@ class FakeEnv(gym.Env):
         # calculate newest state
         newest_state = self.state[0, :] + delta_state
         # insert newest state at front
-        self.state = torch.cat([newest_state.unsqueeze(0), self.state], dim=0)
+        state = torch.cat([newest_state.unsqueeze(0), self.state], dim=0)
         # delete oldest state
-        self.state = self.state[:-1, :]
-        return self.state
+        state = state[:-1, :]
+        return state
 
     '''
     Takes one step according to action
@@ -321,100 +338,106 @@ class FakeEnv(gym.Env):
     @ returns next_obs, reward_out, (uncertain or timeout), {"delta" : delta, "uncertain" : 100*uncertain}
     '''
     def step(self, new_action, obs = None):
-        new_action = torch.tensor(new_action).squeeze().to(self.device)
-        # clamp new action to safe range
-        new_action = torch.clamp(new_action, -1, 1).to(self.device)
-        # insert new action at front, delete oldest action
-        action = torch.cat([new_action.unsqueeze(0), self.past_action[:-1, :]])
+        with torch.no_grad():
+            # Convert numpy arrays, or lists, to torch tensors
+            if(not isinstance(new_action, torch.Tensor)):
+                new_action = torch.FloatTensor(new_action)
 
-        # if obs not passed in
-        if not obs:
-            obs = self.obs
+            new_action.to(self.device).squeeze()
 
-        ############ feed obs, action into dynamics model for prediction ##############
+            # clamp new action to safe range
+            new_action = torch.clamp(new_action, -1, 1).to(self.device)
+            # insert new action at front, delete oldest action
+            action = torch.cat([new_action.unsqueeze(0), self.past_action[:-1, :]])
 
-        # input [[speed_t, steer_t, Δtime_t, action_t], [speed_t-1, steer_t-1, Δt-1, action_t-1]]
-        # unsqueeze to form batch dimension for dynamics input
-        dynamics_input = torch.cat([obs, action.reshape(-1,2)], dim = 1).unsqueeze(0).float()
+            # if obs not passed in
+            if not obs:
+                obs = self.obs
 
-        # Get predictions across all models
-        all_predictions = torch.stack(self.dynamics.forward(torch.flatten(dynamics_input)))
+            ############ feed obs, action into dynamics model for prediction ##############
 
-        # Delta: prediction from one randomly selected model
-        # [Δx_t+1, Δy_t+1, Δtheta_t+1, Δspeed_t+1, Δsteer_t+1]
-        model_idx = np.random.choice(self.dynamics.n_models)
-        delta = all_predictions[model_idx]
-        delta = self.unnormalize_delta(delta, self.device)
-        # predicted change in x, y, th
-        delta_vehicle_pose = delta[:3]
-        # change in speed, steer
-        delta_state        = delta[3:5]
+            # input [[speed_t, steer_t, Δtime_t, action_t], [speed_t-1, steer_t-1, Δt-1, action_t-1]]
+            # unsqueeze to form batch dimension for dynamics input
+            dynamics_input = torch.cat([obs, action.reshape(-1,2)], dim = 1).unsqueeze(0).float()
 
-        # update vehicle pose
-        self.vehicle_pose = self.vehicle_pose + delta_vehicle_pose
-        # update next state
-        self.state = self.update_next_state(delta_state)
+            # Get predictions across all models
+            all_predictions = torch.stack(self.dynamics.forward(torch.flatten(dynamics_input)))
 
+            # Delta: prediction from one randomly selected model
+            # [Δx_t+1, Δy_t+1, Δtheta_t+1, Δspeed_t+1, Δsteer_t+1]
+            model_idx = np.random.choice(self.dynamics.n_models)
+            deltas = torch.clone(all_predictions)
+            deltas = self.unnormalize_delta(deltas)
+            # predicted change in x, y, th
+            delta_vehicle_poses = deltas[:,:3]
+            # change in steer, speed
+            delta_state        = deltas[model_idx,3:5]
 
-        ###################### calculate waypoint features (in global frame)  ##############################
+            # update vehicle pose
+            vehicle_poses = self.vehicle_pose + delta_vehicle_poses
+            self.vehicle_pose = vehicle_poses[model_idx]
+            # update next state
+            self.state = self.update_next_state(delta_state)
 
-        self.waypoints = self.waypoints[:, :2] # get x,y coords for each waypoint
-        angle, dist_to_trajectory, next_waypoints, _, _, remaining_waypoints= process_waypoints(self.waypoints, self.vehicle_pose, self.device)
-        
-        # check if at goal 
-        at_goal = (dist_to_trajectory == 0.0)
+            ###################### calculate waypoint features (in global frame)  ##############################
 
-        # convert to tensors
-        self.waypoints = torch.FloatTensor(remaining_waypoints)
-        dist_to_trajectory = torch.Tensor([dist_to_trajectory]).to(self.device)
-        angle              = torch.Tensor([angle]).to(self.device)
+            self.waypoints = self.waypoints[:, :2] # get x,y coords for each waypoint
+            angle, dist_to_trajectory, next_waypoints, _, _, remaining_waypoints = process_waypoints(self.waypoints, self.vehicle_pose, self.device)
 
+            # check if at goal
+            at_goal = (dist_to_trajectory == 0.0)
 
-        # update waypoints list
-        ################## calc reward with penalty for uncertainty ##############################
-
-        reward_out = compute_reward(self.state, dist_to_trajectory, self.config)
-
-        uncertain =  self.usad(all_predictions.detach().cpu().numpy())
-        reward_out[0] = reward_out[0] - uncertain * self.config.uncertainty_coeff
-        reward_out = torch.squeeze(reward_out)
-
-        # advance time
-        self.steps_elapsed += 1
-        timeout = self.steps_elapsed >= self.timeout_steps
-
-        # log
-        if(uncertain and self.logger is not None):
-            # self.logger.get_metric("average_halt")
-            self.logger.log_hyperparameters({"halts" : 1})
-        elif(timeout and self.logger is not None):
-            self.logger.log_hyperparameters({"halts" : 0})
+            # convert to tensors
+            self.waypoints = torch.FloatTensor(remaining_waypoints)
+            dist_to_trajectory = torch.Tensor([dist_to_trajectory]).to(self.device)
+            angle              = torch.Tensor([angle]).to(self.device)
 
 
-        ######################### build policy input ##########################
+            # update waypoints list
+            ################## calc reward with penalty for uncertainty ##############################
 
-        # Policy input (unnormalized): dist_to_trajectory, next orientation, speed, steer
-        policy_input = torch.cat([dist_to_trajectory, angle, torch.flatten(self.state[0, :])], dim=0).float().to(self.device)
-        next_obs     = policy_input
+            reward_out = compute_reward(self.state[0], dist_to_trajectory, self.config)
 
-        # renormalize state for next round of dynamics prediction
-        self.state = self.normalize_state(self.state, self.device)
-        info = {"delta" : delta.cpu().detach().numpy(), \
-          "uncertain" : self.config.uncertainty_config.uncertainty_coeff * uncertain, \
-          "predictions": all_predictions.cpu().detach().numpy()} 
-        res = next_obs.cpu().detach().numpy(), float(reward_out[0].item()), bool(timeout or at_goal), info
-        return res
+            uncertain =  self.usad(all_predictions.detach().cpu().numpy())
+            reward_out[0] = reward_out[0] - uncertain * self.uncertainty_coeff
+            reward_out = torch.squeeze(reward_out)
+
+            # advance time
+            self.steps_elapsed += 1
+            timeout = self.steps_elapsed >= self.timeout_steps
+
+            # log
+            if(uncertain and self.logger is not None):
+                # self.logger.get_metric("average_halt")
+                self.logger.log_hyperparameters({"halts" : 1})
+            elif(timeout and self.logger is not None):
+                self.logger.log_hyperparameters({"halts" : 0})
+
+
+            ######################### build policy input ##########################
+
+            # Policy input (unnormalized): dist_to_trajectory, next orientation, speed, steer
+            policy_input = torch.cat([dist_to_trajectory, angle, torch.flatten(self.state[0, :])], dim=0).float().to(self.device)
+            next_obs     = policy_input
+
+            # renormalize state for next round of dynamics prediction
+            self.state = self.normalize_state(self.state)
+            info = {"delta" : deltas[model_idx].cpu().numpy(), \
+            "uncertain" : self.config.uncertainty_coeff * uncertain, \
+            "predictions": vehicle_poses.cpu().numpy()}
+            res = next_obs.cpu().numpy(), float(reward_out.item()), timeout or at_goal, info
+            return res
 
     # speed, steer
-    def unnormalize_state(self, obs, device):
-        return self.norm_stats["obs"]["std"].to(device) * obs + self.norm_stats["obs"]["mean"].to(device)
+    def unnormalize_state(self, obs):
+        return self.norm_stats["obs"]["std"].to(self.device) * obs + self.norm_stats["obs"]["mean"].to(self.device)
 
-    def normalize_state(self, obs, device):
-        return (obs - self.norm_stats["obs"]["mean"].to(device))/self.norm_stats["obs"]["std"].to(device)
+    def normalize_state(self, obs):
+        return (obs - self.norm_stats["obs"]["mean"].to(self.device))/self.norm_stats["obs"]["std"].to(self.device)
 
     # Δx, Δy, Δyaw, Δspeed, Δsteer
-    def unnormalize_delta(self, delta, device):
-        return self.norm_stats["delta"]["std"].to(device) * delta + self.norm_stats["delta"]["mean"].to(device)
+    def unnormalize_delta(self, delta):
+        return self.norm_stats["delta"]["std"].to(self.device) * delta + self.norm_stats["delta"]["mean"].to(self.device)
 
-    def normalize_delta(self, delta, device):
-        return (delta - self.norm_stats["delta"]["mean"].to(device))/self.norm_stats["delta"]["std"].to(device)
+    def normalize_delta(self, delta):
+        return (delta - self.norm_stats["delta"]["mean"].to(self.device))/self.norm_stats["delta"]["std"].to(self.device)

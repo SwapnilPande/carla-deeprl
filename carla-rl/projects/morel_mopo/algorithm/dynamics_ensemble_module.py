@@ -125,25 +125,20 @@ class DynamicsEnsemble(nn.Module):
 
     def __init__(self,
                     config,
-                    gpu,
+
                     data_module = None,
                     state_dim_in = None,
                     state_dim_out = None,
                     action_dim = None,
                     frame_stack = None,
                     norm_stats = None,
+                    gpu = None,
 
                     logger = None,
                     log_freq = 100):
         super(DynamicsEnsemble, self).__init__()
 
         self.config = config
-
-        self.gpu = gpu
-        if self.gpu == -1:
-            self.device = "cpu"
-        else:
-            self.device = "cuda:{}".format(self.gpu)
 
         # Save the logger
         self.logger = logger
@@ -159,7 +154,8 @@ class DynamicsEnsemble(nn.Module):
 
         # This module can be setup by passing a data module or by passing the shape of the
         # output separately
-        if(data_module is not None):
+        self.data_module = data_module
+        if(self.data_module is not None):
             # Setup data module
             self.data_module = data_module
             self.data_module.setup()
@@ -168,7 +164,7 @@ class DynamicsEnsemble(nn.Module):
             self.state_dim_out = self.data_module.state_dim_out
             self.action_dim = self.data_module.action_dim
             self.frame_stack = self.data_module.frame_stack
-            self.norm_stats = self.data_module.normalization_stats
+            self.normalization_stats = self.data_module.normalization_stats
         else:
             # Validate that all of these inputs are passed
             self.state_dim_in = state_dim_in
@@ -187,23 +183,25 @@ class DynamicsEnsemble(nn.Module):
             if(self.frame_stack is None):
                 raise Exception("frame_stack is None, this must be passed if data_module is None")
 
-            self.norm_stats = norm_stats
-            if(self.norm_stats is None):
+            self.normalization_stats = norm_stats
+            if(self.normalization_stats is None):
                 raise Exception("norm_stats is None, this must be passed if data_module is None")
+
+            self.gpu = gpu
+            if(self.gpu is None):
+                raise Exception("gpu is None, this must be passed if data_module is None")
 
         if logger is not None:
             state_params = (self.state_dim_in,
                             self.state_dim_out,
                             self.action_dim,
                             self.frame_stack,
-                            self.norm_stats)
+                            self.normalization_stats)
             self.logger.pickle_save(state_params, DynamicsEnsemble.log_dir, "state_params.pkl")
 
         # Model parameters
         self.n_models = config.n_models
         self.network_cfg = config.network_cfg
-        self.batch_size = self.data_module.train_dataloader().batch_size
-
 
         self.lr = config.lr
         # Build the loss function using loss args
@@ -214,6 +212,13 @@ class DynamicsEnsemble(nn.Module):
 
         # Save optimizer object
         self.optimizer_type = config.optimizer_type
+
+        # Setup GPU
+        self.gpu = self.config.gpu
+        if self.gpu == -1:
+            self.device = "cpu"
+        else:
+            self.device = "cuda:{}".format(self.gpu)
 
         # Create n_models models
         self.models = nn.ModuleList()
@@ -250,7 +255,7 @@ class DynamicsEnsemble(nn.Module):
             predictions = [model(x) for model in self.models]
             return predictions
         else:
-            # predict for specified model            
+            # predict for specified model
             return self.models[model_idx](x)
 
 
@@ -326,7 +331,7 @@ class DynamicsEnsemble(nn.Module):
 
         # Predictions by each model
         y_hat = self.forward(feed, model_idx = model_idx)
-        
+
         # Compute loss
         loss = self.loss(y_hat, target)
         mse_loss = self.mse_loss(y_hat, target)

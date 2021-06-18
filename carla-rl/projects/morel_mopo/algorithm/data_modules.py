@@ -48,6 +48,10 @@ class WaypointModule():
         return self.waypoints[idx]
 
 
+
+# def construct_obs(self,)
+
+
 class OfflineCarlaDataset(Dataset):
     """ Offline dataset """
 
@@ -56,7 +60,7 @@ class OfflineCarlaDataset(Dataset):
                     use_images=True,
                     frame_stack=1,
                     obs_dim = 2,
-                    additional_state_dim = 1,
+                    additional_state_dim = 0,
                     action_dim = 2,
                     state_dim_out = 5):
 
@@ -86,6 +90,17 @@ class OfflineCarlaDataset(Dataset):
 
         self.waypoint_module = WaypointModule()
 
+        # Keys to accesss values in the dataset
+        steer_key = "control_steer"
+        speed_key = "speed"
+        wall_time_key = "wall_time"
+        vehicle_x_key = "ego_vehicle_x"
+        vehicle_y_key = "ego_vehicle_y"
+        vehicle_theta_key = "ego_vehicle_theta"
+        waypoints_key = "waypoints"
+        reward_key = "reward"
+        done_key = "done"
+        action_key = "action"
 
         print("Loading data")
         # Don't calculate gradients for descriptive statistics
@@ -119,7 +134,7 @@ class OfflineCarlaDataset(Dataset):
                     for j in range(self.frame_stack):
 
                         # [[speed_t, steer_t], [speed_t-1, steer_t-1], ...]
-                        obs.append(torch.FloatTensor([samples[i-j]['speed'], samples[i-j]['steer']]))
+                        obs.append(torch.FloatTensor([samples[i-j][steer_key], samples[i-j][speed_key]]))
 
                         # Check that none of the observations are nan, break if nan is present
                         if np.isnan(obs[-1]).any():
@@ -127,21 +142,21 @@ class OfflineCarlaDataset(Dataset):
                             break
 
                         # Additional state: delta time between each frame/timestep
-                        additional_state.append(torch.FloatTensor([samples[i-j+1]['wall'] - samples[i-j]['wall']]))
+                        # additional_state.append(torch.FloatTensor([samples[i-j+1]['wall'] - samples[i-j]['wall']]))
 
                         # Action taken
-                        action.append(torch.FloatTensor(samples[i-j]['action']))
+                        action.append(torch.FloatTensor(samples[i-j][action_key]))
 
 
 
                     # vehicle pose at timestep t
-                    vehicle_pose_cur = torch.FloatTensor([samples[i+1]['x'],
-                                                          samples[i+1]['y'],
-                                                          samples[i+1]['theta']])
+                    vehicle_pose_cur = torch.FloatTensor([samples[i+1][vehicle_x_key],
+                                                          samples[i+1][vehicle_y_key],
+                                                          samples[i+1][vehicle_theta_key]])
 
-                    vehicle_pose_prev = torch.FloatTensor([samples[i]['x'],
-                                                           samples[i]['y'],
-                                                           samples[i]['theta']])
+                    vehicle_pose_prev = torch.FloatTensor([samples[i][vehicle_x_key],
+                                                           samples[i][vehicle_y_key],
+                                                           samples[i][vehicle_theta_key]])
 
                     # split vehicle pose into location [x,y], and yaw
                     vehicle_loc_cur = vehicle_pose_cur[:2]
@@ -160,26 +175,26 @@ class OfflineCarlaDataset(Dataset):
                     delta = torch.FloatTensor([delta_x,
                                                 delta_y,
                                                 delta_theta,
-                                                samples[i+1]['speed'] - samples[i]['speed'],
-                                                samples[i+1]['steer'] - samples[i]['steer']])
-               
+                                                samples[i+1][steer_key] - samples[i][steer_key],
+                                                samples[i+1][speed_key] - samples[i][speed_key]])
+
                     # convert stacked frame list to torch tensor
                     self.obs.append(torch.stack(obs))
-                    self.additional_state.append(torch.stack(additional_state))
+                    # self.additional_state.append(torch.stack(additional_state))
                     self.actions.append(torch.stack(action))
                     self.delta.append(delta)
                     self.vehicle_poses.append(vehicle_pose_cur)
                     # get waypoints for current timestep
-                    waypoints = torch.FloatTensor(samples[i]['waypoints'])
+                    waypoints = torch.FloatTensor(samples[i][waypoints_key])
                     self.waypoint_module.store_waypoints(waypoints)
-            
+
                     # rewards, terminal at each timestep
-                    self.rewards.append(torch.FloatTensor([samples[i]['reward']]))
-                    self.terminals.append(samples[i]['done'])
+                    self.rewards.append(torch.FloatTensor([samples[i][reward_key]]))
+                    self.terminals.append(samples[i][done_key])
 
             self.obs = torch.stack(self.obs)
             self.actions = torch.stack(self.actions)
-            self.additional_state = torch.stack(self.additional_state)
+            # self.additional_state = torch.stack(self.additional_state)
             self.delta = torch.stack(self.delta)
             self.vehicle_poses = torch.stack(self.vehicle_poses)
 
@@ -197,9 +212,9 @@ class OfflineCarlaDataset(Dataset):
         '''
 
         obs = self.obs[idx]
-        additional_state = self.additional_state[idx]
+        # additional_state = self.additional_state[idx]
 
-        mlp_features = torch.cat([obs, additional_state.reshape(-1,1)], dim = 1)
+        mlp_features = obs #torch.cat([obs, additional_state.reshape(-1,1)], dim = 1)
         action = self.actions[idx]
         reward = self.rewards[idx]
         delta = self.delta[idx]
@@ -248,26 +263,26 @@ class OfflineCarlaDataModule():
 
         # normalize across all trajectories
         if self.normalize_data:
-            # number of total timesteps 
+            # number of total timesteps
             n = sum(len(d.rewards) for d in self.datasets)
-            
+
             traj_obs              = torch.vstack([d.obs[:,-1,:] for d in self.datasets])
             traj_actions          = torch.vstack([d.actions[:,-1,:] for d in self.datasets])
-            traj_additional_state = torch.vstack([d.additional_state[:,-1, :] for d in self.datasets])
+            # traj_additional_state = torch.vstack([d.additional_state[:,-1, :] for d in self.datasets])
             # no need to index because deltas are not stacked
             traj_delta            = torch.vstack([d.delta for d in self.datasets])
 
 
             # calculate mean, stdev across all trajectories
             self.normalization_stats["obs"]              = compute_mean_std(traj_obs,n)
-            self.normalization_stats["additional_state"] = compute_mean_std(traj_additional_state, n)
+            # self.normalization_stats["additional_state"] = compute_mean_std(traj_additional_state, n)
             self.normalization_stats["action"]           = compute_mean_std(traj_actions, n)
             self.normalization_stats["delta"]            = compute_mean_std(traj_delta, n)
 
             # normalize
             for i in range(len(self.datasets)):
                 self.datasets[i].obs= (self.datasets[i].obs - self.normalization_stats["obs"]["mean"]) / self.normalization_stats["obs"]["std"]
-                self.datasets[i].additional_state = (self.datasets[i].additional_state - self.normalization_stats["additional_state"]["mean"]) / self.normalization_stats["additional_state"]["std"]
+                # self.datasets[i].additional_state = (self.datasets[i].additional_state - self.normalization_stats["additional_state"]["mean"]) / self.normalization_stats["additional_state"]["std"]
                 self.datasets[i].actions =  (self.datasets[i].actions - self.normalization_stats["action"]["mean"]) / self.normalization_stats["action"]["std"]
                 self.datasets[i].delta = (self.datasets[i].delta - self.normalization_stats["delta"]["mean"]) / self.normalization_stats["delta"]["std"]
 
@@ -281,14 +296,14 @@ class OfflineCarlaDataModule():
         train_size = int(len(self.concat_dataset) * self.train_val_split)
         val_size = len(self.concat_dataset) - train_size
         self.train_data, self.val_data = torch.utils.data.random_split(self.concat_dataset, (train_size, val_size))
- 
+
     ''' This is used in FakeEnv for dynamics evaluation (with waypoints, batch size = 1) '''
     def sample_with_waypoints(self):
         # selects a trajectory path
         path_idx = np.random.randint(self.num_paths)
         dataset = self.datasets[path_idx]
-        
-        # selects a timestep along trajectory to sample from 
+
+        # selects a timestep along trajectory to sample from
         num_timesteps = len(dataset)
         idx = np.random.randint(num_timesteps)
         return dataset.sample_with_waypoints(idx)
