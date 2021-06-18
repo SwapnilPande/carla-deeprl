@@ -93,7 +93,7 @@ def n_step_eval(exp_name, logger, real_env, fake_env, policy, num_episodes, n = 
     # Store each step separately
     n_step_rollout_squared_errors = np.zeros(shape = (n,))
     n_step_reward_squared_errors = np.zeros(shape = (n,))
-    n_step_rollout_squared_errors = n_step_rollout_squared_errors + 500
+    n_step_rollout_squared_errors = n_step_rollout_squared_errors
     n_step_rollout_uncertainty = []
     obs_dim = real_env.observation_space.shape[0]
 
@@ -198,18 +198,16 @@ def n_step_eval(exp_name, logger, real_env, fake_env, policy, num_episodes, n = 
                 fake_rollout_steps = 0
 
         if(generate_videos):
-            print("generating_video")
             generate_video(logger, image_path = image_save_dir, save_path = video_save_dir, name = "rollout_{}".format(video_save_dir))
-        exit()
 
     rollout_mse = n_step_rollout_squared_errors/total_steps
     reward_mse = n_step_reward_squared_errors/total_steps
 
     rollout_mse = n_step_rollout_squared_errors
 
-    # for i in range(n):
-        # logger.log_scalar(exp_name + "_rollout_mse", rollout_mse[i], i)
-        # logger.log_scalar(exp_name + "_reward_mse", reward_mse[i], i)
+    for i in range(n):
+        logger.log_scalar(exp_name + "_rollout_mse", rollout_mse[i], i)
+        logger.log_scalar(exp_name + "_reward_mse", reward_mse[i], i)
 
 
 
