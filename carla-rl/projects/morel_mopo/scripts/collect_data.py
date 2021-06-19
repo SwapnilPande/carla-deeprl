@@ -39,9 +39,28 @@ class AutopilotPolicy:
     def __call__(self, obs):
         return self.env.get_autopilot_action()
 
+    
+class AutopilotRandomPolicy:
+    def __init__(self, env):
+        self.env = env
+
+    def __call__(self, obs):
+        return self.env.action_space.sample()
 
 
+class AutopilotNoisePolicy:
+    def __init__(self, env, steer_noise_std, speed_noise_std):
+        self.env = env
+        self.steer_noise_std = steer_noise_std
+        self.speed_noise_std = speed_noise_std
 
+    def __call__(self, obs):
+        res = self.env.get_autopilot_action()
+        res[0] += np.random.Generator.normal(loc=0.0, scale=self.steer_noise_std, size=1)
+        res[1] += np.random.Generator.normal(loc=0.0, scale=self.speed_noise_std, size=1)
+        return res
+
+    
 def collect_trajectory(env, save_dir, policy, max_path_length=5000):
     now = datetime.datetime.now()
     salt = np.random.randint(100)
