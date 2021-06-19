@@ -152,14 +152,25 @@ class NoCrashDenseTown01Config(NoCrashConfig):
         self.num_npc = 100
         self.city_name = "Town01"
 
-class NoCrashDenseTown01Config(NoCrashConfig):
+class NoCrashDenseTown02Config(NoCrashConfig):
     def __init__(self):
         super().__init__()
         self.scenarios = "no_crash_empty"
         self.num_npc = 70
-        self.city_name = "Town01"
+        self.city_name = "Town02"
 
 class LeaderboardConfig(BaseScenarioConfig):
     def __init__(self):
         super().__init__()
         self.min_num_eps_before_switch_town = 3
+ 
+
+class NoTrafficLightNoCrashEmptyConfig(NoCrashEmptyTown01Config):
+    def __init__(self):
+        super().__init__()
+        self.disable_traffic_light = True 
+
+class NoTrafficLightNoCrashDenseConfig(NoCrashDenseTown01Config):
+    def __init__(self):
+        super().__init__()
+        self.disable_traffic_light = True 
