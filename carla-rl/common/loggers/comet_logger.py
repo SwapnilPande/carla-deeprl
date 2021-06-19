@@ -45,6 +45,9 @@ class CometLogger(BaseLogger):
             self.logger = APIExperiment(api_key = self.config.api_key,
                                         previous_experiment = self.config.experiment_key)
 
+            # Get experiment name from existing comet experiment
+            self.experiment_name = self.logger.get_name()
+
             # Get assets that are available online
             self.get_available_assets()
 
@@ -55,13 +58,12 @@ class CometLogger(BaseLogger):
 
             # Variable storing whether we found the experiment locally
             self.experiment_exists_locally = False
+
+
             # We are on the same machine as the original experiment
             if(current_hostname == experiment_hostname):
                 # Now, see if we can find the experiment log locally already
                 # We check the experiment_key file in the log directory to see if it matches
-
-                # Get experiment name from existing comet experiment
-                self.experiment_name = self.logger.get_name()
 
                 # Get log_dir from config and cat the experiment name
                 self.log_dir = os.path.join(self.config.log_dir, self.experiment_name)

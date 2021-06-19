@@ -5,7 +5,7 @@ import glob
 
 # Import other necessary configs
 from environment.config.base_config import BaseConfig
-from projects.morel_mopo.config import observation_configs, action_configs, reward_configs, uncertainty_configs
+from environment.config import observation_configs, action_configs, reward_configs
 
 
 class BaseFakeEnvConfig(BaseConfig):
@@ -17,7 +17,6 @@ class BaseFakeEnvConfig(BaseConfig):
         self.reward_config = None
         self.obs_config = None
         self.action_config = None
-        self.uncertainty_config = None
 
         self.uncertainty_coeff = None
         self.timeout_steps = None
@@ -75,19 +74,19 @@ class BaseFakeEnvConfig(BaseConfig):
             # Invalid Argument
             raise Exception("Invalid argument for reward_config")
 
-        # Uncertainty Config
-        if(isinstance(uncertainty_config, str)):
-            # Get reference to object
-            config_type = getattr(uncertainty_configs, uncertainty_config)
+        # # Uncertainty Config
+        # if(isinstance(uncertainty_config, str)):
+        #     # Get reference to object
+        #     config_type = getattr(uncertainty_configs, uncertainty_config)
 
-            # Instantiate Object
-            self.uncertainty_config = config_type()
-        elif(isinstance(uncertainty_config, uncertainty_configs.BaseUncertaintyConfig)):
-            # Just save object, since it is already instantiated
-            self.uncertainty_config = uncertainty_config
-        else:
-            # Invalid Argument
-            raise Exception("Invalid argument for uncertainty_config")
+        #     # Instantiate Object
+        #     self.uncertainty_config = config_type()
+        # elif(isinstance(uncertainty_config, uncertainty_configs.BaseUncertaintyConfig)):
+        #     # Just save object, since it is already instantiated
+        #     self.uncertainty_config = uncertainty_config
+        # else:
+        #     # Invalid Argument
+        #     raise Exception("Invalid argument for uncertainty_config")
 
 
 class DefaultFakeEnvConfig(BaseFakeEnvConfig):
