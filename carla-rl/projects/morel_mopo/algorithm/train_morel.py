@@ -19,7 +19,7 @@ from stable_baselines3.common.env_util import DummyVecEnv
 # Environment
 from environment.env import CarlaEnv
 from environment.config.config import DefaultMainConfig
-EXPERIMENT_NAME = "vivian_NO_CRASH_EMPTY"
+EXPERIMENT_NAME = "vivian_morel_NO_CRASH_EMPTY"
 
 ########################################## logger  ####################################
 

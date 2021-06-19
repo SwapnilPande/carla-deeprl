@@ -155,7 +155,7 @@ def process_waypoints(waypoints, vehicle_pose, device):
     if len(next_waypoints_angles) > 0:
         angle = torch.mean(torch.FloatTensor(next_waypoints_angles))
     else:
-        print("No next waypoint found!")
+        # print("No next waypoint found!")
         angle = 0
     
 
@@ -281,11 +281,15 @@ class FakeEnv(gym.Env):
         # print('action', self.past_action)
         # print('waypoints', self.waypoints.shape)
         # print('vehicle pose', self.vehicle_pose)
+        self.waypoints = self.waypoints[:, :2] # get x,y coords for each waypoint
 
         self.steps_elapsed = 0
-
+        angle, dist_to_trajectory, next_waypoints, _, _, remaining_waypoints = process_waypoints(self.waypoints, self.vehicle_pose, self.device)
+        dist_to_trajectory = torch.Tensor([dist_to_trajectory]).to(self.device)
+        angle              = torch.Tensor([angle]).to(self.device)
         # reset to random observation
-        return self.observation_space.sample()
+        res = torch.cat([dist_to_trajectory, angle, torch.flatten(self.state[0, :])], dim=0).float().to(self.device)
+        return res.cpu().detach().numpy()
 
 
     def calc_disc(self, predictions):
@@ -358,7 +362,6 @@ class FakeEnv(gym.Env):
 
         ###################### calculate waypoint features (in global frame)  ##############################
 
-        self.waypoints = self.waypoints[:, :2] # get x,y coords for each waypoint
         angle, dist_to_trajectory, next_waypoints, _, _, remaining_waypoints= process_waypoints(self.waypoints, self.vehicle_pose, self.device)
         
         # check if at goal 

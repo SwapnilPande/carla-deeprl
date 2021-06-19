@@ -98,9 +98,12 @@ class Morel():
 
 
 
+
         print("---------------- Beginning Dynamics Training ----------------")
         dyn_ensemble_config = DefaultDynamicsEnsembleConfig()
         dyn_module_config = DefaultDynamicsModuleConfig()
+        print('gpu', dyn_ensemble_config.gpu)
+
         self.dynamics = DynamicsEnsemble(
             config=dyn_ensemble_config,
             gpu=dyn_ensemble_config.gpu,
@@ -139,7 +142,8 @@ class Morel():
         print("---------------- Beginning Policy Training ----------------")
 
         self.policy = PPO("MlpPolicy", self.env, verbose=1, carla_logger = self.logger)# , policy_epochs = self.policy_epochs)#, \
-        self.policy.learn(total_timesteps=25000)
+        
+        self.policy.learn(total_timesteps=10000000)
         print("---------------- End Policy Training  ----------------")
 
 
