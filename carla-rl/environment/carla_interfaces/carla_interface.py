@@ -301,7 +301,7 @@ class Carla910Interface_Leaderboard:
 
     def setup(self):
         # Start the carla server and get a client
-        # self.server.start()
+        self.server.start()
         self.client = self._spawn_client()
         print(self.client.get_available_maps())
         self.avail_map = {name[-6:]: name for name in self.client.get_available_maps()}
@@ -397,17 +397,10 @@ class Carla910Interface_Leaderboard:
         ### Delete old actors
         self.actor_fleet.destroy_actors()
 
-        if self.config.scenario_config.scenarios in ["long_straight", "long_straight_junction"] and not unseen:
-            # Way to test two scenarios with and without dynamic actors
-            # in training run in long_straight scenario
-            self.scenario_index = (self.scenario_index + 1) % self.config.scenario_config.num_episodes
-        # else:
-        #     self.scenario_index = index
-
         ## Set the new scenarios
-        if self.config.scenario_config.use_scenarios:
-            self._set_scenario(unseen=unseen, index=self.scenario_index, town=self.curr_town)
-            self.scenario_index += 1
+        # if self.config.scenario_config.use_scenarios:
+        self._set_scenario(unseen=unseen, index=self.scenario_index, town=self.curr_town)
+        self.scenario_index += 1
 
         ### Spawn new actors
         self.actor_fleet.spawn(self.source_transform, unseen)
@@ -552,7 +545,11 @@ class Carla910Interface_Leaderboard:
         # raise NotImplementedError()
         pass
 
+    def close(self):
+        self.actor_fleet.destroy_actors()
 
+        if self.server is not None:
+            self.server.close()
 
 
 

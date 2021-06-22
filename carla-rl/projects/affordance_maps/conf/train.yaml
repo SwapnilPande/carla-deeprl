@@ -49,7 +49,7 @@ online_epochs: 10000
 
 
 trainer:
-    precision: 16
+    # precision: 16
     gpus: ${gpu}
 
 hydra:

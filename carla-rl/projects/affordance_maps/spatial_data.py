@@ -19,7 +19,7 @@ from utils import CALIBRATION
 class SpatialDataset(Dataset):
 
     def __init__(self, path, use_images=True, T=5):
-        trajectory_paths = glob.glob('{}/*'.format(path))[:10]
+        trajectory_paths = glob.glob('{}/*'.format(path))
         assert len(trajectory_paths) > 0, 'No trajectories found in {}'.format(path)
 
         self.path = path
@@ -46,7 +46,7 @@ class SpatialDataset(Dataset):
                     sample = json.load(f)
                 samples.append(sample)
 
-            if traj_length < T: # (self.frame_stack + 1):
+            if traj_length < T:
                 continue
 
             for i in range(traj_length-T+1):

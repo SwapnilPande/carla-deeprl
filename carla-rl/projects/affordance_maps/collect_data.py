@@ -63,7 +63,7 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
     # camera_actor.calibration = calibration
 
     for step in range(max_path_length):
-        action = np.random.uniform([-.5, -1], [.5, 1], (2,)) # env.get_autopilot_action(speed)
+        action = env.get_autopilot_action(speed)
         next_obs, reward, done, info = env.step(action)
 
         rgb = info['sensor.camera.rgb/front']
@@ -149,6 +149,7 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
         reward_map = np.zeros((64,64))
         reward_map[pixel_xy[:,0].astype(int), pixel_xy[:,1].astype(int)] = labels
         reward_map = reward_map[::-1]
+        # reward_map = None
 
         experience = {
             'obs': obs.tolist(),
@@ -163,7 +164,7 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
             'speed': info['speed']
         }
 
-        np.save(os.path.join(save_path, 'world', '{:04d}.png'.format(step)), world_pts)
+        np.save(os.path.join(save_path, 'world', '{:04d}'.format(step)), world_pts)
         save_env_state(rgb, segmentation, topdown, reward_map, experience, save_path, step)
 
         if done:
@@ -225,7 +226,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--n_samples', type=int, default=100000)
-    parser.add_argument('--speed', type=float, default=.5)
+    parser.add_argument('--speed', type=float, default=.25)
     parser.add_argument('--path', type=str)
     args = parser.parse_args()
     main(args)

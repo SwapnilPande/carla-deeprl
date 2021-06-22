@@ -483,7 +483,7 @@ class ActorManager910_Leaderboard():
 
         # Agent uses proximity_threshold to detect traffic lights.
         # Hence we use traffic_light_proximity_threshold while creating an Agent.
-        vehicle_agent = Agent(self.vehicle_actor, self.config.scenario_config.traffic_light_proximity_threshold)
+        vehicle_agent = Agent(self.vehicle_actor, self.config.obs_config.traffic_light_proximity_threshold)
         return vehicle_agent
 
     def get_ego_vehicle_transform(self):

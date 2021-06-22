@@ -34,6 +34,9 @@ from environment.reward import compute_reward
 from environment.config.config import episode_measurements
 from environment.carla_interfaces.carla_interface import Carla910Interface, Carla910Interface_Leaderboard
 from environment import env_util as util
+from environment.config.config import DefaultMainConfig
+from environment.config.observation_configs import *
+from environment.config.scenario_configs import LeaderboardConfig
 
 
 try:
@@ -50,15 +53,14 @@ import psutil
 
 
 class CarlaEnv(gym.Env):
-    def __init__(self, config=None, vis_wrapper=None, vis_wrapper_vae=None, logger=None, log_dir=None):
+    def __init__(self, config=None, vis_wrapper=None, vis_wrapper_vae=None, logger=None, log_dir=''):
         self.carla_interface = None
 
         # Save and verify config
         if config is None:
             raise Exception("Empty Config")
         self.config = config
-        self.config.verify()
-
+        # self.config.verify()
 
         if 'challenge' in self.config.scenario_config.scenarios:
             self.carla_interface = Carla910Interface_Leaderboard(config, log_dir)
@@ -1005,6 +1007,11 @@ class CarlaEnv(gym.Env):
         self.dist_to_target_array = []
         self.red_light_dist_array = []
 
+        sensors = [k for k in self.config.obs_config.sensors if 'sensor.camera' in k]
+        for sensor_name in sensors:
+            image = carla_obs[sensor_name]['image']
+            self.episode_measurements[sensor_name] = image
+
         return self.create_observations(carla_obs)
 
 
@@ -1161,7 +1168,7 @@ class CarlaEnv(gym.Env):
         print("Vehicle transform:{0}".format(self.vehicle_actor.get_transform()))
         print("Vehicle velocity:{0}".format(self.vehicle_actor.get_velocity()))
 
-    def render(self, mode='rgb_array', camera='sensor.camera.rgb/top'):
+    def render(self, mode='rgb_array', camera='sensor.camera.rgb/front'):
         try:
             return self.episode_measurements[camera]
         except KeyError:
@@ -1274,11 +1281,15 @@ def plot_episode_info(path,
     plt.close()
 
 if __name__ == "__main__":
-    env = CarlaEnv(log_dir = "/home/scratch/swapnilp/carla_test")
+    config = DefaultMainConfig()
+    obs_config = LowDimObservationConfig()
+    scenarios_config = LeaderboardConfig()
+    config.populate_config(observation_config=obs_config, scenario_config=scenarios_config)
+    env = CarlaEnv(config=config)
     env.reset()
     for i in range(10000):
 
-        obs, reward, done, info = env.step(np.array([0,1.0]))
+        obs, reward, done, info = env.step(np.array([0,.5]))
 
         print(reward, done)
 
