@@ -72,8 +72,6 @@ class OneModel(nn.Module):
                 predict_reward = False,
                 n_neurons = 200,
                 n_hidden_layers = 4,
-                n_head_layers = 1,
-                drop_prob = 0.15,
                 activation = "swish"):
         
         #validate inputs:
@@ -81,7 +79,6 @@ class OneModel(nn.Module):
         assert state_dim_out > 0
         assert action_dim > 0
         assert n_neurons > 0
-        assert drop_prob >= 0 and drop_prob <= 1
 
         #initialization
         super(OneModel, self).__init__()
@@ -97,7 +94,7 @@ class OneModel(nn.Module):
         layer_list = []
 
         #input layer and activation
-        layer_list.append(FC(self.input_dim, self.n_neurons, weight_decay=0.000001)
+        layer_list.append(FC(self.input_dim, self.n_neurons, weight_decay=0.000001))
         layer_list.append(self.activation)
 
         #build hidden layers
@@ -105,40 +102,102 @@ class OneModel(nn.Module):
             layer_list.append(FC(self.n_neurons, self.n_neurons, weight_decay=0.000001))
             layer_list.append(self.activation)
 
+        #build output layer
+        layer_list.append(FC(self.n_neurons, self.output_dim, weight_decay=0.000001))
+
         # Register shared layers by putting them in a module list
         self.shared_layers = nn.ModuleList(layer_list)
 
-        # Next, build the head for the state prediction
-        layer_list = []
-        # For each hidden layer
-        for _ in range(n_head_layers):
-            # Add Linear layer
-            layer_list.append(nn.Linear(n_neurons, n_neurons))
-            # Add activation
-            layer_list.append(activation())
-            # Add dropout if enabled
-            if(drop_prob != 0):
-                layer_list.append(nn.Dropout(p = drop_prob))
-        layer_list.append(nn.Linear(n_neurons, self.state_dim_out))
 
-        # Register state prediction head layers by putting them in a module list
-        self.state_head = nn.ModuleList(layer_list)
+    def forward(self, x):
+        # Shared layers
+        for layer in self.shared_layers:
+            x = layer(x)
+        return x
 
-        # Build reward head if we're predicting reward
-        self.reward_head = None
-        if(predict_reward):
-            layer_list = []
-            # For each hidden layer
-            for _ in range(n_head_layers):
-                # Add Linear layer
-                layer_list.append(nn.Linear(n_neurons, n_neurons))
-                # Add activation
-                layer_list.append(activation())
-                # Add dropout if enabled
-                if(drop_prob != 0):
-                    layer_list.append(nn.Dropout(p = drop_prob))
-            layer_list.append(nn.Linear(n_neurons, self.state_dim_out))
 
-            # Register state prediction head layers by p
-            # Register state prediction head layers by putting them in a module list
-            self.reward_head = nn.ModuleList(layer_list)
+
+##################
+# Dynamics Model 
+##################
+'''
+Input:
+    drop_prob: disabled
+    activation: default is swish
+functionality:
+    __init__: initialize
+    forward: return the mean and variance of predictions all models when model_idx is None
+            otherwise, return the prediction of one specified model
+
+'''
+class DynamicsModel(nn.Module):
+    def __init__(self,
+                config,
+                data_module = None,
+                state_dim_in = None,
+                state_dim_out = None,
+                action_dim = None,
+                predict_reward = 1,
+                frame_stack = None,
+                norm_stats = None,
+                gpu = None,
+                logger = None,
+                log_freq = 100):
+        super(DynamicsModel, self).__init__()
+        
+        # initialization
+        if data_module:
+            self.data_module = data_module
+            self.state_dim_in = self.data_module.state_dim_in
+            self.state_dim_out = self.data_module.state_dim_out
+            self.action_dim = self.data_module.action_dim
+            self.frame_stack = self.data_module.frame_stack
+
+        else:
+            self.data_module = None
+            self.state_dim_in = state_dim_in
+            self.state_dim_out = state_dim_out
+            self.action_dim = action_dim
+            self.frame_stack = frame_stack
+        
+        #initialize variables according to paper
+        self.n_neurons = 200
+        self.n_hidden_layers = 4
+        self.activation = "swish"
+        self.predict_reward = predict_reward
+
+            
+        # Build n models
+        self.models = nn.ModuleList()
+        for i in range(self.n_models):
+            self.models.append(OneModel(
+                state_dim_in = self.state_dim_in,
+                state_dim_out = self.state_dim_out,
+                action_dim = self.action_dim,
+                frame_stack = self.frame_stack,
+                predict_reward = self.predict_reward,
+                n_neurons = self.n_neurons,
+                n_hidden_layers = self.n_hidden_layers,
+                activation = self.activation
+            ))
+            self.models[-1].to(self.device)
+
+
+    
+    def forward(self, x, model_idx=None):
+        if model_idx is None:
+            # predict for all models
+            predictions = [model(x) for model in self.models]
+            mean = sum(predictions)/self.n_models
+            var = sum((i - mean) ** 2 for i in predictions) / self.n_models
+            return mean, var
+        else:
+            # predict for specified model
+            predictions = self.models[i](x)
+            return predictions
+
+
+
+
+
+        
