@@ -183,7 +183,6 @@ class DynamicsModel(nn.Module):
             self.models[-1].to(self.device)
 
 
-    
     def forward(self, x, model_idx=None):
         if model_idx is None:
             # predict for all models
@@ -193,7 +192,7 @@ class DynamicsModel(nn.Module):
             return mean, var
         else:
             # predict for specified model
-            predictions = self.models[i](x)
+            predictions = self.models[model_idx](x)
             return predictions
 
 
