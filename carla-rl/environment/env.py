@@ -210,11 +210,6 @@ class CarlaEnv(gym.Env):
                 self.episode_measurements['control_reverse'] = carla_obs['control_reverse']
                 self.episode_measurements['control_hand_brake'] = carla_obs['control_hand_brake']
 
-            sensors = [k for k in self.config.obs_config.sensors if 'sensor.camera' in k]
-            for sensor_name in sensors:
-                image = carla_obs[sensor_name]['image']
-                self.episode_measurements[sensor_name] = image
-
             # rgb_bev = carla_obs['sensor.camera.rgb/top']['image']
             # self.episode_measurements['rgb_bev'] = rgb_bev
             # rgb_front = carla_obs['sensor.camera.rgb/front']['image']
@@ -312,6 +307,11 @@ class CarlaEnv(gym.Env):
         self.total_reward += reward
         self.episode_measurements['reward'] = reward
         self.episode_measurements['total_reward'] = self.total_reward
+
+        sensors = [k for k in self.config.obs_config.sensors if 'sensor.camera' in k]
+        for sensor_name in sensors:
+            image = carla_obs[sensor_name]['image']
+            self.episode_measurements[sensor_name] = image
 
         gym_obs = self.create_observations(carla_obs)
 
@@ -1170,7 +1170,7 @@ class CarlaEnv(gym.Env):
 
     def render(self, mode='rgb_array', camera='sensor.camera.rgb/front'):
         try:
-            return self.episode_measurements[camera]
+            return self.episode_measurements[camera].copy()
         except KeyError:
             print('Cannot render {} -- key error'.format(camera))
             return None

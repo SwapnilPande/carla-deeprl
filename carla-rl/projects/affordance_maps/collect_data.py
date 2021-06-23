@@ -15,7 +15,8 @@ from shapely.geometry import Point, Polygon
 from environment import CarlaEnv
 from environment.config.config import DefaultMainConfig
 from environment.config.observation_configs import *
-# from agents.navigation.behavior_agent import BehaviorAgent
+from environment.config.scenario_configs import *
+from environment.config.action_configs import *
 
 
 def rotate_points(points, angle):
@@ -119,32 +120,35 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
 
         # check for vehicle collisions
         actors = [actor for actor in env.carla_interface.actor_fleet.actor_list 
-            if 'vehicle' in actor.type_id and actor.get_transform().location.distance(base_transform.location) < 15]
+            if 'vehicle' in actor.type_id 
+            and actor.get_transform().location.distance(base_transform.location) < 15 
+            and actor != ego_actor]
 
-        bounding_boxes = [[(actor.bounding_box.extent.x, actor.bounding_box.extent.y),
-                           (actor.bounding_box.extent.x, -actor.bounding_box.extent.y),
-                           (-actor.bounding_box.extent.x, -actor.bounding_box.extent.y),
-                           (-actor.bounding_box.extent.x, actor.bounding_box.extent.y)] for actor in actors]
-        vehicles = [(actor.get_transform().location.x, actor.get_transform().location.y) for actor in actors]
+        if len(actors) > 0:
+            bounding_boxes = [[(actor.bounding_box.extent.x, actor.bounding_box.extent.y),
+                            (actor.bounding_box.extent.x, -actor.bounding_box.extent.y),
+                            (-actor.bounding_box.extent.x, -actor.bounding_box.extent.y),
+                            (-actor.bounding_box.extent.x, actor.bounding_box.extent.y)] for actor in actors]
+            vehicles = [(actor.get_transform().location.x, actor.get_transform().location.y) for actor in actors]
 
-        bounding_boxes = np.array(bounding_boxes)
-        vehicles = np.array(vehicles)
-        num_vehicles = len(vehicles)
+            bounding_boxes = np.array(bounding_boxes)
+            vehicles = np.array(vehicles)
+            num_vehicles = len(vehicles)
 
-        for i in range(len(actors)):
-            yaw = actors[i].get_transform().rotation.yaw
-            bounding_boxes[i] = rotate_points(bounding_boxes[i], yaw)
+            for i in range(len(actors)):
+                yaw = actors[i].get_transform().rotation.yaw
+                bounding_boxes[i] = rotate_points(bounding_boxes[i], yaw)
 
-        vehicles = bounding_boxes + vehicles[:,None,:]
-        points = [Point(positions[i,0], positions[i,1]) for i in range(len(positions))]
-        mask = np.zeros(len(labels))
+            vehicles = bounding_boxes + vehicles[:,None,:]
+            points = [Point(positions[i,0], positions[i,1]) for i in range(len(positions))]
+            mask = np.zeros(len(labels))
 
-        for i in range(len(actors)):
-            poly = Polygon([(vehicles[i,j,0], vehicles[i,j,1]) for j in range(4)])
-            in_poly = np.array([point.within(poly) for point in points])
-            mask = np.logical_or(mask, in_poly)
+            for i in range(len(actors)):
+                poly = Polygon([(vehicles[i,j,0], vehicles[i,j,1]) for j in range(4)])
+                in_poly = np.array([point.within(poly) for point in points])
+                mask = np.logical_or(mask, in_poly)
 
-        labels[mask] = 3
+            labels[mask] = 3
 
         reward_map = np.zeros((64,64))
         reward_map[pixel_xy[:,0].astype(int), pixel_xy[:,1].astype(int)] = labels
@@ -202,6 +206,8 @@ def transform_to_list(transform):
 
 def main(args):
     config = DefaultMainConfig()
+    config.server_fps = 20
+
     obs_config = LowDimObservationConfig()
     obs_config.sensors['sensor.camera.rgb/top'] = {
         'x':13.0,
@@ -211,7 +217,13 @@ def main(args):
         'sensor_y_res':'64',
         'fov':'90', \
         'sensor_tick': '0.0'}
-    config.populate_config(observation_config=obs_config)
+
+    scenario_config = NoCrashDenseTown01Config()
+
+    action_config = MergedSpeedScaledTanhConfig()
+    action_config.frame_skip = 5
+
+    config.populate_config(observation_config=obs_config, scenario_config=scenario_config)
     env = CarlaEnv(config=config, log_dir=args.path + '/')
     try:
         total_samples = 0
@@ -226,7 +238,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--n_samples', type=int, default=100000)
-    parser.add_argument('--speed', type=float, default=.25)
+    parser.add_argument('--speed', type=float, default=1.)
     parser.add_argument('--path', type=str)
     args = parser.parse_args()
     main(args)

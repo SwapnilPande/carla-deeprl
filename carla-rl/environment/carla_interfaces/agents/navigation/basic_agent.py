@@ -91,9 +91,6 @@ class BasicAgent(Agent):
         return route
 
     def check_for_hazard(self):
-        # is there an obstacle in front of us?
-        hazard_detected = False
-
         # retrieve relevant elements for safe navigation, i.e.: traffic lights
         # and other vehicles
         actor_list = self._world.get_actors()
@@ -106,9 +103,8 @@ class BasicAgent(Agent):
             # if debug:
             #     print('!!! VEHICLE BLOCKING AHEAD [{}])'.format(vehicle.id))
 
-            # self._state = AgentState.BLOCKED_BY_VEHICLE
-            # hazard_detected = True
-            pass
+            self._state = AgentState.BLOCKED_BY_VEHICLE
+            return True
 
         # check for the state of the traffic lights
         light_state, traffic_light = self._is_light_red(lights_list)
@@ -117,8 +113,8 @@ class BasicAgent(Agent):
             #     print('=== RED LIGHT AHEAD [{}])'.format(traffic_light.id))
 
             self._state = AgentState.BLOCKED_RED_LIGHT
-            hazard_detected = True
-        return hazard_detected
+            return True
+        return False
 
     def run_step(self, debug=False):
         """
