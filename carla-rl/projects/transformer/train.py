@@ -62,12 +62,12 @@ class EvaluationCallback(Callback):
         state_std = torch.tensor([1]).to(device=device)
 
         state = self.env.reset()
-        image = self.env.render(camera='sensor.camera.rgb/topdown')
+        frame = self.env.render(camera='sensor.camera.rgb/topdown')
 
         # we keep all the histories on the device
         # note that the latest action and reward will be "padding"
         states = torch.from_numpy(state).reshape(1, 8).to(device=device, dtype=torch.float32)
-        images = preprocess_rgb(image)[None].to(device=device)
+        frames = [frame.copy()] # preprocess_rgb(image)[None].to(device=device)
         actions = torch.zeros((0, 2), device=device, dtype=torch.float32)
         # rewards = torch.zeros(0, device=device, dtype=torch.float32)
 
@@ -87,11 +87,9 @@ class EvaluationCallback(Callback):
             with torch.no_grad():
                 action = model.get_action(
                     (states.to(dtype=torch.float32) - state_mean) / state_std,
-                    images,
                     actions.to(dtype=torch.float32),
                     None,
                     target_return.to(dtype=torch.float32)
-                    # timesteps.to(dtype=torch.long),
                 )
                 actions[-1] = action
                 action = action.detach().cpu().numpy()
@@ -101,17 +99,14 @@ class EvaluationCallback(Callback):
             cur_state = torch.from_numpy(state).to(device=device).reshape(1, 8)
             states = torch.cat([states, cur_state], dim=0)[-25:]
 
-            image = self.env.render(camera='sensor.camera.rgb/topdown')
-            image = preprocess_rgb(image).to(device=device)[None]
-            images = torch.cat([images, image], dim=0)[-25:]
-            # rewards[-1] = reward
+            frame = self.env.render(camera='sensor.camera.rgb/topdown')
+            # image = preprocess_rgb(image).to(device=device)[None]
+            # images = torch.cat([images, image], dim=0)[-25:]
+            frames.append(frame)
 
             pred_return = target_return[0,-1]
             target_return = torch.cat(
                 [target_return, pred_return.reshape(1, 1)], dim=0)[-25:]
-            # timesteps = torch.cat(
-            #     [timesteps,
-            #     torch.ones((1, 1), device=device, dtype=torch.long) * (t+1)], dim=0)[-25:]
 
             episode_return += reward
             episode_length += 1
@@ -119,10 +114,13 @@ class EvaluationCallback(Callback):
             if done:
                 break
 
+        video_path = os.path.join(os.getcwd(), 'epoch_{}.avi'.format(epoch))
+        self.save_video(frames, video_path)
+
     def save_video(self, frames, fname, fps=15):
         frames = [np.array(frame) for frame in frames]
         height, width = frames[0].shape[0], frames[0].shape[1]
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        fourcc = cv2.VideoWriter_fourcc(*'XVID')
         out = cv2.VideoWriter(fname, fourcc, fps, (width, height))
         for frame in frames:
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -190,8 +188,7 @@ def main(cfg):
                 
         #     trainer.fit(agent, online_data_module)
     finally:
-        pass
-        # env.close()
+        env.close()
 
     print('Done')
 

@@ -61,7 +61,7 @@ class DecisionTransformer(TrajectoryModel):
             nn.Flatten()
         )
 
-    def forward(self, states, images, actions, rewards, returns_to_go, attention_mask=None):
+    def forward(self, states, actions, rewards, returns_to_go, attention_mask=None):
 
         batch_size, seq_length = states.shape[0], states.shape[1]
 
@@ -72,8 +72,8 @@ class DecisionTransformer(TrajectoryModel):
         timesteps = torch.LongTensor(torch.arange(seq_length)).to(self.device)
 
         # embed each modality with a different head
-        image_embeddings = self.embed_image(images.reshape(-1,3,64,64)).reshape(batch_size, seq_length, -1)
-        state_embeddings = self.embed_state(states) + image_embeddings
+        # image_embeddings = self.embed_image(images.reshape(-1,3,64,64)).reshape(batch_size, seq_length, -1)
+        state_embeddings = self.embed_state(states) # + image_embeddings
         action_embeddings = self.embed_action(actions)
         returns_embeddings = self.embed_return(returns_to_go)
         time_embeddings = self.embed_timestep(timesteps)
@@ -113,7 +113,7 @@ class DecisionTransformer(TrajectoryModel):
 
         return state_preds, action_preds, return_preds
 
-    def get_action(self, states, images, actions, rewards, returns_to_go, **kwargs):
+    def get_action(self, states, actions, rewards, returns_to_go, **kwargs):
         # we don't care about the past rewards in this model
 
         states = states.reshape(1, -1, self.state_dim)
@@ -148,7 +148,7 @@ class DecisionTransformer(TrajectoryModel):
             attention_mask = None
 
         _, action_preds, return_preds = self.forward(
-            states, images, actions, None, returns_to_go, attention_mask=attention_mask, **kwargs)
+            states, actions, None, returns_to_go, attention_mask=attention_mask, **kwargs)
 
         return action_preds[0,-1]
 
@@ -156,9 +156,9 @@ class DecisionTransformer(TrajectoryModel):
         return Adam(self.parameters(), lr=1e-3)
 
     def training_step(self, batch, batch_idx):
-        states, images, actions, returns_to_go = batch
+        states, actions, returns_to_go = batch
 
-        pred_states, pred_actions, pred_returns = self.forward(states, images, actions, None, returns_to_go)
+        pred_states, pred_actions, pred_returns = self.forward(states, actions, None, returns_to_go)
 
         action_loss = F.mse_loss(actions, pred_actions)
 
@@ -172,21 +172,16 @@ class DecisionTransformer(TrajectoryModel):
     def validation_step(self, batch, batch_idx):
         return
 
-        states, images, actions, returns_to_go = batch
+        # states, images, actions, returns_to_go = batch
 
-        pred_states, pred_actions, pred_returns = self.forward(states, actions, None, returns_to_go, timesteps)
+        # pred_states, pred_actions, pred_returns = self.forward(states, actions, None, returns_to_go, timesteps)
 
-        state_loss = F.mse_loss(states, pred_states)
-        action_loss = F.mse_loss(actions, pred_actions)
-        return_loss = F.mse_loss(returns_to_go, pred_returns)
-        # loss = state_loss + action_loss + return_loss
+        # state_loss = F.mse_loss(states, pred_states)
+        # action_loss = F.mse_loss(actions, pred_actions)
+        # return_loss = F.mse_loss(returns_to_go, pred_returns)
+        # # loss = state_loss + action_loss + return_loss
 
-        self.log('val/state_loss', state_loss)
-        self.log('val/action_loss', action_loss)
-        self.log('val/return_loss', return_loss)
-        # self.log('val/loss', loss)
-
-
-if __name__ == '__main__':
-    dt = DecisionTransformer(8, 2, 128)
-    out = dt.forward(torch.rand(1,5,8), torch.rand(1,5,2), None, torch.rand(1,5,1), torch.arange(5))
+        # self.log('val/state_loss', state_loss)
+        # self.log('val/action_loss', action_loss)
+        # self.log('val/return_loss', return_loss)
+        # # self.log('val/loss', loss)

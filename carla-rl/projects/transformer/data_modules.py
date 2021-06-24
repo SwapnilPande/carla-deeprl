@@ -26,11 +26,11 @@ class TransformerDataset(Dataset):
         self.obs, self.actions, self.rewards = [], [], []
         self.timesteps = []
 
-        self.image_paths = []
+        # self.image_paths = []
 
         for trajectory_path in trajectory_paths:
             samples = []
-            image_paths = sorted(glob.glob('{}/topdown/*.png'.format(trajectory_path)))
+            # image_paths = sorted(glob.glob('{}/topdown/*.png'.format(trajectory_path)))
             json_paths = sorted(glob.glob('{}/measurements/*.json'.format(trajectory_path)))
             traj_length = len(json_paths)
 
@@ -57,8 +57,8 @@ class TransformerDataset(Dataset):
                 self.rewards.append(reward)
                 # self.timesteps.append(timesteps)
 
-                image_path = [image_paths[i+t] for t in range(K)]
-                self.image_paths.append(image_path)
+                # image_path = [image_paths[i+t] for t in range(K)]
+                # self.image_paths.append(image_path)
 
         print('Number of samples: {}'.format(len(self)))
 
@@ -73,9 +73,9 @@ class TransformerDataset(Dataset):
         rewards = torch.FloatTensor(rewards)[...,None]
         # timesteps = torch.LongTensor(timesteps).reshape(-1)
 
-        images = torch.stack([preprocess_rgb(cv2.imread(path)) for path in self.image_paths[idx]], dim=0)
+        # images = torch.stack([preprocess_rgb(cv2.imread(path)) for path in self.image_paths[idx]], dim=0)
 
-        return obs, images, actions, rewards #, timesteps
+        return obs, actions, rewards #, timesteps
 
     def __len__(self):
         return len(self.rewards)
@@ -98,16 +98,17 @@ class TransformerDataModule(pl.LightningDataModule):
 
     def setup(self, stage):
         datasets = [TransformerDataset(path) for path in self.paths]
-        self.dataset = torch.utils.data.ConcatDataset(datasets)
-        train_size = int(len(self.dataset) * .9)
-        val_size = len(self.dataset) - train_size
-        self.train_data, self.val_data = torch.utils.data.random_split(self.dataset, (train_size, val_size))
+        # self.dataset = torch.utils.data.ConcatDataset(datasets)
+        # train_size = int(len(self.dataset) * .9)
+        # val_size = len(self.dataset) - train_size
+        # self.train_data, self.val_data = torch.utils.data.random_split(self.dataset, (train_size, val_size))
+        self.train_data = torch.utils.data.ConcatDataset(datasets)
 
     def train_dataloader(self):
         return DataLoader(self.train_data, batch_size=self.batch_size, shuffle=True, num_workers=4)
 
-    def val_dataloader(self):
-        return DataLoader(self.val_data, batch_size=self.batch_size, shuffle=False, num_workers=4)
+    # def val_dataloader(self):
+    #     return DataLoader(self.val_data, batch_size=self.batch_size, shuffle=False, num_workers=4)
 
 
 if __name__ == '__main__':
