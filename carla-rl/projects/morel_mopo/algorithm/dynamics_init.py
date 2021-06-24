@@ -14,7 +14,8 @@ from projects.morel_mopo.config.dynamics_ensemble_config import BaseDynamicsEnse
 '''
 1. The dropout probability is set to zero
 2. Return a distribution rather than number
-3. TODO: The loss function is changed
+3. Changed the activation function
+4. TODO: The loss function is changed
 '''
 
 class DynamicsMLP(nn.Module):
@@ -24,11 +25,11 @@ class DynamicsMLP(nn.Module):
                 action_dim,
                 frame_stack,
                 predict_reward = False,
-                n_neurons = 1024,
+                n_neurons = 200,
                 n_hidden_layers = 4,
                 n_head_layers = 1,
                 drop_prob = 0,
-                activation = nn.ReLU):
+                activation = nn.SiLU):
         super(DynamicsMLP, self).__init__()
 
         # Validate inputs
