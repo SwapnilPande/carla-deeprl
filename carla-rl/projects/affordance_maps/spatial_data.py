@@ -77,7 +77,7 @@ class SpatialDataset(Dataset):
         ego_transforms = self.ego_transforms[idx]
         camera_transform = self.camera_transforms[idx]
 
-        image = preprocess_rgb(cv2.imread(image_path))
+        # image = preprocess_rgb(cv2.imread(image_path))
         rewards = [(preprocess_rgb(cv2.imread(reward_path)) * 255)[0] for reward_path in reward_paths]
         # terminals = torch.LongTensor(terminals)
         world_pts = torch.FloatTensor([np.load(world_pts_path) for world_pts_path in world_pts_paths])
@@ -110,7 +110,7 @@ class SpatialDataset(Dataset):
         # plt.show()
 
         # return image, reward_camera_pts, rewards, terminals
-        return image, rewards, world_pts
+        return image_path, rewards, world_pts
 
     def __len__(self):
         return len(self.rewards)
