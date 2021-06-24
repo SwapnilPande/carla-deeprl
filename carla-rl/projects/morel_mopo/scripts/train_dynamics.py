@@ -2,11 +2,12 @@ import sys
 import os
 import argparse
 
+import ipdb; ipdb.set_trace()
 # Setup imports for algorithm and environment
 sys.path.append(os.path.abspath(os.path.join('../../../')))
 
-from common.loggers.comet_logger import CometLogger
 from projects.morel_mopo.config.logger_config import CometLoggerConfig
+from common.loggers.comet_logger import CometLogger
 from projects.morel_mopo.config.dynamics_ensemble_config import DefaultDynamicsEnsembleConfig
 from projects.morel_mopo.algorithm.dynamics_ensemble_module import DynamicsEnsemble
 from projects.morel_mopo.algorithm.data_modules import OfflineCarlaDataModule
@@ -24,7 +25,7 @@ def main(args):
     logger = CometLogger(logger_conf)
     class TempDataModuleConfig():
         def __init__(self):
-            self.dataset_paths = ["/zfsauton/datasets/ArgoRL/swapnilp/carla-rl_datasets/no_crash_empty"]
+            self.dataset_paths = ["/zfsauton/datasets/ArgoRL/ruiqiw1/collect_random"]
             self.batch_size = 512
             self.frame_stack = 2
             self.num_workers = 2
@@ -46,7 +47,7 @@ def main(args):
 
 
     # Train for 500 epochs
-    dynamics.train(500)
+    dynamics.train(200)
 
 
     #############################################################
