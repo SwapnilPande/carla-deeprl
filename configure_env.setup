@@ -1,0 +1,10 @@
+export CARLA_RL=$HOME/carla-deeprl
+export LIBS=$CARLA_RL/libs
+export PATH=$LIBS/nasm/bin:$LIBS/libjpeg8/bin:$LIBS/libpng/bin:$LIBS/libjpeg/bin:$LIBS/libjpeglua/bin:$PATH
+export LD_LIBRARY_PATH=$LIBS/libjpeg8/lib:$LIBS/libpng/lib:$LIBS/libjpeg/lib64:$LIBS/libjpeglua/lib:$LD_LIBRARY_PATH
+export C_INCLUDE_PATH=$LIBS/libjpeg8/include:$LIBS/libpng/include:$LIBS/libjpeg/include:$LIBS/libjpeglua/include:$C_INCLUDE_PATH
+export CPLUS_INCLUDE_PATH=$LIBS/libjpeg8/include:$LIBS/libpng/include:$LIBS/libjpeg/include:$LIBS/libjpeglua/include:$CPLUS_INCLUDE_PATH
+export CARLA_9_4_PATH=$HOME/carla910
+export SDL_AUDIODRIVER='dsp'
+export CARLA_ROOT=$HOME/carla910
+export PYTHONPATH=$PYTHONPATH:$HOME/carla910/PythonAPI/carla/dist/carla-0.9.10-py3.7-linux-x86_64.egg
