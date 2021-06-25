@@ -68,8 +68,7 @@ TODO
 
 ## Before You Start
 You should read the following docs to understand how to configure the environment and the logger.
-
-INSERT CONFIG DOCS HERE
+* [Environment Config Documentation](/carla-rl/environment/config/README.md)
 
 INSERT LOGGER DOCS HERE
 
