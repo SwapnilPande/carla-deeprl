@@ -19,7 +19,7 @@ import gym
 from algorithms import PPO
 from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.env_util import DummyVecEnv
-from common.loggers.logger_callbacks import PPOLoggerCallback
+#from common.loggers.logger_callbacks import PPOLoggerCallback
 
 
 
@@ -39,9 +39,28 @@ class AutopilotPolicy:
     def __call__(self, obs):
         return self.env.get_autopilot_action()
 
+    
+class AutopilotRandomPolicy:
+    def __init__(self, env):
+        self.env = env
+
+    def __call__(self, obs):
+        return self.env.action_space.sample()
 
 
+class AutopilotNoisePolicy:
+    def __init__(self, env, steer_noise_std, speed_noise_std):
+        self.env = env
+        self.steer_noise_std = steer_noise_std
+        self.speed_noise_std = speed_noise_std
 
+    def __call__(self, obs):
+        res = self.env.get_autopilot_action()
+        res[0] += np.random.normal(loc=0.0, scale=self.steer_noise_std, size=1)[0]
+        res[1] += np.random.normal(loc=0.0, scale=self.speed_noise_std, size=1)[0]
+        return res
+
+    
 def collect_trajectory(env, save_dir, policy, max_path_length=5000):
     now = datetime.datetime.now()
     salt = np.random.randint(100)
@@ -134,7 +153,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--gpu', type=str, default='0')
     parser.add_argument('--n_samples', type=int, default=100000)
-    parser.add_argument('--behavior', type=str, default='cautious')
+    #parser.add_argument('--behavior', type=str, default='cautious')
     parser.add_argument('--path', type=str)
     args = parser.parse_args()
     main(args)
