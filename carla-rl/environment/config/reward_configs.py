@@ -56,13 +56,13 @@ class Simple2RewardConfig(BaseRewardConfig):
         self.const_collision_penalty = 250
 
         # Penalty for collision proportional to speed
-        self.collision_penalty_speed_coeff = 250
+        self.collision_penalty_speed_coeff = 0
 
         # Penalty for red light violation
         self.const_light_penalty = 250
 
         # Penalty for red light infraction proportional to speed
-        self.light_penalty_speed_coeff = 250
+        self.light_penalty_speed_coeff = 0
 
         # Penalty for steer reward
         self.steer_penalty_coeff =  0

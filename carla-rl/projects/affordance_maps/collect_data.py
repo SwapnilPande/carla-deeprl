@@ -52,19 +52,20 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
 
     obs = env.reset()
 
-    calibration = np.array([[32, 0, 32],
-                            [0, 32, 32],
+    calibration = np.array([[8, 0, 8],
+                            [0, 8, 8],
                             [0,  0,  1]])
 
     # calibration = np.array([[64, 0, 64],
     #                         [0, 64, 64],
     #                         [0,  0,  1]])
     ego_actor = env.carla_interface.get_ego_vehicle()._vehicle
-    camera_actor = env.carla_interface.actor_fleet.sensor_manager.sensors['sensor.camera.rgb/top'].sensor
+    camera_actor = env.carla_interface.actor_fleet.sensor_manager.sensors['sensor.camera.rgb/map'].sensor
     # camera_actor.calibration = calibration
 
     for step in range(max_path_length):
         action = env.get_autopilot_action(speed)
+        # action = np.random.uniform([-.5,-1.],[.5,1.], (2,))
         next_obs, reward, done, info = env.step(action)
 
         rgb = info['sensor.camera.rgb/front']
@@ -78,8 +79,8 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
         base_transform = ego_actor.get_transform()
         base_waypoint = env.carla_interface.map.get_waypoint(base_transform.location, project_to_road=True)
 
-        pixel_x, pixel_y = np.meshgrid(np.arange(64), np.arange(64))
-        pixel_xy = np.stack([pixel_x.flatten(), pixel_y.flatten(), np.ones(64*64)], axis=-1)
+        pixel_x, pixel_y = np.meshgrid(np.arange(16), np.arange(16))
+        pixel_xy = np.stack([pixel_x.flatten(), pixel_y.flatten(), np.ones(16*16)], axis=-1)
         world_pts = np.linalg.inv(calibration).dot(pixel_xy.T).T[:,:2]
 
         # yaw = np.radians(((base_transform.rotation.yaw + 180) % 360) - 180)
@@ -150,7 +151,7 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
 
             labels[mask] = 3
 
-        reward_map = np.zeros((64,64))
+        reward_map = np.zeros((16,16))
         reward_map[pixel_xy[:,0].astype(int), pixel_xy[:,1].astype(int)] = labels
         reward_map = reward_map[::-1]
         # reward_map = None
@@ -215,6 +216,14 @@ def main(args):
         'pitch':270,
         'sensor_x_res':'64',
         'sensor_y_res':'64',
+        'fov':'90', \
+        'sensor_tick': '0.0'}
+    obs_config.sensors['sensor.camera.rgb/map'] = {
+        'x':13.0,
+        'z':18.0,
+        'pitch':270,
+        'sensor_x_res':'16',
+        'sensor_y_res':'16',
         'fov':'90', \
         'sensor_tick': '0.0'}
 

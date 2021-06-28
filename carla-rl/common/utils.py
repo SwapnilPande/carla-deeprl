@@ -110,7 +110,7 @@ CALIBRATION = np.array([[548.99,   0., 256.],
 #                         [  0.,   0.,   1.]])
 
 
-def preprocess_rgb(img, grayscale=False):
+def preprocess_rgb(img, grayscale=False, image_size=RGB_IMAGE_SIZE):
     """Preprocess RGB image
 
     Resizes image and converts to normalized tensor.
@@ -126,7 +126,7 @@ def preprocess_rgb(img, grayscale=False):
         Processed image of size (3, H, W) or (1, H, W)
     """
     img = TF.to_pil_image(img)
-    img = TF.resize(img, RGB_IMAGE_SIZE)
+    img = TF.resize(img, image_size)
     if grayscale:
         img = TF.to_grayscale(img)
     img = TF.to_tensor(img)

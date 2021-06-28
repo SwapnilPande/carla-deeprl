@@ -55,9 +55,9 @@ def compute_reward(prev, current, config, verbose=False):
         is_collision = obs_collision or current["out_of_road"]
 
         # count any lane change also as a collision
-        if config.scenario_config.disable_lane_invasion_collision:
-            lane_change = current['num_laneintersections'] > 0
-            is_collision = is_collision or lane_change
+        # if config.scenario_config.disable_lane_invasion_collision:
+        lane_change = current['num_laneintersections'] > 0
+        is_collision = is_collision or lane_change
 
     current['obs_collision'] = obs_collision
     current['lane_change'] = lane_change

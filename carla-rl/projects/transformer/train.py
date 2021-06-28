@@ -30,6 +30,8 @@ from models.decision_transformer import DecisionTransformer
 from environment import CarlaEnv
 from environment.config.config import DefaultMainConfig
 from environment.config.observation_configs import *
+from environment.config.scenario_configs import *
+from environment.config.action_configs import *
 from utils import preprocess_rgb, preprocess_topdown
 
 
@@ -111,8 +113,13 @@ class EvaluationCallback(Callback):
             episode_return += reward
             episode_length += 1
 
+            print(episode_length, reward)
+
             if done:
                 break
+
+        # print(episode_return, episode_length)
+        self.log('val/episode_return', episode_return)
 
         video_path = os.path.join(os.getcwd(), 'epoch_{}.avi'.format(epoch))
         self.save_video(frames, video_path)
@@ -135,6 +142,8 @@ def main(cfg):
     agent = DecisionTransformer(8, 2, 128)
 
     config = DefaultMainConfig()
+    config.server_fps = 20
+
     obs_config = LowDimObservationConfig()
     obs_config.sensors['sensor.camera.rgb/topdown'] = {
         'x':13.0,
@@ -144,7 +153,13 @@ def main(cfg):
         'sensor_y_res':'64',
         'fov':'90', \
         'sensor_tick': '0.0'}
-    config.populate_config(observation_config=obs_config)
+
+    scenario_config = NoCrashDenseTown01Config()
+
+    action_config = MergedSpeedScaledTanhConfig()
+    action_config.frame_skip = 5
+
+    config.populate_config(observation_config=obs_config, scenario_config=scenario_config, action_config=action_config)
 
     env_class = CarlaEnv # if not cfg.data_module.use_images else CarlaImageEnv
     env = env_class(config=config, log_dir=os.getcwd())
@@ -161,7 +176,7 @@ def main(cfg):
 
     cfg.trainer.gpus = str(cfg.trainer.gpus) # str denotes gpu id, not quantity
 
-    offline_data_module = TransformerDataModule(['/home/brian/carla-rl/carla-rl/projects/affordance_maps/autopilot_data'])
+    offline_data_module = TransformerDataModule(['/zfsauton/datasets/ArgoRL/brianyan/expert_data/'])
     offline_data_module.setup(None)
 
     try:
