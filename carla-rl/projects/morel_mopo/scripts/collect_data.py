@@ -18,7 +18,7 @@ from projects.morel_mopo.config.logger_config import CometLoggerConfig
 import gym
 from algorithms import PPO
 from stable_baselines3.common.callbacks import EvalCallback
-from stable_baselines3.common.env_util import DummyVecEnv
+from stable_baselines3.common.env_util import VecEnv
 #from common.loggers.logger_callbacks import PPOLoggerCallback
 
 
@@ -30,6 +30,15 @@ EXPERIMENT_NAME = "NO_CRASH_EMPTY_FIRST_TEST"
 
 logger_conf = CometLoggerConfig()
 logger_conf.populate(experiment_name = EXPERIMENT_NAME, tags = ["Online_PPO"])
+
+
+
+class NumpyEncoder(json.JSONEncoder):
+    """ json encoder for numpy array """
+    def default(self, obj):
+        if isinstance(obj, (np.ndarray,)):
+            return obj.tolist()
+        return json.JSONEncoder.default(self, obj)
 
 
 class AutopilotPolicy:
@@ -61,7 +70,8 @@ class AutopilotNoisePolicy:
         return res
 
 
-def collect_trajectory(env, save_dir, policy, max_path_length=5000):
+def collect_trajectory(env, save_dir, policy, max_path_length=5000, save_to_json=True, replay_buffer=None):
+
     now = datetime.datetime.now()
     salt = np.random.randint(100)
 
@@ -70,43 +80,54 @@ def collect_trajectory(env, save_dir, policy, max_path_length=5000):
     # rgb_path = os.path.join(save_path, 'rgb')
     # topdown_path = os.path.join(save_path, 'topdown')
     measurements_path = os.path.join(save_path, 'measurements')
+    print("Saving measurements to: ", measurements_path)
 
-    if os.path.isdir(save_path):
-        print('Directory conflict, trying again...')
-        return 0
-
-    # make directories
-    os.mkdir(save_path)
-    # os.mkdir(rgb_path)
-    # os.mkdir(topdown_path)
-    os.mkdir(measurements_path)
+    if save_to_json:
+        if os.path.isdir(save_path):
+            print('Directory conflict, trying again...')
+            return 0
+        # make directories
+        os.makedirs(save_path)
+        # os.mkdir(rgb_path)
+        # os.mkdir(topdown_path)
+        os.makedirs(measurements_path)
 
     seed = np.random.randint(10000000)
+    print('Resetting env in collect_data')
     obs = env.reset()
 
     for step in tqdm(range(max_path_length)):
-
-
-        action = policy(obs)
-
+        action, _ = policy.predict(obs)
         next_obs, reward, done, info = env.step(action)
+
+        # print(f'next_obs: {next_obs}, rew: {reward}, done: {done}, info: {info}')
         experience = {
             'obs': obs.tolist(),
             'next_obs': next_obs.tolist(),
             'action': action.tolist(),
             'reward': reward,
-            'done': done
+            'done': done.tolist()
         }
+
+
         experience.update(info)
 
-        save_env_state(experience, save_path, step)
+        ########################## added for MBPO ############################
+        # push to replay buffer
+        if replay_buffer is not None:
+            replay_buffer.add(obs.tolist(), next_obs.tolist(), action.tolist(), reward, done.tolist(), [info])
+
+
+        # save as json
+        if save_to_json:
+            save_env_state(experience, save_path, step) # TODO add back in
+
 
         if done:
             break
-
         obs = next_obs
 
-    return step + 1
+    return replay_buffer, step + 1
 
 
 def save_env_state(measurements, save_path, idx, rgb = None, topdown = None):
@@ -120,41 +141,53 @@ def save_env_state(measurements, save_path, idx, rgb = None, topdown = None):
 
     measurements_path = os.path.join(save_path, 'measurements', '{:04d}.json'.format(idx))
     with open(measurements_path, 'w') as out:
-        json.dump(measurements, out)
+        json.dump(measurements, out, cls=NumpyEncoder)
 
 
-def main(args):
+# def main(args):
 
-    config = DefaultMainConfig()
-    config.populate_config(
-        observation_config = "LowDimObservationNoCameraConfig",
-        action_config = "MergedSpeedTanhConfig",
-        reward_config = "Simple2RewardConfig",
-        scenario_config = "NoCrashEmptyTown01Config",
-        testing = False,
-        carla_gpu = args.gpu
-    )
-
-
-
-    with CarlaEnv(config = config, log_dir = "/home/scratch/swapnilp/carla_test") as env:
-        # Create the policy
-        policy = RandomPolicy(env)
-
-        total_samples = 0
-        while total_samples < args.n_samples:
-            traj_length = collect_trajectory(env, args.path, policy)
-            total_samples += traj_length
-
-    print('Done')
+#     config = DefaultMainConfig()
+#     config.populate_config(
+#         observation_config = "LowDimObservationNoCameraConfig",
+#         action_config = "MergedSpeedTanhConfig",
+#         reward_config = "Simple2RewardConfig",
+#         scenario_config = "NoCrashEmptyTown01Config",
+#         testing = False,
+#         carla_gpu = args.gpu
+#     )
 
 
+#     with CarlaEnv(config = config, log_dir = "/home/scratch/vccheng/carla_test") as env:
+#         # Create the policy
+#         policy = AutopilotPolicy(env)
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--gpu', type=str, default='0')
-    parser.add_argument('--n_samples', type=int, default=100000)
-    #parser.add_argument('--behavior', type=str, default='cautious')
-    parser.add_argument('--path', type=str)
-    args = parser.parse_args()
-    main(args)
+#         total_samples = 0
+#         while total_samples < args.n_samples:
+#             traj_data, traj_length = collect_trajectory(env, args.path, policy)
+#             total_samples += traj_length
+
+#     print('Done')
+
+
+# for MBPO
+def mbpo_collect_data(env, policy, path, n_samples, carla_gpu, replay_buffer):
+
+    # Create the policy
+    total_samples = 0
+    print(f'---MBPO: Collecting {n_samples} samples----')
+    while total_samples < n_samples:
+        replay_buffer, traj_length = collect_trajectory(env, path, policy, save_to_json = True, replay_buffer = replay_buffer)
+        total_samples += traj_length
+
+    print('Done collecting data')
+    return replay_buffer
+
+
+# if __name__ == '__main__':
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument('--gpu', type=str, default='0')
+#     parser.add_argument('--n_samples', type=int, default=100000)
+#     #parser.add_argument('--behavior', type=str, default='cautious')
+#     parser.add_argument('--path', type=str)
+#     args = parser.parse_args()
+#     main(args)

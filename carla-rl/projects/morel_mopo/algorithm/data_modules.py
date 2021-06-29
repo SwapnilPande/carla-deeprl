@@ -54,6 +54,8 @@ class WaypointModule():
 class OfflineCarlaDataset(Dataset):
     """ Offline dataset """
 
+    # pull data from buffer
+    # don't normalize data
     def __init__(self,
                     path,
                     use_images=True,
@@ -215,6 +217,7 @@ class OfflineCarlaDataset(Dataset):
             self.vehicle_poses = torch.stack(self.vehicle_poses)
 
 
+
     def __getitem__(self, idx):
         '''
         obs:              B x F x 2
@@ -269,13 +272,12 @@ class OfflineCarlaDataModule():
         }
 
 
-    # Updates dataset with newly-collected trajectories saved to new_path
-    def update(self, new_path):
-        self.setup(new_path)
-
-
     def setup(self, new_path = None):
+        # Create a dataset for each trajectory
+        print('DATAMODULES SETUP: self.paths', self.paths)
 
+        for path in self.paths:
+            print(f'path: {path}')
 
         # If new_path passed in, simply add newly collected data to existing datasets
         if new_path is not None:
@@ -285,7 +287,6 @@ class OfflineCarlaDataModule():
             self.num_paths += 1
         else:
             self.datasets = [OfflineCarlaDataset(path=path, frame_stack=self.frame_stack) for path in self.paths]
-
 
         # Dimensions
         self.state_dim_in = self.datasets[0].obs_dim + self.datasets[0].additional_state_dim

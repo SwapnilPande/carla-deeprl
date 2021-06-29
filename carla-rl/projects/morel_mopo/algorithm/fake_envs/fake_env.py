@@ -293,6 +293,7 @@ class FakeEnv(gym.Env):
 
         # Save and verify config
         self.config = config
+        print('fake env config', self.config)
         self.config.verify()
 
 

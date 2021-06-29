@@ -2,10 +2,12 @@ import os
 import sys
 import glob
 
+sys.path.append(os.path.abspath(os.path.join('../../../')))
+
 
 # Import other necessary configs
 from environment.config.base_config import BaseConfig
-from environment.config import observation_configs, action_configs, reward_configs
+from projects.morel_mopo.config import observation_configs, action_configs, reward_configs
 
 
 class BaseFakeEnvConfig(BaseConfig):
@@ -22,7 +24,7 @@ class BaseFakeEnvConfig(BaseConfig):
         self.timeout_steps = None
 
 
-    def populate_config(self, observation_config = 'DefaultObsevationConfig',\
+    def populate_config(self, observation_config = 'DefaultObservationConfig',\
                               action_config = 'DefaultActionConfig',\
                               reward_config = 'DefaultRewardConfig',\
                               uncertainty_config='DefaultUncertaintyConfig'):
@@ -61,6 +63,7 @@ class BaseFakeEnvConfig(BaseConfig):
             raise Exception("Invalid argument for action_config")
 
         # Reward Config
+        print('reward config', reward_config)
         if(isinstance(reward_config, str)):
             # Get reference to object
             config_type = getattr(reward_configs, reward_config)

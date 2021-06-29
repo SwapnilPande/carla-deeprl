@@ -360,11 +360,13 @@ class DynamicsEnsemble(nn.Module):
                 self.logger.log_scalar(metric_name, value, step)
 
     def train(self, epochs, n_incremental_models = 10):
-        train_dataloader = self.data_module.train_dataloader()
-        val_dataloader = self.data_module.val_dataloader()
 
-        num_train_batches = len(train_dataloader)
-        num_val_batches = len(val_dataloader)
+        if self.data_module:
+            train_dataloader = self.data_module.train_dataloader()
+            val_dataloader = self.data_module.val_dataloader()
+
+            num_train_batches = len(train_dataloader)
+            num_val_batches = len(val_dataloader)
 
         # Log hyperparameters
         if self.logger is not None:
@@ -395,6 +397,8 @@ class DynamicsEnsemble(nn.Module):
 
         steps_between_model_save = epochs // n_incremental_models
 
+
+        # Batch: 
         for epoch in range(epochs): # Loop over epochs
             for model_idx in range(self.n_models): # Loop over models
 
