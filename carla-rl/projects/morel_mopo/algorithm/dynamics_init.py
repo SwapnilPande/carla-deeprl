@@ -15,7 +15,7 @@ from projects.morel_mopo.config.dynamics_ensemble_config import BaseDynamicsEnse
 1. The dropout probability is set to zero
 2. Return a distribution rather than number
 3. Changed the activation function
-4. TODO: The loss function is changed
+4. The loss function is changed
 '''
 
 class DynamicsMLP(nn.Module):
@@ -84,6 +84,14 @@ class DynamicsMLP(nn.Module):
         # Register state prediction head layers by putting them in a module list
         self.state_head = nn.ModuleList(layer_list)
 
+        # Changed: use mean head and variance head to predict mean1 mean2 var1 var2
+        self.speed_head = nn.ModuleList(layer_list)
+        self.steer_head = nn.ModuleList(layer_list)
+
+
+
+
+
         # Build reward head if we're predicting reward
         self.reward_head = None
         if(predict_reward):
@@ -111,21 +119,33 @@ class DynamicsMLP(nn.Module):
         for layer in self.shared_layers:
             x = layer(x)
 
+
+        #changed: Use mean head and variance head
+        output_speed = self.speed_head[0](x)
+        for layer in self.speed_head[1:]:
+            output_speed = layer[output_speed]
+
+        output_steer = self.steer_head[0](x)
+        for layer in self.steer_head[1:]:
+            output_steer = layer[output_steer]
+        
+        return output_speed, output_steer
+
         # State Head
         # Apply first layer
-        output = self.state_head[0](x)
+        #output = self.state_head[0](x)
         # Apply all other layers
-        for layer in self.state_head[1:]:
-            output = layer(output)
+        #for layer in self.state_head[1:]:
+        #    output = layer(output)
 
         # Apply reward head if we are predicting rewards
-        if self.reward_head is not None:
-            reward_out = self.reward_head[0](x)
-            for layer in self.reward_head[1:]:
-                reward_out = layer(reward_out)
-            output = torch.cat([output, reward_out], dim = 1)
+        #if self.reward_head is not None:
+        #    reward_out = self.reward_head[0](x)
+        #    for layer in self.reward_head[1:]:
+        #        reward_out = layer(reward_out)
+        #    output = torch.cat([output, reward_out], dim = 1)
 
-        return output
+        #return output
 
 class DynamicsEnsemble(nn.Module):
     log_dir = "dynamics_ensemble"
@@ -213,7 +233,8 @@ class DynamicsEnsemble(nn.Module):
 
         self.lr = config.lr
         # Build the loss function using loss args
-        self.loss = config.loss(**config.loss_args)
+        # changed
+        #self.loss = config.loss(**config.loss_args)
 
         # Validation loss
         self.mse_loss = torch.nn.MSELoss()
@@ -244,6 +265,10 @@ class DynamicsEnsemble(nn.Module):
                 activation = self.network_cfg.activation
             ))
             self.models[-1].to(self.device)
+        
+        #changed
+        self.max_logvar = nn.Parameter((torch.ones((1, self.output_dim)).float() / 2).to(device), requires_grad=False)
+        self.min_logvar = nn.Parameter((-torch.ones((1, self.output_dim)).float() * 10).to(device), requires_grad=False)
 
     # def create_log_directories(self):
     #     # Construct the dynamics_ensemble log dir
@@ -256,19 +281,22 @@ class DynamicsEnsemble(nn.Module):
     #     os.mkdir(self.model_log_dir)
 
 
-    #
+    # changed
     def forward(self, x, model_idx=None):
         if model_idx is None:
             # predict for all models
-            predictions = [model(x) for model in self.models]
-            s = sum(predictions)
-            mu = s/self.n_models, 
-            var = sum((xi - mu) ** 2 for xi in predictions) / self.n_models
-            return mu, var
+            predictions_speed = [model(x)[0] for model in self.models]
+            predictions_steer = [model(x)[1] for model in self.models]
+            #result predicted speed list and predicted steer list
+            #[[speed_mean1, speed_var1], [speed_mean2, speed_var2]...]
+            #[[steer_mean1, steer_var1], [steer_mean2, steer_var2]...]
+            return predictions_speed, predictions_steer
         else:
             # predict for specified model
-            predictions = [model(x) for model in self.models]
-            return predictions[model_idx]
+            #predictions = [model(x) for model in self.models]
+
+            #[[speed_mean1, speed_var1],[steer_mean1, steer_var1]]
+            return self.models[model_idx](x)
 
 
     def prepare_batch(self, state_in, actions, delta, reward):
@@ -300,6 +328,21 @@ class DynamicsEnsemble(nn.Module):
         return feed_tensor, delta
 
 
+    #changed: define a loss function:
+    '''
+    @param yhat[0]: list of mean, yhat[1]: list of var; 
+    @param target: target list of input
+    @param: whether to include variance loss in total loss
+    @return: loss
+    '''
+    def loss(self, yhat, target, include_var = True):
+        n = len(yhat)
+        mse_loss = [((yhat[0][i] - target)^2)/(yhat[1][i]) for i in range(n)]
+        mse_loss = sum(mse_loss)/n
+        if include_var:
+            return mse_loss + sum(yhat[1])/n
+        return mse_loss
+
     def training_step(self, batch, model_idx):
         # Zero Optimizer gradients
         self.optimizers[model_idx].zero_grad()
@@ -319,6 +362,7 @@ class DynamicsEnsemble(nn.Module):
 
         # Make prediction with selected model
         y_hat = self.forward(feed, model_idx = model_idx)
+        
 
         # Compute loss
         loss = self.loss(y_hat, target)
@@ -343,13 +387,16 @@ class DynamicsEnsemble(nn.Module):
 
         # Predictions by each model
         y_hat = self.forward(feed, model_idx = model_idx)
+        speed_mean, speed_var, steer_mean, steer_var = y_hat[0][0], y_hat[0][1], y_hat[1][0], y_hat[1][1]
 
         # Compute loss
-        loss = self.loss(y_hat, target)
-        mse_loss = self.mse_loss(y_hat, target)
+        loss = self.loss(y_hat, target, include_var=True)
 
-        return {"model_{}_val_loss".format(model_idx): loss,
-                "model_{}_val_mse_loss".format(model_idx) : mse_loss}
+
+        #chaged: loss function
+        #mse_loss = self.mse_loss(y_hat, target)
+
+        return {"model_{}_val_loss".format(model_idx): loss}
 
 
     def log_metrics(self, epoch, batch_idx, num_batches, metric_dict):
@@ -360,13 +407,11 @@ class DynamicsEnsemble(nn.Module):
                 self.logger.log_scalar(metric_name, value, step)
 
     def train(self, epochs, n_incremental_models = 10):
+        train_dataloader = self.data_module.train_dataloader()
+        val_dataloader = self.data_module.val_dataloader()
 
-        if self.data_module:
-            train_dataloader = self.data_module.train_dataloader()
-            val_dataloader = self.data_module.val_dataloader()
-
-            num_train_batches = len(train_dataloader)
-            num_val_batches = len(val_dataloader)
+        num_train_batches = len(train_dataloader)
+        num_val_batches = len(val_dataloader)
 
         # Log hyperparameters
         if self.logger is not None:
@@ -397,8 +442,6 @@ class DynamicsEnsemble(nn.Module):
 
         steps_between_model_save = epochs // n_incremental_models
 
-
-        # Batch: 
         for epoch in range(epochs): # Loop over epochs
             for model_idx in range(self.n_models): # Loop over models
 
@@ -481,8 +524,4 @@ class DynamicsEnsemble(nn.Module):
                     frame_stack = frame_stack,
                     norm_stats = norm_stats,
                     gpu = gpu)
-
-
-
-
 
