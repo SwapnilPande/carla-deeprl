@@ -108,4 +108,4 @@ class MBPODynamicsEnsembleConfig(BaseConfig):
         self.loss_args = {"beta" : 0.5}
         self.optimizer_type = optim.Adam
         self.network_cfg = MBPODynamicsModuleConfig()
-        self.gpu = 1
+        self.gpu = 2
