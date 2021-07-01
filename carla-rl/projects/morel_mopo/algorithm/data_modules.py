@@ -171,6 +171,14 @@ class OfflineCarlaDataset(Dataset):
                     # Construct next state prediction delta
                     delta_x, delta_y = vehicle_loc_delta[:2]
                     delta_theta = vehicle_theta_cur - vehicle_theta_prev
+
+                    if(delta_theta < -180):
+                        delta_theta += 360
+                    elif(delta_theta > 180):
+                        delta_theta -= 360
+
+                    assert delta_theta >= -180 and delta_theta <= 180
+
                     delta = torch.FloatTensor([delta_x,
                                                 delta_y,
                                                 delta_theta,
