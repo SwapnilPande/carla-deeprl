@@ -2,7 +2,6 @@ import sys
 import os
 import argparse
 
-import ipdb; ipdb.set_trace()
 # Setup imports for algorithm and environment
 sys.path.append(os.path.abspath(os.path.join('../../../')))
 
@@ -25,10 +24,14 @@ def main(args):
     logger = CometLogger(logger_conf)
     class TempDataModuleConfig():
         def __init__(self):
-            self.dataset_paths = ["/zfsauton/datasets/ArgoRL/ruiqiw1/collect_random"]
+            self.dataset_paths = [
+                "/zfsauton/datasets/ArgoRL/swapnilp/carla-rl_datasets/no_crash_empty",
+                "/zfsauton/datasets/ArgoRL/swapnilp/carla-rl_datasets/no_crash_empty_random"
+            ]
+
             self.batch_size = 512
-            self.frame_stack = 2
-            self.num_workers = 2
+            self.frame_stack = 5
+            self.num_workers = 10
             self.train_val_split = 0.95
 
     # data config
@@ -48,31 +51,6 @@ def main(args):
 
     # Train for 500 epochs
     dynamics.train(200)
-
-
-    #############################################################
-    #             Test integration of fake env
-    ##############################################################
-    # env setup (obs, action, reward)
-    # fake_env_config = DefaultMainConfig()
-    # fake_env_config.populate_config(\
-    #     obs_config = "DefaultObservationConfig", \
-    #     action_config = "DefaultActionConfig",\
-    #     reward_config="DefaultRewardConfig",\
-    #     uncertainty_config="DefaultUncertaintyConfig")
-
-    # env = FakeEnv(dynamics,
-    #             config=fake_env_config,
-    #             logger = logger,
-    #             uncertainty_threshold = 0.5,
-    #             uncertain_penalty = -100,
-    #             timeout_steps = 1,
-    #             uncertainty_params = [0.0045574815320799725, 1.9688976602303934e-05, 0.2866033549975823])
-
-    # env.reset()
-    # env.step(torch.Tensor([-0.5,0.8]))
-
-
 
 
 

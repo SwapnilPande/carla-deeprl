@@ -17,11 +17,10 @@ Offline dataset handling
 @param theta
 @return: rotation matrix about z axis by theta
 '''
-def rotz(theta):
-    Rz = torch.Tensor([[ torch.cos(theta), -torch.sin(theta), 0 ],
-                      [ torch.sin(theta), torch.cos(theta) , 0 ],
-                      [ 0,              0,             1]])
-    return Rz
+def rot(theta):
+    R = torch.Tensor([[ torch.cos(theta), -torch.sin(theta)],
+                      [ torch.sin(theta), torch.cos(theta)]])
+    return R
 
 ''' Computes the mean and standard deviation of data
 @param data across all trajectories
@@ -102,7 +101,7 @@ class OfflineCarlaDataset(Dataset):
         done_key = "done"
         action_key = "action"
 
-        print("Loading data")
+        print("Loading data from: {}".format(path))
         # Don't calculate gradients for descriptive statistics
         with torch.no_grad():
             # Loop over all trajectories
@@ -166,8 +165,8 @@ class OfflineCarlaDataset(Dataset):
 
 
                     # homogeneous transform: get relative change in vehicle pose
-                    global_loc_offset = torch.cat([vehicle_loc_cur, torch.Tensor([1])], dim=0) - torch.cat([vehicle_loc_prev, torch.Tensor([1])], dim=0)
-                    vehicle_loc_delta = torch.inverse(rotz(torch.deg2rad(vehicle_theta_prev))) @ global_loc_offset.unsqueeze(-1)
+                    global_loc_offset = vehicle_loc_cur - vehicle_loc_prev
+                    vehicle_loc_delta = torch.inverse(rot(torch.deg2rad(vehicle_theta_prev))) @ global_loc_offset.unsqueeze(-1)
 
                     # Construct next state prediction delta
                     delta_x, delta_y = vehicle_loc_delta[:2]
@@ -286,9 +285,6 @@ class OfflineCarlaDataModule():
                 self.datasets[i].actions =  (self.datasets[i].actions - self.normalization_stats["action"]["mean"]) / self.normalization_stats["action"]["std"]
                 self.datasets[i].delta = (self.datasets[i].delta - self.normalization_stats["delta"]["mean"]) / self.normalization_stats["delta"]["std"]
 
-
-
-
         # concat datasets across all trajectories (used for dynamics training)
         self.concat_dataset = torch.utils.data.ConcatDataset(self.datasets)
 
@@ -310,13 +306,14 @@ class OfflineCarlaDataModule():
 
 
     ''' This is used for dynamics training (no waypoint input needed, batch size set)'''
-    def train_dataloader(self, weighted = False, batch_size_override = None):
+    def train_dataloader(self, weighted = True, batch_size_override = None):
         weights = torch.ones(size = (len(self.train_data),))
         sampler = None
         if(weighted):
-            for i in range(len(self.train_data)):
-                _, _, _, deltas, _, _,  = self.train_data[i]
-                weights[i] = torch.abs(deltas[0]) + 0.1
+            for i in tqdm(range(len(self.train_data))):
+                _, _, _, delta, _, _ = self.train_data[i]
+                weight = torch.sqrt(torch.square(delta[...,3]) + torch.square(delta[...,4]))
+                weights[i] = weights[i] + weight
 
             sampler = torch.utils.data.WeightedRandomSampler(
                 weights=weights,
