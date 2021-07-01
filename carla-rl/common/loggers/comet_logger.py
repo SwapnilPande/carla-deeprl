@@ -202,6 +202,21 @@ class CometLogger(BaseLogger):
         # Lastly, log model to comet as well
         self.log_model(log_path, file_path)
 
+    def torch_load(self, log_path, name):
+        # Get full path to log directory
+        full_log_path = self.prep_dir(log_path)
+
+        file_path = os.path.join(full_log_path, name)
+
+        # Dowload file if not local
+        if(not self.experiment_exists_locally):
+            self.comet_download(os.path.join(log_path, name))
+
+        with open(file_path, 'rb') as f:
+            obj = torch.load(f)
+
+        return obj
+
     def pickle_save(self, obj, log_path, name):
         # Get full path to log directory
         full_log_path = self.prep_dir(log_path)

@@ -40,6 +40,16 @@ class DefaultDynamicsEnsembleConfig(BaseConfig):
         self.network_cfg = DefaultDynamicsModuleConfig()
         self.gpu = 2
 
+class DefaultGRUDynamicsConfig(BaseConfig):
+    def __init__(self):
+        self.lr = 0.001
+        self.n_models = 1
+        self.loss = nn.SmoothL1Loss
+        self.loss_args = {"beta" : 0.5}
+        self.optimizer_type = optim.Adam
+        self.network_cfg = DefaultGRUDynamicsModuleConfig()
+        self.gpu = 2
+
 class BaseDynamicsModuleConfig(BaseConfig):
     def __init__(self):
         # Dimension of the input to the dynamics
@@ -81,7 +91,33 @@ class DefaultDynamicsModuleConfig(BaseConfig):
         self.n_head_layers = 2
         self.drop_prob = 0.15
         self.activation = nn.ReLU
-        
+
+
+class BaseGRUDynamicsModuleConfig(BaseConfig):
+    def __init__(self):
+        self.state_dim_in = None
+        self.state_dim_out = None
+        self.frame_stack = None
+        self.predict_reward = None
+        self.gru_input_dim = None
+        self.gru_hidden_dim = None
+        self.drop_prob = None
+        self.activation = None
+
+
+
+class DefaultGRUDynamicsModuleConfig(BaseConfig):
+    def __init__(self):
+        self.state_dim_in = 3
+        self.state_dim_out = 5
+        self.frame_stack = 100
+        self.predict_reward = False
+        self.gru_input_dim = 256
+        self.gru_hidden_dim = 256
+        self.drop_prob = 0.15
+        self.activation = nn.ReLU
+
+
 
 
 

@@ -3,6 +3,14 @@ from numpy.lib.arraysetops import isin
 from tqdm import tqdm
 import scipy.spatial
 
+import sys
+import os
+import argparse
+
+# Setup imports for algorithm and environment
+sys.path.append(os.path.abspath(os.path.join('../../../')))
+
+
 import torch
 from torch.utils.data import Dataset, DataLoader, IterableDataset
 import gym
@@ -391,7 +399,7 @@ class FakeEnv(gym.Env):
 
         self.model_idx = np.random.choice(self.dynamics.n_models)
         # Reset hidden state
-
+        self.hidden_state = [torch.zeros(size = (1, 1, self.dynamics.network_cfg.gru_hidden_dim)).to(self.device) for _ in range(self.dynamics.n_models)]
 
         #TODO Return policy features, not dynamics features
         policy_obs, _, _ = self.get_policy_obs()
@@ -418,12 +426,12 @@ class FakeEnv(gym.Env):
     def update_next_state(self, delta_state):
         # import ipdb; ipdb.set_trace()
         # calculate newest state
-        newest_state = self.state.unnormalized[0, :] + delta_state
+        newest_state = self.state.unnormalized[-1, :] + delta_state
 
         # insert newest state at front
-        state_unnormalized = torch.cat([newest_state.unsqueeze(0), self.state.unnormalized], dim=0)
+        state_unnormalized = torch.cat([self.state.unnormalized, newest_state.unsqueeze(0)], dim=0)
         # delete oldest state
-        self.state.unnormalized = state_unnormalized[:-1, :]
+        self.state.unnormalized = state_unnormalized[1:, :]
 
 
     def get_policy_obs(self):
@@ -434,7 +442,7 @@ class FakeEnv(gym.Env):
         dist_to_trajectory = torch.Tensor([dist_to_trajectory]).to(self.device)
         angle              = torch.Tensor([angle]).to(self.device)
 
-        return torch.cat([dist_to_trajectory, angle, torch.flatten(self.state.unnormalized[0, :])], dim=0).float().to(self.device), dist_to_trajectory, angle
+        return torch.cat([dist_to_trajectory, angle, torch.flatten(self.state.unnormalized[-1, :])], dim=0).float().to(self.device), dist_to_trajectory, angle
 
     '''
     Takes one step according to action
@@ -442,8 +450,6 @@ class FakeEnv(gym.Env):
     @ returns next_obs, reward_out, (uncertain or timeout), {"delta" : delta, "uncertain" : 100*uncertain}
     '''
     def step(self, new_action):
-
-        # print('Stepping with action', new_action)
         with torch.no_grad():
 
             # Convert numpy arrays, or lists, to torch tensors
@@ -454,22 +460,25 @@ class FakeEnv(gym.Env):
             action = self.past_action.unnormalized
 
             # clamp new action to safe range
-            new_action = torch.squeeze(torch.clamp(new_action, -1, 1)).to(self.device)
+            new_action = torch.clamp(new_action, -1, 1).to(self.device)
             # import ipdb; ipdb.set_trace()
 
             # insert new action at front, delete oldest action
-            self.past_action.unnormalized = torch.cat([new_action.unsqueeze(0), action[:-1, :]])
-
+            self.past_action.unnormalized = torch.cat([action[1:, :], new_action.unsqueeze(0)])
 
             ############ feed obs, action into dynamics model for prediction ##############
 
             # input [[speed_t, steer_t, Δtime_t, action_t], [speed_t-1, steer_t-1, Δt-1, action_t-1]]
             # unsqueeze to form batch dimension for dynamics input
+            dynamics_input = torch.cat([self.state.normalized[-1], self.past_action.normalized[-1]], dim = 0).unsqueeze(0).unsqueeze(0).float()
 
-            # dynamics_input = torch.cat([self.state.normalized, self.past_action.normalized], dim = -1).unsqueeze(0).float()
-            dynamics_input = torch.cat([self.state.normalized, self.past_action.normalized.reshape(-1,2)], dim = -1).unsqueeze(0).float()
             # Get predictions across all models
-            all_predictions = torch.stack(self.dynamics.forward(torch.flatten(dynamics_input)))
+            output = self.dynamics.forward(dynamics_input, hidden_state = self.hidden_state)
+            all_predictions = torch.stack([x for (x,y) in output])
+            all_predictions = all_predictions.squeeze(dim = 1).squeeze(dim = 1)
+            self.hidden_state = [y for (x,y) in output]
+
+            # import ipdb; ipdb.set_trace()
 
             # Delta: prediction from one randomly selected model
             # [Δx_t+1, Δy_t+1, Δtheta_t+1, Δspeed_t+1, Δsteer_t+1]
@@ -512,9 +521,11 @@ class FakeEnv(gym.Env):
             # check if at goal
             at_goal = (dist_to_trajectory == 0.0)
 
+
+            # update waypoints list
             ################## calc reward with penalty for uncertainty ##############################
 
-            reward_out = compute_reward(self.state.unnormalized[0], dist_to_trajectory, self.config)
+            reward_out = compute_reward(self.state.unnormalized[-1], dist_to_trajectory, self.config)
 
             uncertain =  self.usad(all_predictions.detach().cpu().numpy())
             reward_out[0] = reward_out[0] - uncertain * self.uncertainty_coeff
@@ -545,3 +556,21 @@ class FakeEnv(gym.Env):
 
             res = policy_obs.cpu().numpy(), float(reward_out.item()), timeout or at_goal, info
             return res
+
+    # speed, steer
+    # def unnormalize_state(self, obs):
+    #     return self.norm_stats["obs"]["std"].to(self.device) * obs + self.norm_stats["obs"]["mean"].to(self.device)
+
+    # def normalize_state(self, obs):
+    #     return (obs - self.norm_stats["obs"]["mean"].to(self.device))/self.norm_stats["obs"]["std"].to(self.device)
+
+    # # Δx, Δy, Δyaw, Δspeed, Δsteer
+    # def unnormalize_delta(self, delta):
+    #     return self.norm_stats["delta"]["std"].to(self.device) * delta + self.norm_stats["delta"]["mean"].to(self.device)
+
+    # def normalize_delta(self, delta):
+    #     return (delta - self.norm_stats["delta"]["mean"].to(self.device))/self.norm_stats["delta"]["std"].to(self.device)
+
+    # def normalize_action(self, action):
+    #     return (action - self.norm_stats["action"]["mean"].to(self.device))/self.norm_stats["action"]["std"].to(self.device)
+
