@@ -17,11 +17,10 @@ Offline dataset handling
 @param theta
 @return: rotation matrix about z axis by theta
 '''
-def rotz(theta):
-    Rz = torch.Tensor([[ torch.cos(theta), -torch.sin(theta), 0 ],
-                      [ torch.sin(theta), torch.cos(theta) , 0 ],
-                      [ 0,              0,             1]])
-    return Rz
+def rot(theta):
+    R = torch.Tensor([[ torch.cos(theta), -torch.sin(theta)],
+                      [ torch.sin(theta), torch.cos(theta)]])
+    return R
 
 ''' Computes the mean and standard deviation of data
 @param data across all trajectories
@@ -102,7 +101,7 @@ class OfflineCarlaDataset(Dataset):
         done_key = "done"
         action_key = "action"
 
-        print("Loading data")
+        print("Loading data from: {}".format(path))
         # Don't calculate gradients for descriptive statistics
         with torch.no_grad():
             # Loop over all trajectories
@@ -166,12 +165,20 @@ class OfflineCarlaDataset(Dataset):
 
 
                     # homogeneous transform: get relative change in vehicle pose
-                    global_loc_offset = torch.cat([vehicle_loc_cur, torch.Tensor([1])], dim=0) - torch.cat([vehicle_loc_prev, torch.Tensor([1])], dim=0)
-                    vehicle_loc_delta = torch.inverse(rotz(torch.deg2rad(vehicle_theta_prev))) @ global_loc_offset.unsqueeze(-1)
+                    global_loc_offset = vehicle_loc_cur - vehicle_loc_prev
+                    vehicle_loc_delta = torch.inverse(rot(torch.deg2rad(vehicle_theta_prev))) @ global_loc_offset.unsqueeze(-1)
 
                     # Construct next state prediction delta
                     delta_x, delta_y = vehicle_loc_delta[:2]
                     delta_theta = vehicle_theta_cur - vehicle_theta_prev
+
+                    if(delta_theta < -180):
+                        delta_theta += 360
+                    elif(delta_theta > 180):
+                        delta_theta -= 360
+
+                    assert delta_theta >= -180 and delta_theta <= 180
+
                     delta = torch.FloatTensor([delta_x,
                                                 delta_y,
                                                 delta_theta,
@@ -252,9 +259,25 @@ class OfflineCarlaDataModule():
             "action" : None
         }
 
-    def setup(self):
-        # Create a dataset for each trajectory
-        self.datasets = [OfflineCarlaDataset(path=path, frame_stack=self.frame_stack) for path in self.paths]
+
+    # Updates dataset with newly-collected trajectories saved to new_path
+    def update(self, new_path):
+        self.setup(new_path)
+
+
+    def setup(self, new_path = None):
+
+
+        # If new_path passed in, simply add newly collected data to existing datasets
+        if new_path is not None:
+            # import pdb; pdb.set_trace();
+
+            self.datasets.append(OfflineCarlaDataset(path=new_path, frame_stack=self.frame_stack))
+            self.num_paths += 1
+        else:
+            self.datasets = [OfflineCarlaDataset(path=path, frame_stack=self.frame_stack) for path in self.paths]
+
+
         # Dimensions
         self.state_dim_in = self.datasets[0].obs_dim + self.datasets[0].additional_state_dim
         self.state_dim_out = self.datasets[0].state_dim_out
@@ -263,30 +286,45 @@ class OfflineCarlaDataModule():
 
         # normalize across all trajectories
         if self.normalize_data:
+            print("NORMALIZING")
             # number of total timesteps
             n = sum(len(d.rewards) for d in self.datasets)
 
-            traj_obs              = torch.vstack([d.obs[:,-1,:] for d in self.datasets])
-            traj_actions          = torch.vstack([d.actions[:,-1,:] for d in self.datasets])
+            traj_obs              = torch.vstack([d.obs[:,-1,:].squeeze() for d in self.datasets])
+            traj_actions          = torch.vstack([d.actions[:,-1,:].squeeze() for d in self.datasets])
             # traj_additional_state = torch.vstack([d.additional_state[:,-1, :] for d in self.datasets])
             # no need to index because deltas are not stacked
-            traj_delta            = torch.vstack([d.delta for d in self.datasets])
+            traj_delta            = torch.vstack([d.delta.squeeze() for d in self.datasets])
 
 
+        
             # calculate mean, stdev across all trajectories
             self.normalization_stats["obs"]              = compute_mean_std(traj_obs,n)
             # self.normalization_stats["additional_state"] = compute_mean_std(traj_additional_state, n)
             self.normalization_stats["action"]           = compute_mean_std(traj_actions, n)
             self.normalization_stats["delta"]            = compute_mean_std(traj_delta, n)
 
-            # normalize
-            for i in range(len(self.datasets)):
-                self.datasets[i].obs= (self.datasets[i].obs - self.normalization_stats["obs"]["mean"]) / self.normalization_stats["obs"]["std"]
-                # self.datasets[i].additional_state = (self.datasets[i].additional_state - self.normalization_stats["additional_state"]["mean"]) / self.normalization_stats["additional_state"]["std"]
-                self.datasets[i].actions =  (self.datasets[i].actions - self.normalization_stats["action"]["mean"]) / self.normalization_stats["action"]["std"]
-                self.datasets[i].delta = (self.datasets[i].delta - self.normalization_stats["delta"]["mean"]) / self.normalization_stats["delta"]["std"]
+            print('after norm obs', self.normalization_stats["obs"])
+            print('after norm act',  self.normalization_stats["obs"]["action"])
+            print('after norm delta', self.normalization_stats["obs"]["delta"])
 
 
+        else:
+            print('No normalization: Setting normalization stats to Mean=0, Std=1')
+            self.normalization_stats["obs"] = {"mean" : torch.zeros((1, self.datasets[0].obs_dim)), "std" : torch.ones((1, self.datasets[0].obs_dim))}
+            self.normalization_stats["action"] = {"mean" : torch.zeros((1, self.datasets[0].action_dim)), "std" : torch.ones((1, self.datasets[0].action_dim))}
+            self.normalization_stats["delta"] = {"mean" : torch.zeros((1, self.datasets[0].state_dim_out)), "std" : torch.ones((1, self.datasets[0].state_dim_out))}  
+
+            # print('obs',self.normalization_stats["obs"])
+            # print('act', self.normalization_stats["action"])
+            # print('delta', self.normalization_stats["delta"])
+
+        # normalize
+        for i in range(len(self.datasets)):
+            self.datasets[i].obs= (self.datasets[i].obs - self.normalization_stats["obs"]["mean"]) / self.normalization_stats["obs"]["std"]
+            # self.datasets[i].additional_state = (self.datasets[i].additional_state - self.normalization_stats["additional_state"]["mean"]) / self.normalization_stats["additional_state"]["std"]
+            self.datasets[i].actions =  (self.datasets[i].actions - self.normalization_stats["action"]["mean"]) / self.normalization_stats["action"]["std"]
+            self.datasets[i].delta = (self.datasets[i].delta - self.normalization_stats["delta"]["mean"]) / self.normalization_stats["delta"]["std"]
 
 
         # concat datasets across all trajectories (used for dynamics training)
@@ -310,13 +348,14 @@ class OfflineCarlaDataModule():
 
 
     ''' This is used for dynamics training (no waypoint input needed, batch size set)'''
-    def train_dataloader(self, weighted = False, batch_size_override = None):
+    def train_dataloader(self, weighted = True, batch_size_override = None):
         weights = torch.ones(size = (len(self.train_data),))
         sampler = None
         if(weighted):
-            for i in range(len(self.train_data)):
-                _, _, _, deltas, _, _,  = self.train_data[i]
-                weights[i] = torch.abs(deltas[0]) + 0.1
+            for i in tqdm(range(len(self.train_data))):
+                _, _, _, delta, _, _ = self.train_data[i]
+                weight = torch.sqrt(torch.square(delta[...,3]) + torch.square(delta[...,4]))
+                weights[i] = weights[i] + weight
 
             sampler = torch.utils.data.WeightedRandomSampler(
                 weights=weights,
