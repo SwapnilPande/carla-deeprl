@@ -286,7 +286,6 @@ class OfflineCarlaDataModule():
 
         # normalize across all trajectories
         if self.normalize_data:
-            print("NORMALIZING")
             # number of total timesteps
             n = sum(len(d.rewards) for d in self.datasets)
 
@@ -303,10 +302,6 @@ class OfflineCarlaDataModule():
             # self.normalization_stats["additional_state"] = compute_mean_std(traj_additional_state, n)
             self.normalization_stats["action"]           = compute_mean_std(traj_actions, n)
             self.normalization_stats["delta"]            = compute_mean_std(traj_delta, n)
-
-            print('after norm obs', self.normalization_stats["obs"])
-            print('after norm act',  self.normalization_stats["obs"]["action"])
-            print('after norm delta', self.normalization_stats["obs"]["delta"])
 
 
         else:

@@ -5,8 +5,8 @@ import argparse
 # Setup imports for algorithm and environment
 sys.path.append(os.path.abspath(os.path.join('../../../')))
 
-from common.loggers.comet_logger import CometLogger
 from projects.morel_mopo.config.logger_config import CometLoggerConfig
+from common.loggers.comet_logger import CometLogger
 from projects.morel_mopo.config.dynamics_ensemble_config import DefaultDynamicsEnsembleConfig
 from projects.morel_mopo.algorithm.dynamics_ensemble_module import DynamicsEnsemble
 from projects.morel_mopo.algorithm.data_modules import OfflineCarlaDataModule
@@ -24,10 +24,14 @@ def main(args):
     logger = CometLogger(logger_conf)
     class TempDataModuleConfig():
         def __init__(self):
-            self.dataset_paths = ["/zfsauton/datasets/ArgoRL/swapnilp/carla-rl_datasets/no_crash_empty"]
+            self.dataset_paths = [
+                "/zfsauton/datasets/ArgoRL/swapnilp/carla-rl_datasets/no_crash_empty",
+                "/zfsauton/datasets/ArgoRL/swapnilp/carla-rl_datasets/no_crash_empty_random"
+            ]
+
             self.batch_size = 512
-            self.frame_stack = 2
-            self.num_workers = 2
+            self.frame_stack = 5
+            self.num_workers = 10
             self.train_val_split = 0.95
 
     # data config
@@ -46,32 +50,7 @@ def main(args):
 
 
     # Train for 500 epochs
-    dynamics.train(500)
-
-
-    #############################################################
-    #             Test integration of fake env
-    ##############################################################
-    # env setup (obs, action, reward)
-    # fake_env_config = DefaultMainConfig()
-    # fake_env_config.populate_config(\
-    #     obs_config = "DefaultObservationConfig", \
-    #     action_config = "DefaultActionConfig",\
-    #     reward_config="DefaultRewardConfig",\
-    #     uncertainty_config="DefaultUncertaintyConfig")
-
-    # env = FakeEnv(dynamics,
-    #             config=fake_env_config,
-    #             logger = logger,
-    #             uncertainty_threshold = 0.5,
-    #             uncertain_penalty = -100,
-    #             timeout_steps = 1,
-    #             uncertainty_params = [0.0045574815320799725, 1.9688976602303934e-05, 0.2866033549975823])
-
-    # env.reset()
-    # env.step(torch.Tensor([-0.5,0.8]))
-
-
+    dynamics.train(200)
 
 
 
