@@ -1,3 +1,4 @@
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -37,58 +38,61 @@ class DynamicsMLP(nn.Module):
         assert state_dim_out > 0
         assert action_dim > 0
         assert n_neurons > 0
-        assert drop_prob == 0
+        assert drop_prob >= 0
 
         # Store configuration parameters
 
         # Input is the input state plus actions state
         self.input_dim = frame_stack*(state_dim_in + action_dim)
         # Output is the output state dim + reward if True
-        self.output_dim = state_dim_out + int(predict_reward)
+        self.output_dim = (state_dim_out + int(predict_reward))
         self.state_dim_out = state_dim_out
 
         self.n_neurons = n_neurons
 
-        # Dynamically construct nn according to arguments
-        layer_list = []
-        # First add the input layer and activation
-        layer_list.append(nn.Linear(self.input_dim, n_neurons))
-        layer_list.append(activation())
 
-        # For each hidden layer
+
+        # build mean head and logsd head
+        layer_list_mean, layer_list_logsd = [], []
+
+        # add input list and activation
+        layer_list_mean.append(nn.Linear(self.input_dim, n_neurons))
+        layer_list_mean.append(activation())
+        layer_list_logsd.append(nn.Linear(self.input_dim, n_neurons))
+        layer_list_logsd.append(activation())
+
+        # add hidden layers
         for _ in range(n_hidden_layers):
-            # Add Linear layer
-            layer_list.append(nn.Linear(n_neurons, n_neurons))
-            # Add activation
-            layer_list.append(activation())
-            # Add dropout if enabled
-            if(drop_prob != 0):
-                layer_list.append(nn.Dropout(p = drop_prob))
+            layer_list_mean.append(nn.Linear(n_neurons, n_neurons))
+            layer_list_mean.append(activation())
+            layer_list_logsd.append(nn.Linear(n_neurons, n_neurons))
+            layer_list_logsd.append(activation())
 
-        # Register shared layers by putting them in a module list
-        self.shared_layers = nn.ModuleList(layer_list)
-
-        # Next, build the head for the state prediction
-        layer_list = []
-        # For each hidden layer
-        for _ in range(n_head_layers):
-            # Add Linear layer
-            layer_list.append(nn.Linear(n_neurons, n_neurons))
-            # Add activation
-            layer_list.append(activation())
-            # Add dropout if enabled
+            # add dropout if needed
             if(drop_prob != 0):
-                layer_list.append(nn.Dropout(p = drop_prob))
-        layer_list.append(nn.Linear(n_neurons, self.state_dim_out))
+                layer_list_mean.append(nn.Dropout(p = drop_prob))
+                layer_list_logsd.append(nn.Dropout(p = drop_prob))
+
+        '''
+        n_head_layers of Linear layers
+        one last layer of Linear layer with SiLU activation to make the output positive
+        '''
+        # add head layers
+        for _ in range(n_head_layers - 1):
+            layer_list_mean.append(nn.Linear(n_neurons, n_neurons))
+            layer_list_mean.append(activation())
+            layer_list_logsd.append(nn.Linear(n_neurons, n_neurons))
+            layer_list_logsd.append(activation())
+
+        # add last head layer to match the output size
+        layer_list_mean.append(nn.Linear(n_neurons, self.state_dim_out))
+        layer_list_mean.append(nn.activation())
+        layer_list_logsd.append(nn.Linear(n_neurons, self.state_dim_out))
+        layer_list_logsd.append(nn.SiLU) # use SiLU to convert to nonneg numbers for sd
 
         # Register state prediction head layers by putting them in a module list
-        self.state_head = nn.ModuleList(layer_list)
-
-        # Changed: use mean head and variance head to predict mean1 mean2 var1 var2
-        self.speed_head = nn.ModuleList(layer_list)
-        self.steer_head = nn.ModuleList(layer_list)
-
-
+        self.mean_head = nn.ModuleList(layer_list_mean)
+        self.logsd_head = nn.ModuleList(layer_list_logsd)
 
 
 
@@ -113,39 +117,22 @@ class DynamicsMLP(nn.Module):
 
 
 
-    def forward(self, x):
-        # x = torch.flatten(x)
-        # Shared layers
-        for layer in self.shared_layers:
-            x = layer(x)
-
-
-        #changed: Use mean head and variance head
-        output_speed = self.speed_head[0](x)
-        for layer in self.speed_head[1:]:
-            output_speed = layer[output_speed]
-
-        output_steer = self.steer_head[0](x)
-        for layer in self.steer_head[1:]:
-            output_steer = layer[output_steer]
+    # one single prediction in the form of gaussian 
+    # the output is [[meanhat1, meanhat2...], [varhat1, varhat2...], ([rewardhat1, rewardhat2...])]
+    def forward(self, x, include_reward = False):
+        mean_hat, var_hat = x, x
+        for layer_mean in self.mean_head:
+            mean_hat = layer_mean(mean_hat)
+        for layer_var in self.var_head:
+            var_hat = layer_var(var_hat)
+        if include_reward:
+            reward_hat = x
+            for layer in self.reward_head:
+                reward_hat =  layer(reward_hat)
+            return [mean_hat, var_hat, reward_hat]
+        return [mean_hat, var_hat, reward_hat]
         
-        return output_speed, output_steer
-
-        # State Head
-        # Apply first layer
-        #output = self.state_head[0](x)
-        # Apply all other layers
-        #for layer in self.state_head[1:]:
-        #    output = layer(output)
-
-        # Apply reward head if we are predicting rewards
-        #if self.reward_head is not None:
-        #    reward_out = self.reward_head[0](x)
-        #    for layer in self.reward_head[1:]:
-        #        reward_out = layer(reward_out)
-        #    output = torch.cat([output, reward_out], dim = 1)
-
-        #return output
+                
 
 class DynamicsEnsemble(nn.Module):
     log_dir = "dynamics_ensemble"
@@ -266,9 +253,9 @@ class DynamicsEnsemble(nn.Module):
             ))
             self.models[-1].to(self.device)
         
-        #changed
-        self.max_logvar = nn.Parameter((torch.ones((1, self.output_dim)).float() / 2).to(device), requires_grad=False)
-        self.min_logvar = nn.Parameter((-torch.ones((1, self.output_dim)).float() * 10).to(device), requires_grad=False)
+
+
+
 
     # def create_log_directories(self):
     #     # Construct the dynamics_ensemble log dir
@@ -283,20 +270,17 @@ class DynamicsEnsemble(nn.Module):
 
     # changed
     def forward(self, x, model_idx=None):
-        if model_idx is None:
-            # predict for all models
-            predictions_speed = [model(x)[0] for model in self.models]
-            predictions_steer = [model(x)[1] for model in self.models]
-            #result predicted speed list and predicted steer list
-            #[[speed_mean1, speed_var1], [speed_mean2, speed_var2]...]
-            #[[steer_mean1, steer_var1], [steer_mean2, steer_var2]...]
-            return predictions_speed, predictions_steer
-        else:
-            # predict for specified model
-            #predictions = [model(x) for model in self.models]
 
-            #[[speed_mean1, speed_var1],[steer_mean1, steer_var1]]
+        #if model_idx: same as previous one
+        if model_idx != None:
+            # 2D array: [[mean1, mean2, ...], [var1, var2, ...]]
             return self.models[model_idx](x)
+        #return all of them [pred1, ....]
+        else:
+            # 3D array: [prediction_model1, prediction_model2, ...]
+            return [self.models[i](x) for i in range(len(self.models))]
+
+
 
 
     def prepare_batch(self, state_in, actions, delta, reward):
@@ -330,17 +314,23 @@ class DynamicsEnsemble(nn.Module):
 
     #changed: define a loss function:
     '''
-    @param yhat[0]: list of mean, yhat[1]: list of var; 
-    @param target: target list of input
+    @param yhat[0]: list of predicted mean
+    @param yhat[1]: list of predicted sd
+    @param target[0]: list of target mean
+    @param tagret[1]: list of target sd
     @param: whether to include variance loss in total loss
-    @return: loss
+    @return: total loss
     '''
+
     def loss(self, yhat, target, include_var = True):
-        n = len(yhat)
-        mse_loss = [((yhat[0][i] - target)^2)/(yhat[1][i]) for i in range(n)]
+        n = len(yhat[0])
+        mse_loss = [((yhat[0][i] - target[i])^2)/(yhat[1][i]**2) for i in range(n)]
         mse_loss = sum(mse_loss)/n
+        #if var loss is included
         if include_var:
-            return mse_loss + sum(yhat[1])/n
+            logvars = [yhat[1][i] for i in range(n)]
+            return mse_loss + sum(logvars)/n
+        #otherwise, we only return the mse loss
         return mse_loss
 
     def training_step(self, batch, model_idx):
@@ -387,7 +377,6 @@ class DynamicsEnsemble(nn.Module):
 
         # Predictions by each model
         y_hat = self.forward(feed, model_idx = model_idx)
-        speed_mean, speed_var, steer_mean, steer_var = y_hat[0][0], y_hat[0][1], y_hat[1][0], y_hat[1][1]
 
         # Compute loss
         loss = self.loss(y_hat, target, include_var=True)
@@ -524,4 +513,3 @@ class DynamicsEnsemble(nn.Module):
                     frame_stack = frame_stack,
                     norm_stats = norm_stats,
                     gpu = gpu)
-
