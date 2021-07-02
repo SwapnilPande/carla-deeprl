@@ -293,7 +293,6 @@ class FakeEnv(gym.Env):
 
         # Save and verify config
         self.config = config
-        print('fake env config', self.config)
         self.config.verify()
 
 
@@ -389,7 +388,7 @@ class FakeEnv(gym.Env):
 
         # state only includes speed, steer
         self.state.unnormalized =  obs[:,:2]
-        self.past_action.unnormalized = torch.squeeze(action)
+        self.past_action.unnormalized = action
         self.waypoints = torch.squeeze(waypoints).to(self.device)
         self.vehicle_pose = torch.squeeze(vehicle_pose).to(self.device)
 
@@ -444,14 +443,12 @@ class FakeEnv(gym.Env):
     @ returns next_obs, reward_out, (uncertain or timeout), {"delta" : delta, "uncertain" : 100*uncertain}
     '''
     def step(self, new_action):
-
         # print('Stepping with action', new_action)
         with torch.no_grad():
 
             # Convert numpy arrays, or lists, to torch tensors
             if(not isinstance(new_action, torch.Tensor)):
                 new_action = torch.FloatTensor(new_action)
-
             # Retrieve past actions
             action = self.past_action.unnormalized
 
@@ -462,24 +459,19 @@ class FakeEnv(gym.Env):
             # insert new action at front, delete oldest action
             self.past_action.unnormalized = torch.cat([new_action.unsqueeze(0), action[:-1, :]])
 
-            # print("State")
-            # print(self.state.unnormalized)
-
-            # print("past action")
-            # print(self.past_action.unnormalized)
-
 
             ############ feed obs, action into dynamics model for prediction ##############
 
             # input [[speed_t, steer_t, Δtime_t, action_t], [speed_t-1, steer_t-1, Δt-1, action_t-1]]
             # unsqueeze to form batch dimension for dynamics input
 
+            # dynamics_input = torch.cat([self.state.normalized, self.past_action.normalized], dim = -1).unsqueeze(0).float()
+            dynamics_input = torch.cat([self.state.normalized, self.past_action.normalized.reshape(-1,2)], dim = -1).unsqueeze(0).float()
             # Get predictions across all models
             all_predictions = torch.stack(self.dynamics.predict(self.state.normalized, self.past_action.normalized)).squeeze(dim = 1)
 
             # Delta: prediction from one randomly selected model
             # [Δx_t+1, Δy_t+1, Δtheta_t+1, Δspeed_t+1, Δsteer_t+1]
-            # import ipdb; ipdb.set_trace()
             self.deltas.normalized = torch.clone(all_predictions)
 
             # predicted change in x, y, th

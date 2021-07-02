@@ -443,8 +443,8 @@ class MLPDynamicsEnsemble(nn.Module):
                             val_running_counts[key] /= num_val_batches
                         self.log_metrics(epoch, num_train_batches, num_train_batches, log_params)
 
-            if(epoch % steps_between_model_save == 0):
-                self.save("incremental-step-{}".format(epoch, ))
+            # if(epoch % steps_between_model_save == 0):
+            #     self.save("incremental-step-{}".format(epoch, ))
 
         self.save("final")
 

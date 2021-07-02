@@ -217,7 +217,6 @@ class OfflineCarlaDataset(Dataset):
             self.vehicle_poses = torch.stack(self.vehicle_poses)
 
 
-
     def __getitem__(self, idx):
         '''
         obs:              B x F x 2
@@ -270,14 +269,16 @@ class OfflineCarlaDataModule():
             "delta" : None,
             "action" : None
         }
+    # Updates dataset with newly-collected trajectories saved to new_path
+    def update(self, new_path):
+        self.setup(new_path)
 
 
     def setup(self, new_path = None):
+
         # Create a dataset for each trajectory
         print('DATAMODULES SETUP: self.paths', self.paths)
 
-        for path in self.paths:
-            print(f'path: {path}')
 
         # If new_path passed in, simply add newly collected data to existing datasets
         if new_path is not None:
@@ -296,6 +297,7 @@ class OfflineCarlaDataModule():
 
         # normalize across all trajectories
         if self.normalize_data:
+            print("DATA_MODULE: NORMALIZING")
             # number of total timesteps
             n = sum(len(d.rewards) for d in self.datasets)
 
@@ -313,9 +315,13 @@ class OfflineCarlaDataModule():
             self.normalization_stats["action"]           = compute_mean_std(traj_actions, n)
             self.normalization_stats["delta"]            = compute_mean_std(traj_delta, n)
 
+            print('DATA_MODULE: after norm obs', self.normalization_stats["obs"])
+            print('DATA_MODULE: after norm act',  self.normalization_stats["obs"]["action"])
+            print('DATA_MODULE: after norm delta', self.normalization_stats["obs"]["delta"])
+
 
         else:
-            print('No normalization: Setting normalization stats to Mean=0, Std=1')
+            print('DATA_MODULE: No normalization: Setting normalization stats to Mean=0, Std=1')
             self.normalization_stats["obs"] = {"mean" : torch.zeros((1, self.datasets[0].obs_dim)), "std" : torch.ones((1, self.datasets[0].obs_dim))}
             self.normalization_stats["action"] = {"mean" : torch.zeros((1, self.datasets[0].action_dim)), "std" : torch.ones((1, self.datasets[0].action_dim))}
             self.normalization_stats["delta"] = {"mean" : torch.zeros((1, self.datasets[0].state_dim_out)), "std" : torch.ones((1, self.datasets[0].state_dim_out))}

@@ -22,9 +22,8 @@ from environment.config.config import DefaultMainConfig
 from projects.morel_mopo.config.fake_env_config import DefaultFakeEnvConfig
 from fake_env import FakeEnv
 
-from projects.morel_mopo.scripts.collect_data import mbpo_collect_data
+from projects.morel_mopo.scripts.collect_data import DataCollector
 from projects.morel_mopo.algorithm.dynamics_init import DynamicsEnsemble
-
 # Gym
 import gym
 import gym.spaces
@@ -54,30 +53,6 @@ import copy
 
 
 
-class CarlaEnvSampler():
-    def __init__(self, env):
-        self.env = env
-        self.obs = None
-
-    ''' Take step in env with action suggested by policy '''
-    def sample(self, policy):
-        if self.obs is None:
-            # print("Resetting env in CarlaEnvSampler")
-            self.obs = self.env.reset()
-
-        obs = self.obs
-        action, _ = policy.predict(self.obs)
-        next_obs, reward, done, info = self.env.step(action)
-
-        if done:
-            self.obs = None
-        else:
-            self.obs = next_obs
-
-        return obs, next_obs, action, reward, done, info
-
-
-
 
 class MBPO:
     def __init__(self,
@@ -89,7 +64,7 @@ class MBPO:
                 n_grad_updates = -1,\
                 batch_size = 256,\
                 buffer_size = 1000,
-                gpu = 2):
+                gpu = 0):
 
         print('------------------Initializing MBPO Parameters-----------------')
         # hyperparams
@@ -101,110 +76,37 @@ class MBPO:
         self.batch_size = batch_size            # Batch size
         self.buffer_size = buffer_size          # replay buffer
         self.gpu = gpu
-        self.dynamics_epochs = 10 # TODO 
+        self.dynamics_epochs = 100 # TODO 
+        self.rollout_len = 1
 
-        print('-----------------------Initializing Dynamics------------------')
+        print('-----------------------Initializing Logging ------------------')
 
-        # datasets 
-        self.env_dataset = None 
-        self.model_dataset = None
         self.logger = logger
         self.log_dir = "/home/scratch/vccheng/carla_test"
         self.device = "cuda:{}".format(self.gpu)
-        
-        print('--------------------------Initializing Env-------------------')
-        carla_env_config = DefaultMainConfig()
-        carla_env_config.populate_config(
-            observation_config = "LowDimObservationConfig",
-            action_config = "MergedSpeedScaledTanhConfig",
-            reward_config = "Simple2RewardConfig",
-            scenario_config = "NoCrashEmptyTown01Config",
-            testing = False,
-            carla_gpu = self.gpu,
-        )
-
-
-        self.env = CarlaEnv(config = carla_env_config, \
-                            logger = self.logger,
-                            log_dir = self.log_dir)
-
-                            
-
-        # # fake env 
-        # fake_env_config = DefaultFakeEnvConfig()
-        # fake_env_config.populate_config()
-        # self.env = FakeEnv(self.dynamics, fake_env_config)
-
-        self.obs_space = self.env.observation_space
-        self.action_space = self.env.action_space
-
-        print('---------------------Initializing Replay Memory-----------------')
-
-        # replay buffer for env dataset
-        self.env_buffer = ReplayBuffer(buffer_size = self.buffer_size,\
-                                       observation_space = self.obs_space,
-                                       action_space = self.action_space,
-                                       device = self.device)
-        # replay buffer for model dataset
-        self.model_buffer = ReplayBuffer(buffer_size = self.buffer_size,\
-                                       observation_space = self.obs_space,
-                                       action_space = self.action_space,
-                                       device = self.device)
-
-        print('--------------------------Initializing Policy-----------------')
-
-        # policy 
-
-        # import pdb;pdb.set_trace();
-        self.policy = SAC(policy='MlpPolicy', 
-                          env_buffer = self.env_buffer, \
-                          replay_buffer = self.model_buffer, \
-                          env = self.env, \
-                          batch_size = self.batch_size,\
-                          buffer_size = self.buffer_size,
-                          learning_starts = 10,\
-                          gradient_steps=0,
-                          train_freq=(1, "episode"),\
-                          carla_logger = self.logger) 
-                        #   ,\
-                        #   gradient_steps = 0)
-
-        print('---------------------Initializing CarlaEnv Sampler-----------------')
-
-        self.carla_env_sampler = CarlaEnvSampler(self.env)
         self.collect_data_path = '/zfsauton/datasets/ArgoRL/vccheng/collect_data_mbpo' 
 
-        print('---------------------Initializing Callbacks---------------')
- 
-        # self.vec_env = make_vec_env(self.env, n_envs = 1)
 
-  
+    ''' MBPO algorithm'''
+    def train(self):
+        # 1000 env steps per epoch 
 
-        # Parallel environments
-        # self.dummy_env = DummyVecEnv([lambda: self.env])
-        # eval_env = self.env.get_eval_env(eval_frequency = 500)
-        # dummy_eval_env = DummyVecEnv([lambda: eval_env])
-        # self.eval_callback = EvalCallback(dummy_eval_env, \
-        #                             best_model_save_path=os.path.join(self.log_dir, "policy", "models"),
-        #                             log_path=os.path.join(self.log_dir, "policy"), \
-        #                             eval_freq=500,
-        #                             deterministic=False, render=False,
-        #                             n_eval_episodes=5)
+        ''' save this data to path, datamodule loads it in (no need env buffer)'''
+        ''' use old data to train dynamics model?'''
+        ''' dataset size limit '''
 
-        # self.eval_callback.init_callback(self.policy)
+        print('------------------------Initial Exploration-------------')
 
-
-        self.dummy_env = DummyVecEnv([lambda: self.env])
-        # eval_env = self.env.get_eval_env(eval_frequency = 500)
-
-        self.callback = CheckpointCallback(save_freq = 5000,\
-                                         save_path = os.path.join(self.log_dir, "policy", "models"),\
-                                         name_prefix = 'mbpo')
-
-
-    # Dynamics
-    def setup_dynamics(self):
-
+        data_collector = DataCollector()
+        
+        # initial exploration, collect data from other policy
+        data_collector.collect_data(path=self.collect_data_path,
+                                    policy=None,
+                                    n_samples=1000,\
+                                    carla_gpu=self.gpu)
+                    
+        print('------------------------Creating CarlaDataModule-------------')
+        
         class TempDataModuleConfig():
             def __init__(self, collect_data_paths):
                 self.dataset_paths = collect_data_paths
@@ -212,10 +114,11 @@ class MBPO:
                 self.frame_stack = 2
                 self.num_workers = 1
                 self.train_val_split = 0.8
+
         # data config
         data_config = TempDataModuleConfig([self.collect_data_path])
-        print('------------------------Creating CarlaDataModule-------------')
-        self.data_module = OfflineCarlaDataModule(data_config, normalize_data=False)      
+        
+        self.data_module = OfflineCarlaDataModule(data_config, normalize_data=False)
 
         # dynamics ensemble
         dyn_ensemble_config = MBPODynamicsEnsembleConfig()
@@ -233,78 +136,68 @@ class MBPO:
             gpu = self.gpu,
             logger = self.logger,
             log_freq = 100)
-        return self.dynamics
        
 
-    ''' MBPO algorithm'''
-    def train(self):
+        print('---------------------Initializing FakeEnv ----------------')
 
-        self.rollout_len = 1
-        total_steps = 0
-        total_rewards = 0
+        fake_env_config = DefaultFakeEnvConfig()
+        fake_env_config.populate_config(\
+            observation_config = "DefaultObservationConfig", \
+            action_config = "DefaultActionConfig",\
+            reward_config="DefaultRewardConfig",\
+            uncertainty_config="DefaultUncertaintyConfig")
+            
+        self.fake_env = FakeEnv(self.dynamics,
+                        config = fake_env_config,
+                        logger = self.logger)
+        
+        print('--------------------------Initializing Policy-----------------')
 
-        # initial exploration in environment
-        self.env_buffer = mbpo_collect_data(self.env, \
-                                             self.policy, \
-                                             self.collect_data_path,\
-                                             n_samples = 50, 
-                                             carla_gpu = self.gpu, \
-                                             replay_buffer = self.env_buffer)
+        self.policy = SAC(policy='MlpPolicy', 
+                          env = self.fake_env,
+                          batch_size = self.batch_size,\
+                          buffer_size = self.buffer_size,
+                          learning_starts = 0,\
 
-        print('-------------2: Epochs-------------------')
+                          # as soon as collected_steps >= k, stop
+                          train_freq=(self.rollout_len, "step"),\
+                          carla_logger = self.logger,\
+                          gradient_steps = 1,\
+                          verbose = 1)
+
+        print('---------------------Beginning MBPO Training------------------')
+
 
         for epoch in range(self.n_epochs):
             print(f'Epoch {epoch}')
-            
-            print('---------------Setting up dynamics--------------')
-            self.dynamics = self.setup_dynamics()
-                
-            # train a predictive model on env_dataset via max likelihood 
-            # (can also train once per F steps instead of once per epoch)
-            print('-------------3: Training Dynamics-------------------')
+
+            # train a predictive model on D_env via max likelihood 
             self.dynamics.train(self.dynamics_epochs)
 
-            # Dynamics Model interacts with policy
-            print('-------------4: Timesteps------------------')
-            for step in range(self.n_timesteps):
+            for timestep in range(self.n_timesteps): # E
 
-                print('-------------5: Step in env, add to env_buffer-------------')
-                # import pdb; pdb.set_trace()
-
-                obs, next_obs, action, reward, done, info = self.carla_env_sampler.sample(self.policy)
-                self.env_buffer.add(obs, next_obs, action, reward, done, [info])
-
-                # for M model rollouts:
-                #   sample st from env_buffer uniformly
-                #   k-step rollout using policy from st
-                # for G grad:
-                #   update update params
-
-                print('-------------6-10: Rollouts, Gradient Updates -------------------')
-                
-                self.policy.learn(total_timesteps=100,
-                                  n_rollouts = 10,\
-                                  rollout_len = 1,\
-                                  callback = None)
-                
-                total_steps += 1
+                # take actions in real env, update D_env
+                new_path = f"{self.collect_data_path}_{epoch}"
+                data_collector.collect_data(path= new_path,
+                                            policy=self.policy,
+                                            n_samples=100,
+                                            carla_gpu=self.gpu)
+                # load in newly collected data (DynamicsEnsemble, FakeEnv should update automatically)
+                self.data_module.update(new_path)
 
 
-'''
-PPO is model free, on-policy
-MBPO: model-based
-SAC: off-policy, model-free (improvement from PPO, can 
-explore more because it can use previous data)
-'''
+                policy_timesteps = self.n_rollouts * self.rollout_len 
+                print(f"------Begin policy rollouts for {policy_timesteps} timesteps")
+                self.policy.learn(total_timesteps = policy_timesteps)
+
 
 def main():
     # import pdb; pdb.set_trace()
-    EXPERIMENT_NAME = "vivian_mbpo_6-29"
-
+    EXPERIMENT_NAME = "vivian_mbpo_7-1"
     logger_conf = CometLoggerConfig()
     logger_conf.populate(experiment_name = EXPERIMENT_NAME, tags = ["MBPO"])
-
     logger = CometLogger(logger_conf)
+    print('logger.logdir', logger.log_dir)
     m = MBPO(logger=logger)
     m.train()
 
@@ -319,3 +212,9 @@ if __name__ == "__main__":
     parser.add_argument('--buffer_size', type=int, default=1000)
     args = parser.parse_args()
     main()
+
+
+
+
+            
+

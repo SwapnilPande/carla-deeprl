@@ -21,8 +21,6 @@ from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.env_util import VecEnv
 #from common.loggers.logger_callbacks import PPOLoggerCallback
 
-
-
 # Environment
 from environment.env import CarlaEnv
 from environment.config.config import DefaultMainConfig
@@ -70,124 +68,139 @@ class AutopilotNoisePolicy:
         return res
 
 
-def collect_trajectory(env, save_dir, policy, max_path_length=5000, save_to_json=True, replay_buffer=None):
+class DataCollector():
+    def __init__(self):
+        self.env = None
+        self.policy = None
+        self.path = None
 
-    now = datetime.datetime.now()
-    salt = np.random.randint(100)
+    def collect_data(self, path=None,
+                           policy=None,
+                           n_samples=1,
+                           carla_gpu=0,
+                    ):
 
-    fname = '_'.join(map(lambda x: '%02d' % x, (now.month, now.day, now.hour, now.minute, now.second, salt)))
-    save_path = os.path.join(save_dir, fname)
-    # rgb_path = os.path.join(save_path, 'rgb')
-    # topdown_path = os.path.join(save_path, 'topdown')
-    measurements_path = os.path.join(save_path, 'measurements')
-    print("Saving measurements to: ", measurements_path)
+        assert(path is not None), "path cannot be None"
+        self.path = path
 
-    if save_to_json:
-        if os.path.isdir(save_path):
-            print('Directory conflict, trying again...')
-            return 0
-        # make directories
-        os.makedirs(save_path)
-        # os.mkdir(rgb_path)
-        # os.mkdir(topdown_path)
-        os.makedirs(measurements_path)
+        print('************using path', self.path)
 
-    seed = np.random.randint(10000000)
-    print('Resetting env in collect_data')
-    obs = env.reset()
+        # Set env if not passed in
+        if self.env is None:
+            config = DefaultMainConfig()
+            config.populate_config(
+                observation_config = "VehicleDynamicsNoCameraConfig",
+                action_config = "MergedSpeedTanhConfig",
+                reward_config = "Simple2RewardConfig",
+                scenario_config = "NoCrashEmptyTown01Config",
+                testing = False,
+                carla_gpu = carla_gpu
+            )
+            self.env = CarlaEnv(config = config, log_dir = "/home/scratch/vccheng/carla_test")
 
-    for step in tqdm(range(max_path_length)):
-        action, _ = policy.predict(obs)
-        next_obs, reward, done, info = env.step(action)
+        # Create the policy
+        if policy is None:
+            self.policy = AutopilotPolicy(self.env)
+        else:
+            # if policy passed in
+            self.policy = policy
 
-        # print(f'next_obs: {next_obs}, rew: {reward}, done: {done}, info: {info}')
-        experience = {
-            'obs': obs.tolist(),
-            'next_obs': next_obs.tolist(),
-            'action': action.tolist(),
-            'reward': reward,
-            'done': done.tolist()
-        }
+        # Collect trajectories until <n_samples>
+        total_samples = 0
+        while total_samples < n_samples:
+            traj_length = self.collect_trajectory()
+            total_samples += traj_length
 
-
-        experience.update(info)
-
-        ########################## added for MBPO ############################
-        # push to replay buffer
-        if replay_buffer is not None:
-            replay_buffer.add(obs.tolist(), next_obs.tolist(), action.tolist(), reward, done.tolist(), [info])
+        print('Done collecting data')
+        return self
 
 
-        # save as json
+    def collect_trajectory(self, max_path_length=5000, save_to_json=True):
+
+        assert(self.path is not None), "path cannot be None"
+        assert(self.policy is not None), "policy cannot be None"
+        assert(self.env is not None), "envcannot be None"
+
+        now = datetime.datetime.now()
+        salt = np.random.randint(100)
+
+        fname = '_'.join(map(lambda x: '%02d' % x, (now.month, now.day, now.hour, now.minute, now.second, salt)))
+        save_path = os.path.join(self.path, fname)
+        # rgb_path = os.path.join(save_path, 'rgb')
+        # topdown_path = os.path.join(save_path, 'topdown')
+        measurements_path = os.path.join(save_path, 'measurements')
+        print("Saving measurements to: ", measurements_path)
+
         if save_to_json:
-            save_env_state(experience, save_path, step) # TODO add back in
+            if os.path.isdir(save_path):
+                print('Directory conflict, trying again...')
+                return 0
+            # make directories
+            os.makedirs(save_path)
+            # os.mkdir(rgb_path)
+            # os.mkdir(topdown_path)
+            os.makedirs(measurements_path)
+
+        seed = np.random.randint(10000000)
+        print('Resetting env in collect_data')
+        obs = self.env.reset()
+
+        for step in tqdm(range(max_path_length)):
+
+            try:
+                action, _ = self.policy.predict(obs)
+                next_obs, reward, done, info = self.env.step(action)
+
+            except:
+                action = self.policy(obs)
+                next_obs, reward, done, info = self.env.step(action)
+
+            # print(f'next_obs: {next_obs}, rew: {reward}, done: {done}, info: {info}')
+            experience = {
+                'obs': obs.tolist(),
+                'next_obs': next_obs.tolist(),
+                'action': action.tolist(),
+                'reward': reward,
+                'done': done.tolist()
+            }
+
+            experience.update(info)
+            # save as json
+            if save_to_json:
+                self.save_env_state(experience, save_path, step) # TODO add back in
 
 
-        if done:
-            break
-        obs = next_obs
+            if done:
+                break
+            obs = next_obs
 
-    return replay_buffer, step + 1
-
-
-def save_env_state(measurements, save_path, idx, rgb = None, topdown = None):
-    if rgb is not None:
-        rgb_path = os.path.join(save_path, 'rgb', '{:04d}.png'.format(idx))
-        cv2.imwrite(rgb_path, rgb)
-
-    if topdown is not None:
-        topdown_path = os.path.join(save_path, 'topdown', '{:04d}.png'.format(idx))
-        cv2.imwrite(topdown_path, topdown)
-
-    measurements_path = os.path.join(save_path, 'measurements', '{:04d}.json'.format(idx))
-    with open(measurements_path, 'w') as out:
-        json.dump(measurements, out, cls=NumpyEncoder)
+        return step + 1
 
 
-# def main(args):
+    def save_env_state(self, measurements, save_path, idx, rgb = None, topdown = None):
+        if rgb is not None:
+            rgb_path = os.path.join(save_path, 'rgb', '{:04d}.png'.format(idx))
+            cv2.imwrite(rgb_path, rgb)
 
-#     config = DefaultMainConfig()
-#     config.populate_config(
-#         observation_config = "LowDimObservationNoCameraConfig",
-#         action_config = "MergedSpeedTanhConfig",
-#         reward_config = "Simple2RewardConfig",
-#         scenario_config = "NoCrashEmptyTown01Config",
-#         testing = False,
-#         carla_gpu = args.gpu
-#     )
+        if topdown is not None:
+            topdown_path = os.path.join(save_path, 'topdown', '{:04d}.png'.format(idx))
+            cv2.imwrite(topdown_path, topdown)
 
-
-#     with CarlaEnv(config = config, log_dir = "/home/scratch/vccheng/carla_test") as env:
-#         # Create the policy
-#         policy = AutopilotPolicy(env)
-
-#         total_samples = 0
-#         while total_samples < args.n_samples:
-#             traj_data, traj_length = collect_trajectory(env, args.path, policy)
-#             total_samples += traj_length
-
-#     print('Done')
+        measurements_path = os.path.join(save_path, 'measurements', '{:04d}.json'.format(idx))
+        with open(measurements_path, 'w') as out:
+            json.dump(measurements, out, cls=NumpyEncoder)
 
 
-# for MBPO
-def mbpo_collect_data(env, policy, path, n_samples, carla_gpu, replay_buffer):
-
-    # Create the policy
-    total_samples = 0
-    print(f'---MBPO: Collecting {n_samples} samples----')
-    while total_samples < n_samples:
-        replay_buffer, traj_length = collect_trajectory(env, path, policy, save_to_json = True, replay_buffer = replay_buffer)
-        total_samples += traj_length
-
-    print('Done collecting data')
-    return replay_buffer
 
 
-# if __name__ == '__main__':
-#     parser = argparse.ArgumentParser()
-#     parser.add_argument('--gpu', type=str, default='0')
-#     parser.add_argument('--n_samples', type=int, default=100000)
-#     #parser.add_argument('--behavior', type=str, default='cautious')
-#     parser.add_argument('--path', type=str)
-#     args = parser.parse_args()
-#     main(args)
+# parser = argparse.ArgumentParser()
+# parser.add_argument('--gpu', type=str, default='0')
+# parser.add_argument('--n_samples', type=int, default=100000)
+# parser.add_argument('--policy')
+# parser.add_argument('--env')
+# # parser.add_argument('--behavior', type=str, default='cautious')
+# parser.add_argument('--path', type=str)
+# args = parser.parse_args()
+
+
+# collect_data(args.env, args.policy, args.path, args.n_samples, args.gpu)
