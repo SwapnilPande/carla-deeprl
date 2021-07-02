@@ -10,7 +10,7 @@ server_port: 2000
 
 use_images: false
 
-factored: true
+factored: false
 
 data_module:
     batch_size: 32
@@ -52,9 +52,9 @@ value_model: ???
 
 
 trainer:
-    # precision: 16
+    precision: 16
     gpus: ${gpu}
 
 hydra:
     run:
-        dir: /home/scratch/brianyan/outputs/${exp_name}/${now:%Y-%m-%d_%H-%M-%S}
+        dir: /home/brian/temp/${exp_name}/${now:%Y-%m-%d_%H-%M-%S}
