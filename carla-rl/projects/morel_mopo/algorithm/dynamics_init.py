@@ -1,4 +1,3 @@
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -49,30 +48,28 @@ class DynamicsMLP(nn.Module):
         self.state_dim_out = state_dim_out
 
         self.n_neurons = n_neurons
+        
+        # layer list
+        layer_list = []
+
+        # add input list and activation
+        layer_list.append(nn.Linear(self.input_dim, n_neurons))
+        layer_list.append(activation())
+
+        # add hidden layers
+        for _ in range(n_hidden_layers):
+            layer_list.append(nn.Linear(n_neurons, n_neurons))
+            layer_list.append(activation())
+
+            # add dropout if needed
+            if(drop_prob != 0):
+                layer_list.append(nn.Dropout(p = drop_prob))
+                layer_list.append(nn.Dropout(p = drop_prob))
 
 
 
         # build mean head and logsd head
-        layer_list_mean, layer_list_logsd = [], []
-
-        # add input list and activation
-        layer_list_mean.append(nn.Linear(self.input_dim, n_neurons))
-        layer_list_mean.append(activation())
-        layer_list_logsd.append(nn.Linear(self.input_dim, n_neurons))
-        layer_list_logsd.append(activation())
-
-        # add hidden layers
-        for _ in range(n_hidden_layers):
-            layer_list_mean.append(nn.Linear(n_neurons, n_neurons))
-            layer_list_mean.append(activation())
-            layer_list_logsd.append(nn.Linear(n_neurons, n_neurons))
-            layer_list_logsd.append(activation())
-
-            # add dropout if needed
-            if(drop_prob != 0):
-                layer_list_mean.append(nn.Dropout(p = drop_prob))
-                layer_list_logsd.append(nn.Dropout(p = drop_prob))
-
+        layer_list_mean, layer_list_logsd = layer_list, layer_list
         '''
         n_head_layers of Linear layers
         one last layer of Linear layer with SiLU activation to make the output positive
@@ -140,7 +137,6 @@ class DynamicsEnsemble(nn.Module):
 
     def __init__(self,
                     config,
-
                     data_module = None,
                     state_dim_in = None,
                     state_dim_out = None,
@@ -322,16 +318,24 @@ class DynamicsEnsemble(nn.Module):
     @return: total loss
     '''
 
-    def loss(self, yhat, target, include_var = True):
-        n = len(yhat[0])
-        mse_loss = [((yhat[0][i] - target[i])^2)/(yhat[1][i]**2) for i in range(n)]
-        mse_loss = sum(mse_loss)/n
-        #if var loss is included
-        if include_var:
-            logvars = [yhat[1][i] for i in range(n)]
-            return mse_loss + sum(logvars)/n
-        #otherwise, we only return the mse loss
-        return mse_loss
+    #def loss(self, yhat, target, include_var = True):
+    #    n = len(yhat[0])
+    #    mse_loss = [((yhat[0][i] - target[i])^2)/(yhat[1][i]**2) for i in range(n)]
+    #    mse_loss = sum(mse_loss)/n
+    #    #if var loss is included
+    #    if include_var:
+    #        logvars = [yhat[1][i] for i in range(n)]
+    #        return mse_loss + sum(logvars)/n
+    #    #otherwise, we only return the mse loss
+    #    return mse_loss
+
+    def loss(self, yhat, target):
+        mean = yhat[0]
+        logsd = yhat[1]
+        var = [torch.exp(i)**2 for i in logsd]
+        dist = Normal(mean, var)
+        return - dist.log_prob(target)
+
 
     def training_step(self, batch, model_idx):
         # Zero Optimizer gradients
@@ -379,7 +383,7 @@ class DynamicsEnsemble(nn.Module):
         y_hat = self.forward(feed, model_idx = model_idx)
 
         # Compute loss
-        loss = self.loss(y_hat, target, include_var=True)
+        loss = self.loss(y_hat, target)
 
 
         #chaged: loss function
