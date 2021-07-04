@@ -333,7 +333,7 @@ class DynamicsEnsemble(nn.Module):
         mean = yhat[0]
         logsd = yhat[1]
         var = [torch.exp(i)**2 for i in logsd]
-        dist = Normal(mean, var)
+        dist = torch.distributions.normal.Normal(mean, var)
         return - dist.log_prob(target)
 
 
