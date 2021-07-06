@@ -391,7 +391,7 @@ class FakeEnv(gym.Env):
 
         self.model_idx = np.random.choice(self.dynamics.n_models)
         # Reset hidden state
-        self.hidden_state = [torch.zeros(size = (1, 1, self.dynamics.network_cfg.gru_hidden_dim)).to(self.device) for _ in range(self.dynamics.n_models)]
+        
 
         #TODO Return policy features, not dynamics features
         policy_obs, _, _ = self.get_policy_obs()
@@ -418,7 +418,8 @@ class FakeEnv(gym.Env):
     def update_next_state(self, delta_state):
         # import ipdb; ipdb.set_trace()
         # calculate newest state
-        newest_state = self.state[0, :] + delta_state
+        newest_state = self.state.unnormalized[0, :] + delta_state
+
         # insert newest state at front
         state_unnormalized = torch.cat([newest_state.unsqueeze(0), self.state.unnormalized], dim=0)
         # delete oldest state
@@ -441,12 +442,14 @@ class FakeEnv(gym.Env):
     @ returns next_obs, reward_out, (uncertain or timeout), {"delta" : delta, "uncertain" : 100*uncertain}
     '''
     def step(self, new_action):
+	   
+        # print('Stepping with action', new_action)
         with torch.no_grad():
 
             # Convert numpy arrays, or lists, to torch tensors
             if(not isinstance(new_action, torch.Tensor)):
                 new_action = torch.FloatTensor(new_action)
-
+	
             # Retrieve past actions
             action = self.past_action.unnormalized
 
@@ -457,12 +460,14 @@ class FakeEnv(gym.Env):
             # insert new action at front, delete oldest action
             self.past_action.unnormalized = torch.cat([new_action.unsqueeze(0), action[:-1, :]])
 
+          
             ############ feed obs, action into dynamics model for prediction ##############
 
             # input [[speed_t, steer_t, Δtime_t, action_t], [speed_t-1, steer_t-1, Δt-1, action_t-1]]
             # unsqueeze to form batch dimension for dynamics input
-            dynamics_input = torch.cat([self.state.normalized[0], self.past_action.normalized[0]], dim = 1).unsqueeze(0).float()
 
+            # dynamics_input = torch.cat([self.state.normalized, self.past_action.normalized], dim = -1).unsqueeze(0).float()
+            dynamics_input = torch.cat([self.state.normalized, self.past_action.normalized.reshape(-1,2)], dim = -1).unsqueeze(0).float()
             # Get predictions across all models
             all_predictions = torch.stack(self.dynamics.forward(torch.flatten(dynamics_input)))
 
@@ -507,13 +512,6 @@ class FakeEnv(gym.Env):
             # check if at goal
             at_goal = (dist_to_trajectory == 0.0)
 
-            # convert to tensors
-            self.waypoints = torch.FloatTensor(remaining_waypoints)
-            dist_to_trajectory = torch.Tensor([dist_to_trajectory]).to(self.device)
-            angle              = torch.Tensor([angle]).to(self.device)
-
-
-            # update waypoints list
             ################## calc reward with penalty for uncertainty ##############################
 
             reward_out = compute_reward(self.state.unnormalized[0], dist_to_trajectory, self.config)
