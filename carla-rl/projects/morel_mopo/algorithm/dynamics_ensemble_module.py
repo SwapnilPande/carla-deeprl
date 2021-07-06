@@ -135,7 +135,7 @@ class DynamicsEnsemble(nn.Module):
                     gpu = None,
 
                     logger = None,
-                    log_freq = 100):
+                    log_freq = 500):
         super(DynamicsEnsemble, self).__init__()
 
         self.config = config
@@ -303,6 +303,7 @@ class DynamicsEnsemble(nn.Module):
         # print('vehpose', vehicle_pose.shape, vehicle_pose)
 
         # Combine tensors and reshape batch to flat inputs
+        import ipdb; ipdb.set_trace()
         feed, target = self.prepare_batch(obs, actions, delta, rewards)
 
         # Make prediction with selected model
@@ -400,16 +401,27 @@ class DynamicsEnsemble(nn.Module):
 
 
                 with tqdm(total = num_val_batches) as pbar:
+                    # Store running count of validation metrics
+                    val_running_counts = None
                     pbar.set_description_str("Validation:".format(epoch))
                     for batch_idx, batch in enumerate(val_dataloader): # Loop over batches
                         # Run training step for jth model
                         log_params = self.validation_step(batch, model_idx)
 
+                        # Add values
+                        if(val_running_counts is None):
+                            val_running_counts = log_params
+                        else:
+                            for key, val in val_running_counts.items():
+                                val_running_counts[key] += log_params[key]
+
                         pbar.set_postfix_str("epoch {}, model_idx: {}, loss: {}".format(epoch, model_idx, log_params['model_{}_val_loss'.format(model_idx)]))
                         pbar.update(1)
 
-                        if batch_idx % self.log_freq == 0 and self.logger is not None:
-                            self.log_metrics(epoch, batch_idx, num_val_batches, log_params)
+                    if self.logger is not None:
+                        for key, val in val_running_counts.items():
+                            val_running_counts[key] /= num_val_batches
+                        self.log_metrics(epoch, num_train_batches, num_train_batches, log_params)
 
             if(epoch % steps_between_model_save == 0):
                 self.save("incremental-step-{}".format(epoch, ))
