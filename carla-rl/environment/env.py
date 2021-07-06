@@ -238,6 +238,7 @@ class CarlaEnv(gym.Env):
             # Update episode_measurements to compute reward
             self.episode_measurements['next_orientation'] = carla_obs['next_orientation']
             self.episode_measurements['control_steer'] = carla_obs['control_steer']
+            self.episode_measurements['steer_angle'] = carla_obs['steer_angle']
             self.episode_measurements['dist_to_trajectory'] = carla_obs['dist_to_trajectory']
             self.episode_measurements['distance_to_goal_trajec'] = carla_obs['distance_to_goal_trajec']
             self.episode_measurements['speed'] = util.get_speed_from_velocity(carla_obs['ego_vehicle_velocity'])
