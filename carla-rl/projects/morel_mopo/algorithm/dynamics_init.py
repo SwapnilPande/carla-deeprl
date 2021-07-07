@@ -70,26 +70,15 @@ class DynamicsMLP(nn.Module):
 
         # build mean head and logsd head
         layer_list_mean, layer_list_logsd = layer_list, layer_list
-        '''
-        n_head_layers of Linear layers
-        one last layer of Linear layer with SiLU activation to make the output positive
-        '''
-        # add head layers
-        for _ in range(n_head_layers - 1):
-            layer_list_mean.append(nn.Linear(n_neurons, n_neurons))
-            layer_list_mean.append(activation())
-            layer_list_logsd.append(nn.Linear(n_neurons, n_neurons))
-            layer_list_logsd.append(activation())
 
         # add last head layer to match the output size
         layer_list_mean.append(nn.Linear(n_neurons, self.state_dim_out))
-        layer_list_mean.append(nn.activation())
         layer_list_logsd.append(nn.Linear(n_neurons, self.state_dim_out))
-        layer_list_logsd.append(nn.SiLU) # use SiLU to convert to nonneg numbers for sd
+        layer_list_logsd.append(torch.exp)
 
         # Register state prediction head layers by putting them in a module list
         self.mean_head = nn.ModuleList(layer_list_mean)
-        self.logsd_head = nn.ModuleList(layer_list_logsd)
+        self.var_head = nn.ModuleList(layer_list_logsd)
 
 
 
@@ -311,28 +300,13 @@ class DynamicsEnsemble(nn.Module):
     #changed: define a loss function:
     '''
     @param yhat[0]: list of predicted mean
-    @param yhat[1]: list of predicted sd
+    @param yhat[1]: list of predicted var
     @param target[0]: list of target mean
-    @param tagret[1]: list of target sd
-    @param: whether to include variance loss in total loss
-    @return: total loss
+    @param tagret[1]: list of target var
     '''
-
-    #def loss(self, yhat, target, include_var = True):
-    #    n = len(yhat[0])
-    #    mse_loss = [((yhat[0][i] - target[i])^2)/(yhat[1][i]**2) for i in range(n)]
-    #    mse_loss = sum(mse_loss)/n
-    #    #if var loss is included
-    #    if include_var:
-    #        logvars = [yhat[1][i] for i in range(n)]
-    #        return mse_loss + sum(logvars)/n
-    #    #otherwise, we only return the mse loss
-    #    return mse_loss
-
     def loss(self, yhat, target):
         mean = yhat[0]
-        logsd = yhat[1]
-        var = [torch.exp(i)**2 for i in logsd]
+        var = yhat[1]
         dist = torch.distributions.normal.Normal(mean, var)
         return - dist.log_prob(target)
 
