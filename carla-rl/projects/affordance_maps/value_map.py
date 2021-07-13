@@ -5,11 +5,11 @@ import math
 import time
 import glob
 import traceback
+import json
 
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
-from scipy.interpolate import RegularGridInterpolator, griddata, Rbf
 from sklearn.neighbors import KDTree
 # from scipy.spatial import KDTree
 from scipy.interpolate import RegularGridInterpolator
@@ -56,7 +56,7 @@ num_spds = len(SPEEDS)
 num_acts = len(ACTIONS)
 
 
-def solve_for_value_function(rewards, locs, model, next_locs, prev_V, discount_factor=.9):
+def solve_for_value_function(rewards, locs, model, next_locs, prev_V, curr_yaw, discount_factor=.9):
     """
     Solves for value function using Bellman updates and dynamic programming
 
@@ -83,21 +83,23 @@ def solve_for_value_function(rewards, locs, model, next_locs, prev_V, discount_f
         max_x, max_y = np.max(_next_locs, axis=0)
 
         # set up grid interpolator
-        xs, ys = np.linspace(min_x, max_x, 16), np.linspace(min_y, max_y, 16)
+        xs, ys = np.linspace(min_x, max_x, 64), np.linspace(min_y, max_y, 64)
         values = np.array(prev_V)
         values = np.moveaxis(values, 0, 1) # because indexing=ij, for more: https://numpy.org/doc/stable/reference/generated/numpy.meshgrid.html
         grid_interpolator = RegularGridInterpolator((xs, ys, spds, yaws), values, bounds_error=False, fill_value=None)
 
-        Q = torch.zeros((16,16,num_spds,num_yaws,num_acts))
+        Q = torch.zeros((64,64,num_spds,num_yaws,num_acts))
+
+        print(curr_yaw)
 
         for s, spd in enumerate(spds):
             for y, yaw in enumerate(yaws):
                 # predict next states
                 pred_locs, pred_yaws, pred_spds = model.forward(
                     locs[:,None,:].repeat(1,num_acts,1).reshape(-1,2),
-                    yaw[None,None].repeat(16*16,num_acts,1).reshape(-1,1),
-                    spd[None,None].repeat(16*16,num_acts,1).reshape(-1,1),
-                    acts[None].repeat(16*16,1,1).reshape(-1,2))
+                    yaw[None,None].repeat(64*64,num_acts,1).reshape(-1,1),
+                    spd[None,None].repeat(64*64,num_acts,1).reshape(-1,1),
+                    acts[None].repeat(64*64,1,1).reshape(-1,2))
 
                 # convert locs to normalized grid coordinates and interpolate next Vs
                 _pred_locs = pred_locs - offset
@@ -107,7 +109,7 @@ def solve_for_value_function(rewards, locs, model, next_locs, prev_V, discount_f
 
                 # Bellman backup
                 terminal = (reward < 0)[...,None]
-                Q_target = reward[...,None] + (discount_factor * ~terminal * next_Vs.reshape(16,16,num_acts))
+                Q_target = reward[...,None] + (discount_factor * ~terminal * next_Vs.reshape(64,64,num_acts))
                 Q_target[torch.isnan(Q_target)] = -1
                 Q[:,:,s,y] = torch.clamp(Q_target, -1, 0)
 
@@ -126,15 +128,19 @@ def rotate_pts(pts, theta):
 
 
 def load_trajectory(path):
-    # rgb_paths = sorted(glob.glob('{}/topdown/*.png'.format(path)))[::-1]
+    rgb_paths = sorted(glob.glob('{}/topdown/*.png'.format(path)))[::-1]
+    measurement_paths = sorted(glob.glob('{}/measurements/*.json'.format(path)))[::-1]
     reward_paths = sorted([r for r in glob.glob('{}/reward/*.png'.format(path)) if 'value' not in r])[::-1]
     world_paths = sorted(glob.glob('{}/world/*.npy'.format(path)))[::-1]
-    assert len(reward_paths) == len(world_paths), 'Uneven number of reward/world/rgb paths'
+    assert len(measurement_paths) == len(reward_paths) == len(world_paths), 'Uneven number of reward/world/rgb paths'
 
-    for reward_path, world_path in zip(reward_paths, world_paths):
-        # rgb = cv2.imread(rgb_path)
+    for rgb_path, measurement_path, reward_path, world_path in zip(rgb_paths, measurement_paths, reward_paths, world_paths):
+        rgb = cv2.imread(rgb_path)
+        with open(measurement_path, 'r') as f:
+            m = json.load(f)
+            yaw = m['actor_tf'][4]
 
-        reward = (preprocess_rgb(cv2.imread(reward_path), image_size=(16,16)) * 255)[0]
+        reward = (preprocess_rgb(cv2.imread(reward_path), image_size=(64,64)) * 255)[0]
         reward = (reward == 0).float()-1
         world_pts = torch.FloatTensor(np.load(world_path))
 
@@ -142,7 +148,7 @@ def load_trajectory(path):
         value_path[-1] = value_path[-1][:-4] + '_value'
         value_path = '/'.join(value_path)
 
-        yield reward, world_pts, value_path
+        yield rgb, reward, world_pts, value_path, yaw
 
 
 def labeler_worker(worker_id, queue, model):
@@ -150,11 +156,11 @@ def labeler_worker(worker_id, queue, model):
         while True:
             trajectory_path = queue.get(timeout=60)
             trajectory = load_trajectory(trajectory_path)
-            for i, (reward, world_pts, value_path) in enumerate(trajectory):
+            for i, (reward, world_pts, value_path, yaw) in enumerate(trajectory):
                 if i == 0:
-                    V = reward.reshape(16,16,1,1).repeat(1,1,num_spds,num_yaws)
+                    V = reward.reshape(64,64,1,1).repeat(1,1,num_spds,num_yaws)
                 else:
-                    V = solve_for_value_function(reward, world_pts, model, next_world_pts, V)
+                    V = solve_for_value_function(reward, world_pts, model, next_world_pts, V, yaw)
 
                 np.save(value_path, V)
                 print('Worker {} saving to {}'.format(worker_id, value_path))
@@ -183,42 +189,61 @@ def main():
     model.load_state_dict(model_weights)
     model.eval()
 
-    model.share_memory()
+    plt.ion()
+    fig, axs = plt.subplots(5,5)
 
-    NUM_PROCESSES = 30
-    processes = []
-    sample_queue = mp.Queue(maxsize=len(trajectory_paths))
+    V = None
+    for (rgb, reward, world_pts, value_path, yaw) in load_trajectory('/home/brian/carla-rl/carla-rl/projects/affordance_maps/sample_data/06_29_16_27_29_89/'):
+        if isinstance(V, type(None)):
+            V = reward.reshape(64,64,1,1).repeat(1,1,num_spds,num_yaws)
+        else:
+            V = solve_for_value_function(reward, world_pts, model, next_world_pts, V, yaw)
+        next_world_pts = world_pts
 
-    print('Spawning {} labelers'.format(NUM_PROCESSES))
+        for s in range(4):
+            for y in range(5):
+                axs[s,y].imshow(V[:,:,s,y])
+        axs[4,2].imshow(rgb)
+        axs[4,1].imshow(reward)
+        plt.show()
+        plt.pause(.001)
 
-    # spawn labeling workers
-    for pid in range(NUM_PROCESSES):
-        p = mp.Process(target=labeler_worker, args=(pid, sample_queue, model))
-        p.start()
-        processes.append(p)
+    # model.share_memory()
 
-    print('Populating queue')
+    # NUM_PROCESSES = 30
+    # processes = []
+    # sample_queue = mp.Queue(maxsize=len(trajectory_paths))
 
-    # fill queue as needed
-    for traj in tqdm(trajectory_paths):
-        sample_queue.put(traj)
+    # print('Spawning {} labelers'.format(NUM_PROCESSES))
 
-        while sample_queue.qsize() >= NUM_PROCESSES:
-            time.sleep(.1)
+    # # spawn labeling workers
+    # for pid in range(NUM_PROCESSES):
+    #     p = mp.Process(target=labeler_worker, args=(pid, sample_queue, model))
+    #     p.start()
+    #     processes.append(p)
 
-    print('Finished populating queue. Waiting for queue to empty')
+    # print('Populating queue')
 
-    # stall until queue is empty
-    while sample_queue.qsize() > 0:
-        time.sleep(.1)
+    # # fill queue as needed
+    # for traj in tqdm(trajectory_paths):
+    #     sample_queue.put(traj)
 
-    print('Killing labeler processes')
+    #     while sample_queue.qsize() >= NUM_PROCESSES:
+    #         time.sleep(.1)
 
-    # kill processes
-    for p in processes:
-        p.join()
+    # print('Finished populating queue. Waiting for queue to empty')
 
-    print('Done')
+    # # stall until queue is empty
+    # while sample_queue.qsize() > 0:
+    #     time.sleep(.1)
+
+    # print('Killing labeler processes')
+
+    # # kill processes
+    # for p in processes:
+    #     p.join()
+
+    # print('Done')
 
 
 if __name__ == '__main__':

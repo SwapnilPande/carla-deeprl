@@ -72,9 +72,8 @@ class StackedValueNetwork(pl.LightningModule):
 
 
 class RecurrentValueNetwork(pl.LightningModule):
-    def __init__(self, T=5):
+    def __init__(self):
         super().__init__()
-        self.T = T
         resnet = fcn_resnet50(pretrained=True)
         self.backbone = nn.Sequential(
             *list(resnet.backbone.children())[:-1],
@@ -93,29 +92,29 @@ class RecurrentValueNetwork(pl.LightningModule):
             nn.Conv2d(64, 20, kernel_size=(1,1), stride=(1,1), bias=False)
         )
 
-    def forward(self, images):
-        batch_size = len(images)
-        images = images.reshape(batch_size * self.T, 3, 64, 64)
-        features = self.backbone(images).reshape(batch_size, self.T, 128*8*8)
-        out, hn = self.rnn(features)
-        out = out.reshape(batch_size * self.T, 128, 2, 2)
-        preds = self.upconv(out).reshape(batch_size,self.T,20,16,16)
-        return preds
+    def forward(self, images, hidden=None):
+        batch_size, T = images.shape[0], images.shape[1]
+        images = images.reshape(batch_size * T, 3, 64, 64)
+        features = self.backbone(images).reshape(batch_size, T, 128*8*8)
+        out, hidden = self.rnn(features, hidden)
+        out = out.reshape(batch_size * T, 128, 2, 2)
+        preds = self.upconv(out).reshape(batch_size,T,20,16,16)
+        return preds, hidden
 
     def training_step(self, batch, batch_idx):
         images, rewards, values = batch
-        batch_size = len(images)
-        pred_values = self.forward(images)
-        values = values.reshape(batch_size,self.T,16,16,20).permute(0,1,4,2,3)
+        batch_size, T = images.shape[0], images.shape[1]
+        pred_values, hidden = self.forward(images)
+        values = values.reshape(batch_size,T,16,16,20).permute(0,1,4,2,3)
         loss = F.mse_loss(values, pred_values)
         self.log('train/loss', loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
         images, rewards, values = batch
-        batch_size = len(images)
-        pred_values = self.forward(images)
-        values = values.reshape(batch_size,self.T,16,16,20).permute(0,1,4,2,3)
+        batch_size, T = images.shape[0], images.shape[1]
+        pred_values, hidden = self.forward(images)
+        values = values.reshape(batch_size,T,16,16,20).permute(0,1,4,2,3)
         loss = F.mse_loss(values, pred_values)
         self.log('val/loss', loss)
 
