@@ -80,6 +80,60 @@ class LowDimObservationConfig(BaseObservationConfig):
         self.obstacle_dist_norm = 60
         self.disable_lane_invasion_sensor = False
 
+class LowDimObservationNoCameraConfig(BaseObservationConfig):
+    def __init__(self):
+        self.input_type = "wp_obs_info_speed_steer_ldist_goal_light"
+        self.observation_space = Box(low=np.array([[-4.0, 0.0, 0.0, 0.0, -0.5, -1.0, 0.0, 0.0]]),
+                            high=np.array([[4.0, 1.0, 1.0, 1.0, 0.5, 1.0, 1.0, 1.0]]),
+                            dtype=np.float32)
+
+
+        self.sensors = {
+                            "lane_invasion_sensor":None,
+                            "collision_sensor": None
+                    }
+        self.observation_sensors = []
+
+        self.single_channel_image = False
+        self.noise_dim = 1
+        self.preprocess_crop_image = True
+        self.grayscale = False
+        self.default_obs_traffic_val = 1
+        self.min_dist_from_red_light = 4
+        self.disable_obstacle_info = False
+        self.frame_stack_size = 1
+        self.vehicle_proximity_threshold = 15
+        self.traffic_light_proximity_threshold = 15
+        self.obstacle_dist_norm = 60
+        self.disable_lane_invasion_sensor = False
+
+class VehicleDynamicsNoCameraConfig(BaseObservationConfig):
+    def __init__(self):
+        self.input_type = "wp_obs_info_speed_steer"
+        self.observation_space = Box(low=np.array([[-4.0, 0.0, -0.5, -1.0]]),
+                            high=np.array([[4.0, 1.0, 0.5, 1.0]]),
+                            dtype=np.float32)
+
+
+        self.sensors = {
+                            "lane_invasion_sensor":None,
+                            "collision_sensor": None
+                    }
+        self.observation_sensors = []
+
+        self.single_channel_image = False
+        self.noise_dim = 1
+        self.preprocess_crop_image = True
+        self.grayscale = False
+        self.default_obs_traffic_val = 1
+        self.min_dist_from_red_light = 4
+        self.disable_obstacle_info = False
+        self.frame_stack_size = 1
+        self.vehicle_proximity_threshold = 15
+        self.traffic_light_proximity_threshold = 15
+        self.obstacle_dist_norm = 60
+        self.disable_lane_invasion_sensor = False
+
 
 class PerspectiveRGBObservationConfig(BaseObservationConfig):
     def __init__(self):

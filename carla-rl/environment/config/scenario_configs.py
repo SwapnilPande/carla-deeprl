@@ -163,14 +163,14 @@ class LeaderboardConfig(BaseScenarioConfig):
     def __init__(self):
         super().__init__()
         self.scenarios = "challenge_train_scenario"
-        # self.use_scenarios = True
+        self.use_scenarios = True
         self.sample_npc = False
         self.num_npc = 50
         self.num_npc_lower_threshold = 60
         self.num_npc_upper_threshold = 80
-        self.num_pedestrians = 25
+        self.num_pedestrians = 200
         self.disable_two_wheeler = False
-        self.city_name = 'Town01'
+        self.city_name = 'Town06'
         self.vehicle_type = 'vehicle.toyota.prius'
         self.min_num_eps_before_switch_town = 3
         self.dist_for_success = 10.
@@ -183,3 +183,14 @@ class LeaderboardConfig(BaseScenarioConfig):
         # Disable episode termination due to vehicle being static
         self.disable_static = True
         self.disable_lane_invasion_collision = False
+ 
+
+class NoTrafficLightNoCrashEmptyConfig(NoCrashEmptyTown01Config):
+    def __init__(self):
+        super().__init__()
+        self.disable_traffic_light = True 
+
+class NoTrafficLightNoCrashDenseConfig(NoCrashDenseTown01Config):
+    def __init__(self):
+        super().__init__()
+        self.disable_traffic_light = True 
