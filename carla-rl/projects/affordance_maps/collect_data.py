@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import datetime
 import argparse
@@ -24,7 +25,7 @@ def rotate_points(points, angle):
     return points @ np.array([[math.cos(radian), math.sin(radian)], [-math.sin(radian), math.cos(radian)]])
 
 
-def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
+def collect_trajectory(env, save_dir, speed=.5, max_path_length=2500):
     now = datetime.datetime.now()
     salt = np.random.randint(100)
     fname = '_'.join(map(lambda x: '%02d' % x, (now.month, now.day, now.hour, now.minute, now.second, salt)))
@@ -52,8 +53,8 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
 
     obs = env.reset()
 
-    calibration = np.array([[8, 0, 8],
-                            [0, 8, 8],
+    calibration = np.array([[32, 0, 32],
+                            [0, 32, 32],
                             [0,  0,  1]])
 
     # calibration = np.array([[64, 0, 64],
@@ -62,6 +63,10 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
     ego_actor = env.carla_interface.get_ego_vehicle()._vehicle
     camera_actor = env.carla_interface.actor_fleet.sensor_manager.sensors['sensor.camera.rgb/map'].sensor
     # camera_actor.calibration = calibration
+
+    for _ in range(25):
+        action = env.get_autopilot_action(speed)
+        _ = env.step(action)
 
     for step in range(max_path_length):
         action = env.get_autopilot_action(speed)
@@ -79,8 +84,8 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
         base_transform = ego_actor.get_transform()
         base_waypoint = env.carla_interface.map.get_waypoint(base_transform.location, project_to_road=True)
 
-        pixel_x, pixel_y = np.meshgrid(np.arange(16), np.arange(16))
-        pixel_xy = np.stack([pixel_x.flatten(), pixel_y.flatten(), np.ones(16*16)], axis=-1)
+        pixel_x, pixel_y = np.meshgrid(np.arange(64), np.arange(64))
+        pixel_xy = np.stack([pixel_x.flatten(), pixel_y.flatten(), np.ones(64*64)], axis=-1)
         world_pts = np.linalg.inv(calibration).dot(pixel_xy.T).T[:,:2]
 
         # yaw = np.radians(((base_transform.rotation.yaw + 180) % 360) - 180)
@@ -122,7 +127,7 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
         # check for vehicle collisions
         actors = [actor for actor in env.carla_interface.actor_fleet.actor_list 
             if 'vehicle' in actor.type_id 
-            and actor.get_transform().location.distance(base_transform.location) < 15 
+            and actor.get_transform().location.distance(base_transform.location) < 30
             and actor != ego_actor]
 
         if len(actors) > 0:
@@ -151,10 +156,17 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
 
             labels[mask] = 3
 
-        reward_map = np.zeros((16,16))
+        reward_map = np.zeros((64,64))
         reward_map[pixel_xy[:,0].astype(int), pixel_xy[:,1].astype(int)] = labels
         reward_map = reward_map[::-1]
         # reward_map = None
+
+        keys = list(info.keys())
+        for key in keys:
+            if sys.getsizeof(info[key]) > 2500:
+                del info[key]
+            elif isinstance(info[key], np.ndarray):
+                info[key] = info[key].tolist()
 
         experience = {
             'obs': obs.tolist(),
@@ -165,9 +177,8 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
 
             'actor_tf': transform_to_list(ego_actor.get_transform()),
             'camera_tf': transform_to_list(camera_actor.get_transform()),
-
-            'speed': info['speed']
         }
+        experience.update(info)
 
         np.save(os.path.join(save_path, 'world', '{:04d}'.format(step)), world_pts)
         save_env_state(rgb, segmentation, topdown, reward_map, experience, save_path, step)
@@ -211,7 +222,7 @@ def main(args):
 
     obs_config = LowDimObservationConfig()
     obs_config.sensors['sensor.camera.rgb/top'] = {
-        'x':13.0,
+        'x':0.0,
         'z':18.0,
         'pitch':270,
         'sensor_x_res':'64',
@@ -219,15 +230,16 @@ def main(args):
         'fov':'90', \
         'sensor_tick': '0.0'}
     obs_config.sensors['sensor.camera.rgb/map'] = {
-        'x':13.0,
+        'x':0.0,
         'z':18.0,
         'pitch':270,
-        'sensor_x_res':'16',
-        'sensor_y_res':'16',
+        'sensor_x_res':'64',
+        'sensor_y_res':'64',
         'fov':'90', \
         'sensor_tick': '0.0'}
 
-    scenario_config = NoCrashDenseTown01Config()
+    scenario_config = LeaderboardConfig() # NoCrashDenseTown01Config()
+    scenario_config.city_name = args.town
 
     action_config = MergedSpeedScaledTanhConfig()
     action_config.frame_skip = 5
@@ -248,6 +260,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--n_samples', type=int, default=100000)
     parser.add_argument('--speed', type=float, default=1.)
+    parser.add_argument('--town', type=str, default='Town01')
     parser.add_argument('--path', type=str)
     args = parser.parse_args()
     main(args)

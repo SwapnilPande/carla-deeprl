@@ -194,6 +194,7 @@ class Carla910Interface():
         self.next_waypoints, \
         self.next_wp_angles, \
         self.next_wp_vectors, \
+        self.all_waypoints, \
         self.next_cmds = self.global_planner.get_next_orientation_new(ego_vehicle_transform)
 
         sensor_readings = self.actor_fleet.sensor_manager.get_sensor_readings(world_frame)
@@ -207,7 +208,8 @@ class Carla910Interface():
             'next_cmds': self.next_cmds,
             'dist_to_goal' : ego_vehicle_transform.location.distance(self.destination_transform.location),
             'ego_vehicle_location' : ego_vehicle_transform,
-            'ego_vehicle_velocity' : ego_vehicle_velocity
+            'ego_vehicle_velocity' : ego_vehicle_velocity,
+            'waypoints' : self.all_waypoints
         }
 
         control = {
@@ -234,6 +236,11 @@ class Carla910Interface():
         sensor_readings = self.actor_fleet.sensor_manager.get_sensor_readings(world_frame)
         location = self.actor_fleet.ego_vehicle._vehicle.get_location()
 
+        left_steer = self.actor_fleet.ego_vehicle._vehicle.get_wheel_steer_angle(carla.VehicleWheelLocation.FL_Wheel)
+        right_steer = self.actor_fleet.ego_vehicle._vehicle.get_wheel_steer_angle(carla.VehicleWheelLocation.FR_Wheel)
+        # Average steering angle between front two wheels, and normalize by diving by 90
+        steer_angle = (left_steer + right_steer) / (2* 90)
+
         transform = self.actor_fleet.get_ego_vehicle_transform()
         self.spectator.set_transform(transform)
 
@@ -248,6 +255,7 @@ class Carla910Interface():
         self.next_waypoints, \
         self.next_wp_angles, \
         self.next_wp_vectors, \
+        self.all_waypoints, \
         self.next_cmds = self.global_planner.get_next_orientation_new(ego_vehicle_transform)
 
         ep_measurements = {
@@ -259,7 +267,9 @@ class Carla910Interface():
             'dist_to_goal' : ego_vehicle_transform.location.distance(self.destination_transform.location),
             'ego_vehicle_location' : ego_vehicle_transform,
             'ego_vehicle_velocity' : ego_vehicle_velocity,
-            'location' : location
+            'location' : location,
+            'waypoints' : self.all_waypoints,
+            "steer_angle" : steer_angle
         }
 
         obs = {**control, **ep_measurements, **sensor_readings}
@@ -313,7 +323,7 @@ class Carla910Interface_Leaderboard:
         print("server_version", self.client.get_server_version())
         # print(os.getcwd())
         self.world_annotations = RouteParser.parse_annotations_file(
-            '../../leaderboard/data/all_towns_traffic_scenarios_public.json')
+            '../../../leaderboard/data/all_towns_traffic_scenarios_public.json')
         # print(self.world_annotations)
         CarlaDataProvider.set_client(self.client)
         CarlaDataProvider.set_traffic_manager_port(4050)
@@ -402,9 +412,9 @@ class Carla910Interface_Leaderboard:
         self.actor_fleet.destroy_actors()
 
         ## Set the new scenarios
-        # if self.config.scenario_config.use_scenarios:
-        self._set_scenario(unseen=unseen, index=self.scenario_index, town=self.curr_town)
-        self.scenario_index += 1
+        if self.config.scenario_config.use_scenarios:
+            self._set_scenario(unseen=unseen, index=self.scenario_index, town=self.curr_town)
+            self.scenario_index += 1
 
         ### Spawn new actors
         self.actor_fleet.spawn(self.source_transform, unseen)
@@ -442,9 +452,9 @@ class Carla910Interface_Leaderboard:
         # Sample the scenarios to be used for this route instance.
         self.sampled_scenarios_definitions = scenario_sampling(potential_scenarios_definitions)
         # print(236, self.sampled_scenarios_definitions)
-        self.scenarios = build_scenario_instances(self.world, self.actor_fleet.vehicle_actor, self.sampled_scenarios_definitions, debug_mode=1)
+        self.scenarios = build_scenario_instances(self.world, self.actor_fleet.vehicle_actor, self.sampled_scenarios_definitions, debug_mode=0)
         # print(244, self.scenarios)
-        self.running = Trigger(self.world, self.actor_fleet.vehicle_actor, self.route, self.scenarios, debug_mode=1)
+        self.running = Trigger(self.world, self.actor_fleet.vehicle_actor, self.route, self.scenarios, debug_mode=0)
 
         ego_vehicle_transform = self.actor_fleet.get_ego_vehicle_transform()
         ego_vehicle_velocity = self.actor_fleet.get_ego_vehicle_velocity()
@@ -455,6 +465,7 @@ class Carla910Interface_Leaderboard:
         self.next_waypoints, \
         self.next_wp_angles, \
         self.next_wp_vectors, \
+        self.all_waypoints, \
         self.next_cmds = self.global_planner.get_next_orientation_new(ego_vehicle_transform)
 
         sensor_readings = self.actor_fleet.sensor_manager.get_sensor_readings(world_frame)
@@ -468,7 +479,8 @@ class Carla910Interface_Leaderboard:
             'next_cmds': self.next_cmds,
             'dist_to_goal' : ego_vehicle_transform.location.distance(self.destination_transform.location),
             'ego_vehicle_location' : ego_vehicle_transform,
-            'ego_vehicle_velocity' : ego_vehicle_velocity
+            'ego_vehicle_velocity' : ego_vehicle_velocity,
+            'waypoints' : self.all_waypoints
         }
 
         control = {
@@ -504,6 +516,11 @@ class Carla910Interface_Leaderboard:
         sensor_readings = self.actor_fleet.sensor_manager.get_sensor_readings(world_frame)
         location = self.actor_fleet.ego_vehicle._vehicle.get_location()
 
+        left_steer = self.actor_fleet.ego_vehicle._vehicle.get_wheel_steer_angle(carla.VehicleWheelLocation.FL_Wheel)
+        right_steer = self.actor_fleet.ego_vehicle._vehicle.get_wheel_steer_angle(carla.VehicleWheelLocation.FR_Wheel)
+        # Average steering angle between front two wheels, and normalize by diving by 90
+        steer_angle = (left_steer + right_steer) / (2* 90)
+
         transform = self.actor_fleet.get_ego_vehicle_transform()
         self.spectator.set_transform(carla.Transform(transform.location + carla.Location(z=50), carla.Rotation(pitch=-90)))
 
@@ -518,6 +535,7 @@ class Carla910Interface_Leaderboard:
         self.next_waypoints, \
         self.next_wp_angles, \
         self.next_wp_vectors, \
+        self.all_waypoints, \
         self.next_cmds = self.global_planner.get_next_orientation_new(ego_vehicle_transform)
 
         ep_measurements = {
@@ -529,7 +547,9 @@ class Carla910Interface_Leaderboard:
             'dist_to_goal' : ego_vehicle_transform.location.distance(self.destination_transform.location),
             'ego_vehicle_location' : ego_vehicle_transform,
             'ego_vehicle_velocity' : ego_vehicle_velocity,
-            'location' : location
+            'location' : location,
+            "waypoints" : self.all_waypoints,
+            'steer_angle': steer_angle
         }
 
         obs = {**control, **ep_measurements, **sensor_readings}

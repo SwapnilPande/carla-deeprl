@@ -10,7 +10,7 @@ server_port: 2000
 
 use_images: false
 
-factored: true
+factored: false
 
 data_module:
     batch_size: 32
@@ -48,8 +48,11 @@ train_online: true
 online_epochs: 10000
 
 
+value_model: ???
+
+
 trainer:
-    # precision: 16
+    precision: 16
     gpus: ${gpu}
 
 hydra:
