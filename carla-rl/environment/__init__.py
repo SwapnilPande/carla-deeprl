@@ -1,1 +1,1 @@
-from .env import CarlaEnv
+from .env import CarlaEnv, CarlaEvalEnv

@@ -91,7 +91,7 @@ class GlobalPlanner():
 
         next_waypoints_angles = []
         next_waypoint_found = False
-        num_next_waypoints = 5
+        num_next_waypoints = 25
         max_index = 0
         for i, (waypoint, _) in enumerate(self._waypoints_queue_old):
 
@@ -198,8 +198,9 @@ class GlobalPlanner():
         next_waypoints_angles = []
         next_waypoints_vectors = []
         next_waypoints = []
+        next_cmds = []
         next_waypoint_found = False
-        num_next_waypoints = 5
+        num_next_waypoints = 15
         max_index = -1
         min_dist = np.inf
         for i, (waypoint, _, dist) in enumerate(self._waypoints_queue):
@@ -219,7 +220,7 @@ class GlobalPlanner():
                 elif i == q_len - 2:
                     self.second_last_waypoint = waypoint
 
-        for i, (waypoint, _, dist) in enumerate(self._waypoints_queue):
+        for i, (waypoint, cmd, dist) in enumerate(self._waypoints_queue):
             if i > num_next_waypoints - 1:
                 break
             dist_to_waypoint = distance_vehicle(waypoint, vehicle_transform)
@@ -228,44 +229,14 @@ class GlobalPlanner():
             if len(next_waypoints_angles) == 0:
                 next_waypoints_angles = [angle]
                 next_waypoints = [waypoint]
+                next_cmds = [cmd]
                 dist_to_goal = dist
                 next_waypoints_vectors = [w_vec]
             else:
                 next_waypoints_angles.append(angle)
+                next_cmds.append(cmd)
                 next_waypoints.append(waypoint)
                 next_waypoints_vectors.append(w_vec)
-
-        # for i, (waypoint, _) in enumerate(self._waypoints_queue):
-
-        #     dist_to_waypoint = distance_vehicle(waypoint, vehicle_transform)
-        #     dot, angle = self.get_dot_product_and_angle(vehicle_transform, waypoint)
-
-        #     # next_waypoint_found implies the first waypoint with
-        #     # positive dot product is found
-        #     if not next_waypoint_found:
-        #         if dist_to_waypoint < min_dist:
-        #             min_dist = dist_to_waypoint
-        #             max_index = i
-        #             next_waypoints_angles = [angle]
-        #             next_waypoints = [waypoint]
-        #         else:
-        #             next_waypoint_found = True
-        #     else:
-        #         if len(next_waypoints_angles) < num_next_waypoints:
-        #             next_waypoints_angles.append(angle)
-        #             next_waypoints.append(waypoint)
-        #         else:
-        #             break
-        # if max_index > 0:
-        #     q_len = len(self._waypoints_queue)
-
-        #     # Remove all waypoints except the closest one (max_index)
-        #     for i in range(max_index):
-        #         waypoint, _ = self._waypoints_queue.popleft()
-
-        #         # Store second-last waypoint for corner case
-        #         if i == q_len - 2:
-        #             self.second_last_waypoint = waypoint
 
         next_waypoints_angles_array = np.array(next_waypoints_angles)
         # if len(next_waypoints_angles) > 2:
@@ -306,7 +277,7 @@ class GlobalPlanner():
         # Below is an approximation of dist_to_goal which was used earlier.
         dist_to_goal_approx = len(self._waypoints_queue) *self._hop_resolution
 
-        return angle, self.dist_to_trajectory, dist_to_goal, next_waypoints, next_waypoints_angles, next_waypoints_vectors
+        return angle, self.dist_to_trajectory, dist_to_goal, next_waypoints, next_waypoints_angles, next_waypoints_vectors, next_cmds
 
     def get_dot_product_and_angle(self, vehicle_transform, waypoint):
 

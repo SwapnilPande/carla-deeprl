@@ -1,20 +1,42 @@
-""" Copied from LBC """
-
-import os
 import math
-
 import torch
 import torch.nn.functional as F
 from torch import nn
-import torch.optim as optim
+
 import pytorch_lightning as pl
-from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.callbacks import ModelCheckpoint
 
-from omegaconf import DictConfig, OmegaConf
-import hydra
 
-from spatial_data import EgoDataModule
+class EgoModelRails(nn.Module):
+    def __init__(self, dt=1./4):
+        super().__init__()
+
+        self.dt = dt
+
+        # Kinematic bicycle model
+        self.front_wb = nn.Parameter(torch.tensor(1.),requires_grad=True)
+        self.rear_wb  = nn.Parameter(torch.tensor(1.),requires_grad=True)
+
+        self.steer_gain  = nn.Parameter(torch.tensor(1.), requires_grad=True)
+        self.brake_accel = nn.Parameter(torch.zeros(1), requires_grad=True)
+        self.throt_accel = nn.Sequential(
+            nn.Linear(1,1,bias=False),
+        )
+
+    def forward(self, locs, yaws, spds, acts):
+        steer = acts[...,0:1]
+        throt = acts[...,1:2]
+        brake = acts[...,2:3].byte()
+
+        accel = torch.where(brake, self.brake_accel.expand(*brake.size()), self.throt_accel(throt))
+        wheel = self.steer_gain * steer
+
+        beta = torch.atan(self.rear_wb/(self.front_wb+self.rear_wb) * torch.tan(wheel))
+
+        next_locs = locs + spds * torch.cat([torch.cos(yaws+beta), torch.sin(yaws+beta)],-1) * self.dt
+        next_yaws = yaws + spds / self.rear_wb * torch.sin(beta) * self.dt
+        next_spds = spds + accel * self.dt
+
+        return next_locs, next_yaws, F.relu(next_spds)
 
 
 class EgoModel(pl.LightningModule):
@@ -28,7 +50,7 @@ class EgoModel(pl.LightningModule):
         self.rear_wb  = nn.Parameter(torch.tensor(1.),requires_grad=True)
 
         self.steer_gain  = nn.Parameter(torch.tensor(1.), requires_grad=True)
-        self.brake_accel = nn.Parameter(torch.zeros(1.), requires_grad=True)
+        self.brake_accel = nn.Parameter(torch.zeros(1), requires_grad=True)
         self.throt_accel = nn.Sequential(
             nn.Linear(1,1,bias=False),
         )
@@ -113,37 +135,3 @@ class EgoModel(pl.LightningModule):
 
     def configure_optimizers(self):
         return optim.Adam(self.parameters(), lr=1e-3)
-
-
-@hydra.main(config_path='conf', config_name='train.yaml')
-def main(cfg):
-    model = EgoModel()
-    dataset_paths = ['/home/brian/carla-rl/carla-rl/projects/affordance_maps/random_data']
-    # val_path = '/media/brian/linux-data/reward_maps_val/'
-    val_path = None
-    dm = EgoDataModule(dataset_paths, val_path)
-
-    logger = TensorBoardLogger(save_dir=os.getcwd(), name='', version='')
-    callbacks = []
-    checkpoint_callback = ModelCheckpoint(period=1, save_top_k=-1)
-    callbacks.append(checkpoint_callback)
-
-    trainer = pl.Trainer(
-        logger=logger,
-        callbacks=callbacks,
-        max_epochs=5
-    )
-    trainer.fit(model, dm)
-
-    print('learned parameters:')
-    print(model.front_wb)
-    print(model.rear_wb)
-    print(model.steer_gain)
-    print(model.brake_accel)
-    print(model.throt_accel[0].weight)
-
-    torch.save(model, "ego_model.th")
-
-
-if __name__ == '__main__':
-    main()

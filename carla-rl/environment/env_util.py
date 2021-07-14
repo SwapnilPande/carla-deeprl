@@ -382,3 +382,10 @@ def convert_to_rgb(semantic_image, reduced_classes=False, binarized_image=False)
 
     semantic_rgb_image = f(semantic_image.reshape(-1))
     return semantic_rgb_image.reshape((h,w,3))
+
+def filter_sem(sem, labels=[4,6,7,8,10]):
+    resem = np.zeros_like(sem)
+    for i, label in enumerate(labels):
+        resem[sem==label] = i+1
+
+    return resem

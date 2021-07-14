@@ -1,0 +1,3 @@
+dataset_path: "/zfsauton/datasets/ArgoRL/jhoang/small_dataset/"
+
+num_processes: 1

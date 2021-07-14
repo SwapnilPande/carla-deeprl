@@ -44,6 +44,8 @@ class SensorManager():
             elif 'camera' in sensor_name:
                 sensor_config.update({'name':sensor_name})
                 sensor = CameraSensor(self.parent_actor, sensor_config, self.config.verbose)
+            elif 'gnss' in sensor_name:
+                sensor = GnssSensor(self.parent_actor, sensor_config)
             else:
                 raise Exception("Sensor {} not supported".format(sensor_name))
 
@@ -66,6 +68,8 @@ class SensorManager():
                 else:
                     camera_image = self.sensors[k]._read_data(world_frame)
                     sensor_readings[k] = {'image': camera_image}
+            elif 'gnss' in k:
+                sensor_readings[k] = {'gnss': (self.sensors[k].lat, self.sensors[k].lon, self.sensors[k].alt)}
             else:
                 print("Uninitialized sensor!")
 
@@ -179,9 +183,12 @@ class GnssSensor(object):
         self._parent = parent_actor
         self.lat = 0.0
         self.lon = 0.0
+        self.alt = 0.0
         world = self._parent.get_world()
         bp = world.get_blueprint_library().find('sensor.other.gnss')
-        self.sensor = world.spawn_actor(bp, carla.Transform(carla.Location(x=1.0, z=2.8)), attach_to=self._parent)
+        self.sensor = world.spawn_actor(
+            bp, carla.Transform(carla.Location(x=config['x'], y=config['y'], z=config['z'])),
+            attach_to=self._parent)
         # We need to pass the lambda a weak reference to self to avoid circular
         # reference.
         weak_self = weakref.ref(self)
@@ -194,6 +201,7 @@ class GnssSensor(object):
             return
         self.lat = event.latitude
         self.lon = event.longitude
+        self.alt = event.altitude
 
 
 # ==============================================================================
@@ -234,8 +242,9 @@ class CameraSensor(object):
         cam_image_p = self._preprocess_image(cam_image)
         if 'semantic' in self.name:
             cam_image_p = cam_image_p[:,:,0]
-            cam_image_p = env_util.reduce_classes(cam_image_p, False)
-            cam_image_p = env_util.convert_to_one_hot(cam_image_p, num_classes=self.config['num_classes'])
+            cam_image_p = env_util.filter_sem(cam_image_p, labels=self.config['seg_channels'])
+            #cam_image_p = env_util.reduce_classes(cam_image_p, False)
+            #cam_image_p = env_util.convert_to_one_hot(cam_image_p, num_classes=self.config['num_classes'])
         return cam_image_p
 
     def _retrieve_data(self, world_frame, timeout):
