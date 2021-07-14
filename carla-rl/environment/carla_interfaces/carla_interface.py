@@ -408,9 +408,9 @@ class Carla910Interface_Leaderboard:
         self.actor_fleet.destroy_actors()
 
         ## Set the new scenarios
-        # if self.config.scenario_config.use_scenarios:
-        self._set_scenario(unseen=unseen, index=self.scenario_index, town=self.curr_town)
-        self.scenario_index += 1
+        if self.config.scenario_config.use_scenarios:
+            self._set_scenario(unseen=unseen, index=self.scenario_index, town=self.curr_town)
+            self.scenario_index += 1
 
         ### Spawn new actors
         self.actor_fleet.spawn(self.source_transform, unseen)
