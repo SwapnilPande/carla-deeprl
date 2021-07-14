@@ -14,7 +14,7 @@ import json
 import numpy as np
 import math
 import copy
-import cv2
+# import cv2
 import collections
 import queue
 import time
@@ -22,6 +22,9 @@ import scipy.misc
 # from scipy.misc import imsave
 import matplotlib
 import matplotlib.pyplot as plt
+from copy import deepcopy
+
+from traitlets.traitlets import validate
 # import ipdb
 # st = ipdb.set_trace
 
@@ -34,6 +37,9 @@ from environment.reward import compute_reward
 from environment.config.config import episode_measurements
 from environment.carla_interfaces.carla_interface import Carla910Interface, Carla910Interface_Leaderboard
 from environment import env_util as util
+from environment.config.config import DefaultMainConfig
+from environment.config.observation_configs import *
+from environment.config.scenario_configs import LeaderboardConfig
 
 
 try:
@@ -50,15 +56,14 @@ import psutil
 
 
 class CarlaEnv(gym.Env):
-    def __init__(self, config=None, vis_wrapper=None, vis_wrapper_vae=None, logger=None, log_dir=None):
+    def __init__(self, config=None, vis_wrapper=None, vis_wrapper_vae=None, logger=None, log_dir=''):
         self.carla_interface = None
 
         # Save and verify config
         if config is None:
             raise Exception("Empty Config")
         self.config = config
-        self.config.verify()
-
+        # self.config.verify()
 
         if 'challenge' in self.config.scenario_config.scenarios:
             self.carla_interface = Carla910Interface_Leaderboard(config, log_dir)
@@ -140,7 +145,10 @@ class CarlaEnv(gym.Env):
         # Logging
         ################################################
         # self.base_dir = os.path.join("/",*(log_dir.split("/")[:-3]))
-        self.log_dir = log_dir
+        self.log_dir = os.path.join(log_dir, "env")
+        if(not os.path.isdir(self.log_dir)):
+            os.makedirs(self.log_dir)
+
         self.logger = logger
         self.vis_wrapper = vis_wrapper
         self.vis_wrapper_vae = vis_wrapper_vae
@@ -208,11 +216,6 @@ class CarlaEnv(gym.Env):
                 self.episode_measurements['control_reverse'] = carla_obs['control_reverse']
                 self.episode_measurements['control_hand_brake'] = carla_obs['control_hand_brake']
 
-            sensors = [k for k in self.config.obs_config.sensors if 'sensor.camera' in k]
-            for sensor_name in sensors:
-                image = carla_obs[sensor_name]
-                self.episode_measurements[sensor_name] = image
-
             # rgb_bev = carla_obs['sensor.camera.rgb/top']['image']
             # self.episode_measurements['rgb_bev'] = rgb_bev
             # rgb_front = carla_obs['sensor.camera.rgb/front']['image']
@@ -232,6 +235,7 @@ class CarlaEnv(gym.Env):
             # Update episode_measurements to compute reward
             self.episode_measurements['next_orientation'] = carla_obs['next_orientation']
             self.episode_measurements['control_steer'] = carla_obs['control_steer']
+            self.episode_measurements['steer_angle'] = carla_obs['steer_angle']
             self.episode_measurements['dist_to_trajectory'] = carla_obs['dist_to_trajectory']
             self.episode_measurements['distance_to_goal_trajec'] = carla_obs['distance_to_goal_trajec']
             self.episode_measurements['speed'] = util.get_speed_from_velocity(carla_obs['ego_vehicle_velocity'])
@@ -248,6 +252,14 @@ class CarlaEnv(gym.Env):
             if self.episode_measurements['min_distance_to_goal'] >= carla_obs['dist_to_goal']:
                 self.episode_measurements['min_distance_to_goal'] = carla_obs['dist_to_goal']
 
+            # Additional state vectors storing the position of the vehicle
+            self.episode_measurements["ego_vehicle_x"] = carla_obs["ego_vehicle_location"].location.x
+            self.episode_measurements["ego_vehicle_y"] = carla_obs["ego_vehicle_location"].location.y
+            self.episode_measurements["ego_vehicle_theta"] = carla_obs["ego_vehicle_location"].rotation.yaw
+            self.episode_measurements["waypoints"] = carla_obs["waypoints"]
+            next_waypoints = [(wp.transform.location.x, wp.transform.location.y, wp.transform.location.z) for wp in carla_obs['next_waypoints']]
+            self.episode_measurements["next_waypoints"] = next_waypoints
+
             self.num_steps += 1
 
             if not self.unseen:
@@ -260,6 +272,8 @@ class CarlaEnv(gym.Env):
                                      current = self.episode_measurements,
                                      config = self.config,
                                      verbose = self.config.verbose)
+
+
             # True/False, did we collide in this step
             obs_collision = self.episode_measurements['num_collisions'] - self.prev_measurement['num_collisions'] > 0
 
@@ -281,6 +295,7 @@ class CarlaEnv(gym.Env):
 
             done = self._compute_done_condition()
 
+
             self.episode_measurements['done'] = done
             self.prev_measurement = copy.deepcopy(self.episode_measurements)
 
@@ -288,7 +303,6 @@ class CarlaEnv(gym.Env):
             self.obstacle_dist_array.append(self.episode_measurements['obstacle_dist'])
             self.obstacle_speed_array.append(self.episode_measurements['obstacle_speed'])
             self.wp_orientation_array.append(self.episode_measurements['next_orientation'])
-            self.input_steer_array.append(self.episode_measurements['control_steer'])
             self.throttles_array.append(self.episode_measurements['control_throttle'])
             self.steers_array.append(self.episode_measurements['control_steer'])
             self.brakes_array.append(self.episode_measurements['control_brake'])
@@ -310,6 +324,11 @@ class CarlaEnv(gym.Env):
         self.total_reward += reward
         self.episode_measurements['reward'] = reward
         self.episode_measurements['total_reward'] = self.total_reward
+
+        sensors = [k for k in self.config.obs_config.sensors if 'sensor.camera' in k]
+        for sensor_name in sensors:
+            image = carla_obs[sensor_name]['image']
+            self.episode_measurements[sensor_name] = image
 
         gym_obs = self.create_observations(carla_obs)
 
@@ -488,7 +507,8 @@ class CarlaEnv(gym.Env):
         #             self.vis_wrapper_vae.generate_video(self.validation_episode_num, self.total_steps, self.index)
         #             self.vis_wrapper_vae.remove_images()
 
-        return gym_obs, float(reward), done, self.episode_measurements
+
+        return gym_obs, float(reward), done, deepcopy(self.episode_measurements)
 
     def _add_to_stacked_queue(self, object_queue, object_to_add):
 
@@ -765,28 +785,6 @@ class CarlaEnv(gym.Env):
 
             obs_output = np.concatenate((np.array([self.episode_measurements['next_orientation']]), np.array([obstacle_dist]), np.array([obstacle_speed]), np.array([speed]), np.array([steer]), np.array([ldist]), np.array([light])))
 
-
-        elif self.config.obs_config.input_type == 'wp_vae_speed_steer_goal':
-            speed = self.episode_measurements['speed'] / 10
-            steer = self.episode_measurements['control_steer']
-            distance_to_goal_trajec = self.episode_measurements['distance_to_goal_trajec'] / 500
-            obs_output = np.concatenate((np.array([self.episode_measurements['next_orientation']]), np.array([speed]), np.array([steer]), np.array([distance_to_goal_trajec])))
-
-        elif self.config.obs_config.input_type == 'wp_vae_speed_steer_ldist_goal_light':
-            speed = self.episode_measurements['speed'] / 10
-            steer = self.episode_measurements['control_steer']
-            ldist = self.episode_measurements['dist_to_trajectory']
-            distance_to_goal_trajec = self.episode_measurements['distance_to_goal_trajec'] / 500
-            light = self.episode_measurements['red_light_dist']
-
-            # normalization
-            if light != -1:
-                light /= self.config.obs_config.traffic_light_proximity_threshold
-            else:
-                light = self.config.obs_config.default_obs_traffic_val
-
-            obs_output = np.concatenate((np.array([self.episode_measurements['next_orientation']]), np.array([speed]), np.array([steer]), np.array([ldist]), np.array([distance_to_goal_trajec]), np.array([light])))
-
         elif self.config.obs_config.input_type in ['wp_vae_obs_info_speed_steer_ldist_goal_light', 'wp_cnn_obs_info_speed_steer_ldist_goal_light', 'wp_bev_rv_obs_info_speed_steer_ldist_goal_light']:
             speed = self.episode_measurements['speed'] / 10
             obstacle_dist = self.episode_measurements['obstacle_dist']
@@ -814,6 +812,15 @@ class CarlaEnv(gym.Env):
                 light = self.config.obs_config.default_obs_traffic_val
 
             obs_output = np.concatenate((np.array([self.episode_measurements['next_orientation']]), np.array([obstacle_dist]), np.array([obstacle_speed]), np.array([speed]), np.array([steer]), np.array([ldist]), np.array([distance_to_goal_trajec]), np.array([light])))
+
+        elif self.config.obs_config.input_type == "wp_obs_info_speed_steer":
+            speed = self.episode_measurements['speed'] / 10
+            steer = self.episode_measurements['control_steer']
+            ldist = self.episode_measurements['dist_to_trajectory']
+
+            obs_output = np.concatenate((np.array([self.episode_measurements['next_orientation']]), np.array([speed]), np.array([steer]), np.array([ldist])))
+
+
         return obs_output
 
     def create_observations_image(self, carla_obs):
@@ -924,7 +931,7 @@ class CarlaEnv(gym.Env):
         self.total_reward = 0 # Episode level total reward
         self.unseen = unseen
 
-        carla_obs = self.carla_interface.reset()
+        carla_obs = self.carla_interface.reset(unseen = self.unseen)
 
         ################################################
         # Episode information(again)
@@ -978,6 +985,8 @@ class CarlaEnv(gym.Env):
         self.episode_measurements['dist_to_trajectory'] = carla_obs["dist_to_trajectory"]
         self.next_waypoints = carla_obs["next_waypoints"]
 
+
+
         # Update obstacle distance measurements
         # self._update_env_obs(front_rgb_image=rgb_image)
         self._update_env_obs()
@@ -996,7 +1005,6 @@ class CarlaEnv(gym.Env):
         self.steers_array = []
         self.brakes_array = []
         self.wp_orientation_array = []
-        self.input_steer_array = []
         self.obstacle_dist_array = []
         self.step_reward_array = []
         self.collision_reward_array = []
@@ -1004,6 +1012,11 @@ class CarlaEnv(gym.Env):
         self.speed_reward_array = []
         self.dist_to_target_array = []
         self.red_light_dist_array = []
+
+        sensors = [k for k in self.config.obs_config.sensors if 'sensor.camera' in k]
+        for sensor_name in sensors:
+            image = carla_obs[sensor_name]['image']
+            self.episode_measurements[sensor_name] = image
 
         return self.create_observations(carla_obs)
 
@@ -1161,9 +1174,9 @@ class CarlaEnv(gym.Env):
         print("Vehicle transform:{0}".format(self.vehicle_actor.get_transform()))
         print("Vehicle velocity:{0}".format(self.vehicle_actor.get_velocity()))
 
-    def render(self, mode='rgb_array', camera='sensor.camera.rgb/top'):
+    def render(self, mode='rgb_array', camera='sensor.camera.rgb/front'):
         try:
-            return self.episode_measurements[camera]['image']
+            return self.episode_measurements[camera].copy()
         except KeyError:
             print('Cannot render {} -- key error'.format(camera))
             return None
@@ -1181,6 +1194,9 @@ class CarlaEnv(gym.Env):
 
     def __del__(self):
         self.close()
+
+    def get_eval_env(self, eval_frequency):
+        return CarlaEvalEnv(self, eval_frequency=eval_frequency)
 
 # @profile
 def plot_episode_info(path,
@@ -1273,12 +1289,100 @@ def plot_episode_info(path,
     plt.savefig(path + '{}.png'.format(episode_num))
     plt.close()
 
+
+class CarlaEvalEnv(CarlaEnv):
+    """Environment to perform evaluation on carla
+    """
+    def __init__(self, env, eval_frequency):
+        self.env = env
+
+        self.logger = self.env.logger
+        self.config = self.env.config
+
+        self.observation_space = env.observation_space
+        self.action_space = env.action_space
+
+        self.num_eval_episodes = self.config.scenario_config.num_episodes
+
+        # Need eval frequency to log eval metrics at the correct timestep
+        self.eval_frequency = eval_frequency
+        self.total_eval_steps = 0
+
+        self.reset_eval_metrics()
+
+
+    def reset_eval_metrics(self):
+
+        self.cur_eval_episode = 0
+
+        # Store metrics for episode termination
+        self.episode_termination_counts = {
+            "success" : 0,
+            "obs_collision" : 0,
+            "lane_invasion" : 0,
+            "out_of_road" : 0,
+            "offlane" : 0,
+            "unexpected_collision" : 0,
+            "runover_light" : 0,
+            "max_steps" : 0,
+            "max_steps_obstacle" : 0,
+            "max_steps_light" : 0,
+            "static" : 0,
+            "unknown" : 0
+        }
+
+    def reset(self):
+        if(self.cur_eval_episode == 0):
+            print("CARLA EVAL ENVIRONMENT: Starting test scenarios")
+            self.total_eval_steps += 1
+        # Reset environment with unseen flag true
+        return self.env.reset(unseen = True, index = self.cur_eval_episode)
+
+    def step(self, action):
+        obs, reward, done, info = self.env.step(action)
+
+         # Evaluation episode complete
+        if done:
+            # Keep track of the way episode terminates
+            if(info['termination_state'] in self.episode_termination_counts):
+                self.episode_termination_counts[info['termination_state']] += 1
+            else:
+                self.episode_termination_counts['unknown'] += 1
+
+            # Increment index
+            self.cur_eval_episode += 1
+
+
+            # Log data and reset counts if max number of eval episodes reached
+            if(self.cur_eval_episode == self.num_eval_episodes):
+                print("CARLA EVAL ENVIRONMENT: Results of test scenarios")
+                print("------------------ Terminatation Conditions ------------------")
+                step = self.eval_frequency * self.total_eval_steps
+                for key, val in self.episode_termination_counts.items():
+                    print("{}: {}".format(key, val))
+                    if self.logger is not None:
+                        self.logger.log_scalar('eval/termination_{}'.format(key), val, step)
+                print("--------------------------------------------------------------")
+
+                # Reset running evaluation counts
+                self.reset_eval_metrics()
+
+        return obs, reward, done, info
+
+
+
+
+
 if __name__ == "__main__":
-    env = CarlaEnv(log_dir = "/home/scratch/swapnilp/carla_test")
+    config = DefaultMainConfig()
+    obs_config = LowDimObservationConfig()
+    scenarios_config = LeaderboardConfig()
+    config.populate_config(observation_config=obs_config, scenario_config=scenarios_config)
+    env = CarlaEnv(config=config)
     env.reset()
     for i in range(10000):
 
-        obs, reward, done, info = env.step(np.array([0,1.0]))
+        obs, reward, done, info = env.step(np.array([0,.5]))
 
         print(reward, done)
 

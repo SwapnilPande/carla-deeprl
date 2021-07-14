@@ -368,6 +368,28 @@ class Agent(object):
 
         return (False, None)
 
+    def _is_walker_hazard(self, walkers_list):
+        z = self._vehicle.get_location().z
+        p1 = _numpy(self._vehicle.get_location())
+        v1 = 10.0 * _orientation(self._vehicle.get_transform().rotation.yaw)
+
+        for walker in walkers_list:
+            v2_hat = _orientation(walker.get_transform().rotation.yaw)
+            s2 = np.linalg.norm(_numpy(walker.get_velocity()))
+
+            if s2 < 0.05:
+                v2_hat *= s2
+
+            p2 = -3.0 * v2_hat + _numpy(walker.get_location())
+            v2 = 8.0 * v2_hat
+
+            collides, collision_point = get_collision(p1, v1, p2, v2)
+
+            if collides:
+                return (True, walker)
+
+        return (False, None)
+
     def emergency_stop(self):
         """
         Send an emergency stop command to the vehicle

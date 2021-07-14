@@ -37,7 +37,7 @@ def compute_reward(prev, current, config, verbose=False):
         if (_check_if_signal_crossed(prev, current) # Signal Crossed
             and (prev['nearest_traffic_actor_state'] == carla.TrafficLightState.Red) # Light is red
             and (current["speed"] > config.scenario_config.zero_speed_threshold) # Vehicle is moving forward
-            and (prev['initial_dist_to_red_light'] > config.scenario_config.min_dist_from_red_light)): # We are within threshold distance of red light
+            and (prev['initial_dist_to_red_light'] > config.obs_config.min_dist_from_red_light)): # We are within threshold distance of red light
 
             # Add reward if these conditions are true
             current["runover_light"] = True
@@ -55,9 +55,9 @@ def compute_reward(prev, current, config, verbose=False):
         is_collision = obs_collision or current["out_of_road"]
 
         # count any lane change also as a collision
-        if config.scenario_config.disable_lane_invasion_collision:
-            lane_change = current['num_laneintersections'] > 0
-            is_collision = is_collision or lane_change
+        # if config.scenario_config.disable_lane_invasion_collision:
+        lane_change = current['num_laneintersections'] > 0
+        is_collision = is_collision or lane_change
 
     current['obs_collision'] = obs_collision
     current['lane_change'] = lane_change

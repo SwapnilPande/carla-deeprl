@@ -56,13 +56,52 @@ class Simple2RewardConfig(BaseRewardConfig):
         self.const_collision_penalty = 250
 
         # Penalty for collision proportional to speed
-        self.collision_penalty_speed_coeff = 250
+        self.collision_penalty_speed_coeff = 0
 
         # Penalty for red light violation
         self.const_light_penalty = 250
 
         # Penalty for red light infraction proportional to speed
-        self.light_penalty_speed_coeff = 250
+        self.light_penalty_speed_coeff = 0
+
+        # Penalty for steer reward
+        self.steer_penalty_coeff =  0
+
+        # Reward for success completion of trajectory
+        self.success_reward = 0
+
+        # Constant reward given at every time step
+        self.constant_positive_reward = 0
+
+        # Factor to normalize rewards (reward is divided by this value)
+        self.reward_normalize_factor = 1
+  
+
+class NoTrafficLightConfig(BaseRewardConfig):
+    def __init__(self):
+        # Speed reward coefficient
+        self.speed_coeff = 1
+
+        # Acceleration reward coefficient
+        self.acceleration_coeff = 0
+
+        # Coefficient for dist_to_trajec reward
+        # Pass a positive value for this argument
+        self.dist_to_trajectory_coeff = 1
+
+        # Penalty for collision
+        self.const_collision_penalty = 250
+
+        # Penalty for collision proportional to speed
+        self.collision_penalty_speed_coeff = 250
+
+        # Penalty for red light violation
+        # change here
+        self.const_light_penalty = 0
+
+        # Penalty for red light infraction proportional to speed
+        # change here
+        self.light_penalty_speed_coeff = 0
 
         # Penalty for steer reward
         self.steer_penalty_coeff =  0
