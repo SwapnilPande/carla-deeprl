@@ -187,15 +187,6 @@ class OfflineCarlaDataset(Dataset):
                                                 samples[i][steer_key] - samples[i-1][steer_key],
                                                 samples[i][speed_key] - samples[i-1][speed_key]])
 
-                    # print()
-                    # print("Obs: ", obs)
-                    # print("Action: ", action)
-
-                    # print("delta: ", delta)
-
-                    # print("Prev Pose: ", vehicle_pose_prev)
-                    # print("Cur Pose: ", vehicle_pose_cur)
-
                     # convert stacked frame list to torch tensor
                     self.obs.append(torch.stack(obs))
                     # self.additional_state.append(torch.stack(additional_state))

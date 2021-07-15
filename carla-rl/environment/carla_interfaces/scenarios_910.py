@@ -2097,8 +2097,8 @@ import xml.etree.ElementTree as ET
 
 def get_leaderboard_route(unseen=False, curr_town=None, index=0, max_idx=None, avail_map_list=None, mode='train'):
     xml_file = {
-            'train': '../../leaderboard/data/routes_training.xml',
-            'test': '../../leaderboard/data/routes_testing.xml'
+            'train': '../../../../leaderboard/data/routes_training.xml',
+            'test': '../../../../leaderboard/data/routes_testing.xml'
         }[mode]
 
     _route_tree = ET.parse(xml_file)

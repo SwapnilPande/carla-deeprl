@@ -60,7 +60,7 @@ class CarlaEnv(gym.Env):
         if config is None:
             raise Exception("Empty Config")
         self.config = config
-        self.config.verify()
+        # self.config.verify()
 
 
         if 'challenge' in self.config.scenario_config.scenarios:

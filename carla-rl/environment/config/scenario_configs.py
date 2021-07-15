@@ -163,7 +163,28 @@ class LeaderboardConfig(BaseScenarioConfig):
     def __init__(self):
         super().__init__()
         self.min_num_eps_before_switch_town = 3
- 
+        self.city_name = "Town01"
+        self.use_scenarios = True
+        self.scenarios = "challenge_train_scenario"
+        self.updated_scenarios = False
+        self.vehicle_type = "vehicle.toyota.prius"
+        self.num_pedestrians = 0 
+        self.num_npc = 0
+        self.sample_npc = True
+        self.num_npc_lower_threshold = 70 
+        self.num_npc_upper_threshold = 150 
+        self.traffic_light_proximity_threshold = 15
+        self.min_dist_from_red_light = 4
+        self.disable_traffic_light = False
+        self.disable_collision = False
+        self.dist_for_success = 10
+        self.zero_speed_threshold = 0.05
+        self.max_offlane_steps = 20
+        self.max_steps = 10000
+        self.max_static_steps = 1000
+        self.disable_two_wheeler = True
+        self.enable_lane_invasion_sensor = True
+
 
 class NoTrafficLightNoCrashEmptyConfig(NoCrashEmptyTown01Config):
     def __init__(self):

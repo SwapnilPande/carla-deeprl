@@ -1,4 +1,3 @@
-
 # morel imports
 import numpy as np
 from tqdm import tqdm
@@ -61,10 +60,10 @@ class MBPO:
                 n_models = 7,\
                 n_timesteps = 1000,\
                 n_rollouts = 400,\
-                n_grad_updates = -1,\
-                batch_size = 256,\
-                buffer_size = 1000,
-                gpu = 0):
+                n_grad_updates = 40,\
+                batch_size = 512,\
+                buffer_size = 1000000,
+                gpu = 2):
 
         print('------------------Initializing MBPO Parameters-----------------')
         # hyperparams
@@ -76,8 +75,13 @@ class MBPO:
         self.batch_size = batch_size            # Batch size
         self.buffer_size = buffer_size          # replay buffer
         self.gpu = gpu
-        self.dynamics_epochs = 100 # TODO 
+
+
+        self.dynamics_epochs = 200 # TODO 
         self.rollout_len = 1
+        self.num_initial_samples = 30000
+        self.num_samples_per_timestep = 1000
+
 
         print('-----------------------Initializing Logging ------------------')
 
@@ -102,7 +106,7 @@ class MBPO:
         # initial exploration, collect data from other policy
         data_collector.collect_data(path=self.collect_data_path,
                                     policy=None,
-                                    n_samples=1000,\
+                                    n_samples=self.num_initial_samples,\
                                     carla_gpu=self.gpu)
                     
         print('------------------------Creating CarlaDataModule-------------')
@@ -110,10 +114,10 @@ class MBPO:
         class TempDataModuleConfig():
             def __init__(self, collect_data_paths):
                 self.dataset_paths = collect_data_paths
-                self.batch_size = 8
+                self.batch_size = 512
                 self.frame_stack = 2
-                self.num_workers = 1
-                self.train_val_split = 0.8
+                self.num_workers = 2
+                self.train_val_split = 0.95
 
         # data config
         data_config = TempDataModuleConfig([self.collect_data_path])
@@ -180,7 +184,7 @@ class MBPO:
                 new_path = f"{self.collect_data_path}_{epoch}"
                 data_collector.collect_data(path= new_path,
                                             policy=self.policy,
-                                            n_samples=100,
+                                            n_samples=self.num_samples_per_timestep,
                                             carla_gpu=self.gpu)
                 # load in newly collected data (DynamicsEnsemble, FakeEnv should update automatically)
                 self.data_module.update(new_path)
@@ -193,7 +197,7 @@ class MBPO:
 
 def main():
     # import pdb; pdb.set_trace()
-    EXPERIMENT_NAME = "vivian_mbpo_7-1"
+    EXPERIMENT_NAME = "vivian_mbpo_new"
     logger_conf = CometLoggerConfig()
     logger_conf.populate(experiment_name = EXPERIMENT_NAME, tags = ["MBPO"])
     logger = CometLogger(logger_conf)
@@ -203,18 +207,22 @@ def main():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    # num epochs
     parser.add_argument('--n_epochs', type=int, default=400)
+    # ensemble size
     parser.add_argument('--n_models', type=int, default=7)
+    # environment steps per epoch
     parser.add_argument('--n_timesteps', type=int, default=1000)
+    # model rollouts per environment step
     parser.add_argument('--n_rollouts', type=int, default=400)
-    parser.add_argument('--n_grad_updates', type=int, default=-1)
-    parser.add_argument('--n_batch_size', type=int, default=256)
-    parser.add_argument('--buffer_size', type=int, default=1000)
+    # gradient updates
+    parser.add_argument('--n_grad_updates', type=int, default=40)
+    # batch
+    parser.add_argument('--batch_size', type=int, default=512)
+    # replay buffer size
+    parser.add_argument('--buffer_size', type=int, default=1000000)
     args = parser.parse_args()
     main()
 
 
-
-
-            
 

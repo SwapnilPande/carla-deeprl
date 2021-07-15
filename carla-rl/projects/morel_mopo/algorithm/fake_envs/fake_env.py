@@ -465,6 +465,10 @@ class FakeEnv(gym.Env):
             # input [[speed_t, steer_t, Δtime_t, action_t], [speed_t-1, steer_t-1, Δt-1, action_t-1]]
             # unsqueeze to form batch dimension for dynamics input
 
+            print(f'Curr vehicle pose: {self.vehicle_pose}')
+
+            print(f'State: {self.state.unnormalized}, Action: {self.past_action.unnormalized}')
+
             # dynamics_input = torch.cat([self.state.normalized, self.past_action.normalized], dim = -1).unsqueeze(0).float()
             dynamics_input = torch.cat([self.state.normalized, self.past_action.normalized.reshape(-1,2)], dim = -1).unsqueeze(0).float()
             # Get predictions across all models
