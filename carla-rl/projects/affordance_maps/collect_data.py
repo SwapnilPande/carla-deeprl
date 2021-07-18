@@ -69,8 +69,16 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=2500):
         _ = env.step(action)
 
     for step in range(max_path_length):
-        action = env.get_autopilot_action(speed)
-        # action = np.random.uniform([-.5,-1.],[.5,1.], (2,))
+        if args.use_autopilot:
+            action = env.get_autopilot_action(speed)
+        else:
+            action = np.random.uniform([-.5,-1.],[.5,1.], (2,))
+
+        if args.use_autopilot and args.apply_noise:
+            noise = 1e-2 * np.random.randn()
+            action[0] += noise
+            action[0] = np.clip(-1,1,action[0])
+
         next_obs, reward, done, info = env.step(action)
 
         rgb = info['sensor.camera.rgb/front']
@@ -218,7 +226,6 @@ def transform_to_list(transform):
 
 def main(args):
     config = DefaultMainConfig()
-    config.server_fps = 20
 
     obs_config = LowDimObservationConfig()
     obs_config.sensors['sensor.camera.rgb/top'] = {
@@ -240,17 +247,25 @@ def main(args):
 
     scenario_config = LeaderboardConfig() # NoCrashDenseTown01Config()
     scenario_config.city_name = args.town
+    scenario_config.num_pedestrians = 50
+    scenario_config.sample_npc = True
+    scenario_config.num_npc_lower_threshold = 50
+    scenario_config.num_npc_upper_threshold = 150
 
     action_config = MergedSpeedScaledTanhConfig()
     action_config.frame_skip = 5
 
     config.populate_config(observation_config=obs_config, scenario_config=scenario_config)
+    config.server_fps = 20
+    config.carla_gpu = args.gpu
+
     env = CarlaEnv(config=config, log_dir=args.path + '/')
     try:
         total_samples = 0
         while total_samples < args.n_samples:
             traj_length = collect_trajectory(env, args.path, args.speed)
             total_samples += traj_length
+        print('Collected {} samples'.format(total_samples))
     finally:
         env.close()
         print('Done')
@@ -262,5 +277,8 @@ if __name__ == '__main__':
     parser.add_argument('--speed', type=float, default=1.)
     parser.add_argument('--town', type=str, default='Town01')
     parser.add_argument('--path', type=str)
+    parser.add_argument('--use_autopilot', type=int, default=1)
+    parser.add_argument('--apply_noise', type=int, default=1)
+    parser.add_argument('--gpu', type=str, default='0')
     args = parser.parse_args()
     main(args)

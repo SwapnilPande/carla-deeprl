@@ -497,6 +497,7 @@ class Carla910Interface_Leaderboard:
         CarlaDataProvider.on_carla_tick()
         world_frame = self.world.tick()
         # print(290, self.running.scenario.scenario_tree.status)
+        self.actor_fleet.check_for_vehicle_elimination()
         self.running.scenario.scenario_tree.tick_once()
         # print(291, self.running.scenario.scenario_tree.status)
         # if self.running.debug_mode == 1:
