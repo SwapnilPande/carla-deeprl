@@ -5,6 +5,7 @@ from environment.carla_interfaces.actor_manager import ActorManager910, ActorMan
 from abc import ABC
 import time
 import random
+import numpy as np
 import numpy.random as nprandom
 import py_trees
 
@@ -160,21 +161,17 @@ class Carla910Interface():
             else:
                 self._set_scenario(unseen=unseen, index=self.scenario_index, town=self.config.scenario_config.city_name)
         else:
-            self.source_transform, self.destination_transform = random.choice(self.spawn_points), random.choice(self.spawn_points)
+            while True:
+                self.source_transform, self.destination_transform = random.choice(self.spawn_points), random.choice(self.spawn_points)
+                distance = np.linalg.norm([
+                    self.source_transform.location.x - self.destination_transform.location.x,
+                    self.source_transform.location.y - self.destination_transform.location.y,
+                    self.source_transform.location.z - self.destination_transform.location.z])
+                if distance > 100:
+                    break
 
         ### Spawn new actors
         self.actor_fleet.spawn(self.source_transform, unseen)
-
-        # Tick for 15 frames to handle car initialization in air
-        for _ in range(15):
-            transform = self.actor_fleet.get_ego_vehicle_transform()
-            self.spectator.set_transform(transform)
-            world_frame = self.world.tick()
-
-
-        transform = self.actor_fleet.get_ego_vehicle_transform()
-        self.spectator.set_transform(transform)
-
 
         # Create a global planner to generate dense waypoints along route
         self.global_planner = planner.GlobalPlanner()
@@ -184,6 +181,19 @@ class Carla910Interface():
                                 self.source_transform, self.destination_transform)
 
         self.global_planner.set_global_plan(self.dense_waypoints)
+
+        # If waypoint is behind vehicle, rotate the vehicle
+        if abs(self.global_planner.get_next_orientation_new(self.source_transform)[0]) > .5:
+            self.reset(unseen=unseen, index=index)
+
+        # Tick for 15 frames to handle car initialization in air
+        for _ in range(15):
+            transform = self.actor_fleet.get_ego_vehicle_transform()
+            self.spectator.set_transform(transform)
+            world_frame = self.world.tick()
+
+        transform = self.actor_fleet.get_ego_vehicle_transform()
+        self.spectator.set_transform(transform)
 
         ego_vehicle_transform = self.actor_fleet.get_ego_vehicle_transform()
         ego_vehicle_velocity = self.actor_fleet.get_ego_vehicle_velocity()
@@ -240,7 +250,7 @@ class Carla910Interface():
         steer_angle = (left_steer + right_steer) / (2* 90)
 
         transform = self.actor_fleet.get_ego_vehicle_transform()
-        self.spectator.set_transform(transform)
+        self.spectator.set_transform(carla.Transform(transform.location + carla.Location(z=50), carla.Rotation(pitch=-90)))
 
         sensor_readings["location"] = location
 

@@ -160,7 +160,10 @@ class LaneInvasionSensor(object):
         if not self:
             return
         # TODO : Handle case of lane invasion for dashed vs solid lane markings
-        self.num_laneintersections += 1
+        
+        lane_changes = set(x.lane_change for x in event.crossed_lane_markings)
+        if carla.libcarla.LaneChange.NONE in lane_changes or carla.libcarla.LaneChange.Right in lane_changes:
+            self.num_laneintersections += 1
 
         lane_types = set(x.type for x in event.crossed_lane_markings)
         if carla.libcarla.LaneMarkingType.NONE in lane_types:
