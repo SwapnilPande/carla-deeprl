@@ -288,7 +288,7 @@ def process_waypoints(waypoints, vehicle_pose, device):
 
 
 
-class FakeEnv(gym.Env):
+class RNNFakeEnv(gym.Env):
     def __init__(self, dynamics,
                         config,
                         logger = None):
@@ -401,6 +401,10 @@ class FakeEnv(gym.Env):
         # Reset hidden state
         self.hidden_state = [torch.zeros(size = (1, 1, self.dynamics.network_cfg.gru_hidden_dim)).to(self.device) for _ in range(self.dynamics.n_models)]
 
+        # Get predictions across all models
+
+        _, self.hidden_state = self.dynamics.predict(self.state.normalized[:-1].unsqueeze(0), self.past_action.normalized[1:].unsqueeze(0), hidden_state = self.hidden_state)
+
         #TODO Return policy features, not dynamics features
         policy_obs, _, _ = self.get_policy_obs()
         return policy_obs.cpu().numpy()
@@ -470,20 +474,21 @@ class FakeEnv(gym.Env):
 
             # input [[speed_t, steer_t, Δtime_t, action_t], [speed_t-1, steer_t-1, Δt-1, action_t-1]]
             # unsqueeze to form batch dimension for dynamics input
-            dynamics_input = torch.cat([self.state.normalized[-1], self.past_action.normalized[-1]], dim = 0).unsqueeze(0).unsqueeze(0).float()
 
             # Get predictions across all models
-            output = self.dynamics.forward(dynamics_input, hidden_state = self.hidden_state)
-            all_predictions = torch.stack([x for (x,y) in output])
-            all_predictions = all_predictions.squeeze(dim = 1).squeeze(dim = 1)
-            self.hidden_state = [y for (x,y) in output]
+            predictions, self.hidden_state = self.dynamics.predict(self.state.normalized[-1].unsqueeze(0).unsqueeze(0), self.past_action.normalized[-1].unsqueeze(0).unsqueeze(0), hidden_state = self.hidden_state)
+            # Extract the state prediction, ignore the reward
+            state_predictions = torch.stack(predictions[0])
+
+            state_predictions = state_predictions.squeeze(dim = 1).squeeze(dim = 1)
+
 
             # import ipdb; ipdb.set_trace()
 
             # Delta: prediction from one randomly selected model
             # [Δx_t+1, Δy_t+1, Δtheta_t+1, Δspeed_t+1, Δsteer_t+1]
 
-            self.deltas.normalized = torch.clone(all_predictions)
+            self.deltas.normalized = torch.clone(state_predictions)
 
             # predicted change in x, y, th
             delta_vehicle_poses = self.deltas.unnormalized[:,:3]
@@ -502,9 +507,15 @@ class FakeEnv(gym.Env):
             #                                             delta_vehicle_poses.squeeze()[2].cpu().item()))
 
             vehicle_loc = self.vehicle_pose[0:2] + vehicle_loc_delta
-            vehicle_rot = torch.unsqueeze(self.vehicle_pose[2] + delta_vehicle_poses[:,2], dim = 1)
+            vehicle_rot = self.vehicle_pose[2] + delta_vehicle_poses[:,2]
+            vehicle_rot = torch.unsqueeze(vehicle_rot, dim = 1)
             vehicle_poses = torch.cat([vehicle_loc, vehicle_rot], dim = 1)
             self.vehicle_pose = vehicle_poses[self.model_idx]
+
+            if(self.vehicle_pose[2] < -180):
+                self.vehicle_pose[2] += 360
+            elif(self.vehicle_pose[2] > 180):
+                self.vehicle_pose[2] -= 360
 
             # import ipdb; ipdb.set_trace()
 
@@ -521,13 +532,12 @@ class FakeEnv(gym.Env):
             # check if at goal
             at_goal = (dist_to_trajectory == 0.0)
 
-
             # update waypoints list
             ################## calc reward with penalty for uncertainty ##############################
 
             reward_out = compute_reward(self.state.unnormalized[-1], dist_to_trajectory, self.config)
 
-            uncertain =  self.usad(all_predictions.detach().cpu().numpy())
+            uncertain =  self.usad(state_predictions.detach().cpu().numpy())
             reward_out[0] = reward_out[0] - uncertain * self.uncertainty_coeff
             reward_out = torch.squeeze(reward_out)
 

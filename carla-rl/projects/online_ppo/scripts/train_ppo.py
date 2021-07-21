@@ -1,7 +1,6 @@
 import sys
 import os
 
-from gym.core import ObservationWrapper
 # Setup imports for algorithm and environment
 sys.path.append(os.path.abspath(os.path.join('../../../')))
 
@@ -17,7 +16,7 @@ from stable_baselines3.common.env_util import DummyVecEnv
 # Environment
 from environment.env import CarlaEnv
 from environment.config.config import DefaultMainConfig
-EXPERIMENT_NAME = "vivian_NO_CRASH_EMPTY"
+EXPERIMENT_NAME = "TEST"
 
 logger_conf = CometLoggerConfig()
 logger_conf.populate(experiment_name = EXPERIMENT_NAME, tags = ["Online_PPO"])
@@ -38,9 +37,7 @@ config.populate_config(
 # logger_callback = PPOLoggerCallback(logger)
 
 
-env = CarlaEnv(config = config, logger = logger, log_dir = "/home/scratch/vccheng/carla_test")
-# Parallel environments
-dummy_env = DummyVecEnv([lambda: env])
+env = CarlaEnv(config = config, logger = logger, log_dir = "/home/scratch/swapnilp/carla-rl_testing")
 
 eval_env = env.get_eval_env(eval_frequency = 5000)
 dummy_eval_env = DummyVecEnv([lambda: eval_env])
@@ -55,6 +52,7 @@ eval_callback = EvalCallback(dummy_eval_env, best_model_save_path=os.path.join(l
 tb_log_dir = os.path.join(logger.log_dir, "ppo_tb_logs")
 os.makedirs(tb_log_dir)
 
+import ipdb; ipdb.set_trace()
 model = PPO("MlpPolicy", env, verbose=1, carla_logger = logger)
 model.learn(total_timesteps=10000000, callback = eval_callback)
 

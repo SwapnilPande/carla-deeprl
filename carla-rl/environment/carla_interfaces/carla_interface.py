@@ -236,7 +236,7 @@ class Carla910Interface():
 
         left_steer = self.actor_fleet.ego_vehicle._vehicle.get_wheel_steer_angle(carla.VehicleWheelLocation.FL_Wheel)
         right_steer = self.actor_fleet.ego_vehicle._vehicle.get_wheel_steer_angle(carla.VehicleWheelLocation.FR_Wheel)
-        # Average steering angle between front two wheels, and normalize by diving by 90
+        # Average steering angle between front two wheels, and normalize by dividing by 90
         steer_angle = (left_steer + right_steer) / (2* 90)
 
         transform = self.actor_fleet.get_ego_vehicle_transform()

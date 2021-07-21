@@ -148,7 +148,10 @@ class CometLogger(BaseLogger):
 
     def log_asset(self, comet_path, file):
         _, file_name = os.path.split(file)
-        self.logger.log_asset(file, file_name = os.path.join(comet_path, file_name))
+        if self.config.experiment_key is None:
+            self.logger.log_asset(file, file_name = os.path.join(comet_path, file_name))
+        else:
+            self.logger.log_asset(filename = file, ftype = comet_path)
 
     def prep_dir(self, dir):
         # Get full log path within the log directory
@@ -213,7 +216,7 @@ class CometLogger(BaseLogger):
             self.comet_download(os.path.join(log_path, name))
 
         with open(file_path, 'rb') as f:
-            obj = torch.load(f)
+            obj = torch.load(f, map_location='cpu')
 
         return obj
 

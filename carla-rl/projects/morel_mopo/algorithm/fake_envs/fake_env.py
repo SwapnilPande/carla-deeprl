@@ -257,13 +257,16 @@ def process_waypoints(waypoints, vehicle_pose, device):
                                 device)
 
     # if only one next waypoint, use it and second to last
-    elif len(next_waypoints) > 0:
-
-        dist_to_trajectory = vehicle_to_line_distance(
-                                vehicle_pose,
-                                second_last_waypoint,
-                                next_waypoints[0],
-                                device)
+    elif len(next_waypoints) == 1:
+        if second_last_waypoint:
+            dist_to_trajectory = vehicle_to_line_distance(
+                                    vehicle_pose,
+                                    second_last_waypoint,
+                                    next_waypoints[0],
+                                    device)
+        else:
+            print("CODE BROKE HERE UH OH _----------------------")
+            dist_to_trajectory = 0.0
 
     else: # Run out of wps
         if second_last_waypoint and last_waypoint:
@@ -356,6 +359,8 @@ class FakeEnv(gym.Env):
 
     ''' Resets environment. If no input is passed in, sample from dataset '''
     def reset(self, inp=None):
+
+        self.test = False
         # print("FAKE_ENV: Resetting environment...\n")
 
         if inp is None:
@@ -382,7 +387,7 @@ class FakeEnv(gym.Env):
                 waypoints = torch.FloatTensor(waypoints)
 
         # state only includes speed, steer
-        self.state.unnormalized =  torch.squeeze(obs)[:, :2]
+        self.state.unnormalized =  obs[:,:2]
         self.past_action.unnormalized = torch.squeeze(action)
         self.waypoints = torch.squeeze(waypoints).to(self.device)
         self.vehicle_pose = torch.squeeze(vehicle_pose).to(self.device)
@@ -391,7 +396,6 @@ class FakeEnv(gym.Env):
 
         self.model_idx = np.random.choice(self.dynamics.n_models)
         # Reset hidden state
-
 
         #TODO Return policy features, not dynamics features
         policy_obs, _, _ = self.get_policy_obs()
@@ -421,10 +425,7 @@ class FakeEnv(gym.Env):
         newest_state = self.state.unnormalized[0, :] + delta_state
 
         # insert newest state at front
-        state_unnormalized = torch.cat([newest_state.unsqueeze(0), self.state.unnormalized], dim=0)
-        # delete oldest state
-        self.state.unnormalized = state_unnormalized[:-1, :]
-
+        self.state.unnormalized = torch.cat([newest_state.unsqueeze(0), self.state.unnormalized[:-1, :]], dim=0)
 
     def get_policy_obs(self):
         angle, dist_to_trajectory, next_waypoints, _, _, remaining_waypoints = process_waypoints(self.waypoints, self.vehicle_pose, self.device)
@@ -460,20 +461,24 @@ class FakeEnv(gym.Env):
             # insert new action at front, delete oldest action
             self.past_action.unnormalized = torch.cat([new_action.unsqueeze(0), action[:-1, :]])
 
+            # print("State")
+            # print(self.state.unnormalized)
+
+            # print("past action")
+            # print(self.past_action.unnormalized)
+
 
             ############ feed obs, action into dynamics model for prediction ##############
 
             # input [[speed_t, steer_t, Δtime_t, action_t], [speed_t-1, steer_t-1, Δt-1, action_t-1]]
             # unsqueeze to form batch dimension for dynamics input
 
-            # dynamics_input = torch.cat([self.state.normalized, self.past_action.normalized], dim = -1).unsqueeze(0).float()
-            dynamics_input = torch.cat([self.state.normalized, self.past_action.normalized.reshape(-1,2)], dim = -1).unsqueeze(0).float()
             # Get predictions across all models
-            all_predictions = torch.stack(self.dynamics.forward(torch.flatten(dynamics_input)))
+            all_predictions = torch.stack(self.dynamics.predict(self.state.normalized, self.past_action.normalized)).squeeze(dim = 1)
 
             # Delta: prediction from one randomly selected model
             # [Δx_t+1, Δy_t+1, Δtheta_t+1, Δspeed_t+1, Δsteer_t+1]
-
+            # import ipdb; ipdb.set_trace()
             self.deltas.normalized = torch.clone(all_predictions)
 
             # predicted change in x, y, th
@@ -493,9 +498,16 @@ class FakeEnv(gym.Env):
             #                                             delta_vehicle_poses.squeeze()[2].cpu().item()))
 
             vehicle_loc = self.vehicle_pose[0:2] + vehicle_loc_delta
-            vehicle_rot = torch.unsqueeze(self.vehicle_pose[2] + delta_vehicle_poses[:,2], dim = 1)
+            vehicle_rot = self.vehicle_pose[2] + delta_vehicle_poses[:,2]
+            vehicle_rot = torch.unsqueeze(vehicle_rot, dim = 1)
+
             vehicle_poses = torch.cat([vehicle_loc, vehicle_rot], dim = 1)
             self.vehicle_pose = vehicle_poses[self.model_idx]
+
+            if(self.vehicle_pose[2] < -180):
+                self.vehicle_pose[2] += 360
+            elif(self.vehicle_pose[2] > 180):
+                self.vehicle_pose[2] -= 360
 
             # import ipdb; ipdb.set_trace()
 

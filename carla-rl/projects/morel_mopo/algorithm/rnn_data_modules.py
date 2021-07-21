@@ -51,7 +51,7 @@ class WaypointModule():
 # def construct_obs(self,)
 
 
-class OfflineCarlaDataset(Dataset):
+class RNNOfflineCarlaDataset(Dataset):
     """ Offline dataset """
 
     def __init__(self,
@@ -270,7 +270,7 @@ class OfflineCarlaDataset(Dataset):
         return self[idx], self.waypoint_module.get_waypoints(idx)
 
 
-class OfflineCarlaDataModule():
+class RNNOfflineCarlaDataModule():
     """ Datamodule for offline driving data """
     def __init__(self, cfg, normalize_data = True):
         super().__init__()

@@ -39,8 +39,8 @@ class AutopilotPolicy:
     def __call__(self, obs):
         return self.env.get_autopilot_action()
 
-    
-class AutopilotRandomPolicy:
+
+class RandomPolicy:
     def __init__(self, env):
         self.env = env
 
@@ -60,7 +60,7 @@ class AutopilotNoisePolicy:
         res[1] += np.random.normal(loc=0.0, scale=self.speed_noise_std, size=1)[0]
         return res
 
-    
+
 def collect_trajectory(env, save_dir, policy, max_path_length=5000):
     now = datetime.datetime.now()
     salt = np.random.randint(100)
@@ -136,9 +136,10 @@ def main(args):
     )
 
 
+
     with CarlaEnv(config = config, log_dir = "/home/scratch/swapnilp/carla_test") as env:
         # Create the policy
-        policy = AutopilotPolicy(env)
+        policy = RandomPolicy(env)
 
         total_samples = 0
         while total_samples < args.n_samples:

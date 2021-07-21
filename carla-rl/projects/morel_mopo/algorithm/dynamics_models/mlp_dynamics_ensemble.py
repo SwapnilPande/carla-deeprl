@@ -8,99 +8,116 @@ import scipy.spatial
 import os
 from tqdm import tqdm
 
-from projects.morel_mopo.config.dynamics_ensemble_config import BaseDynamicsEnsembleConfig
-
-class MaskedNLLLoss(torch.nn.Module):
-    def __init__(self) -> None:
-        super(MaskedNLLLoss, self).__init__()
-
-    def forward(self, input, target, mask):
-
-        # Get neg_log_prob for all batch dim, time step, state dim
-        neg_log_prob = - input.log_prob(target)
-        # Average across state dim
-        mean_neg_log_prob = torch.sum(neg_log_prob, dim = -1) / neg_log_prob.shape[-1]
-
-        # Apply mask
-        masked = mask * mean_neg_log_prob
-
-        # Average across all other dimensions
-        mean_loss = torch.sum(masked) / torch.sum(mask)
-
-        return mean_loss
-
-
-class ProbabilisticDynamicsGRU(nn.Module):
+class DynamicsMLP(nn.Module):
     def __init__(self,
                 state_dim_in,
                 state_dim_out,
                 action_dim,
+                frame_stack,
                 predict_reward = False,
-                gru_input_dim = 256,
-                gru_hidden_dim = 256,
+                n_neurons = 1024,
+                n_hidden_layers = 4,
+                n_head_layers = 1,
                 drop_prob = 0.15,
                 activation = nn.ReLU):
-        super(ProbabilisticDynamicsGRU, self).__init__()
+        super(DynamicsMLP, self).__init__()
 
         # Validate inputs
         assert state_dim_in > 0
         assert state_dim_out > 0
         assert action_dim > 0
+        assert n_neurons > 0
         assert drop_prob >= 0 and drop_prob <= 1
 
         # Store configuration parameters
+
         # Input is the input state plus actions state
-        self.input_dim = state_dim_in + action_dim
+        self.input_dim = frame_stack*(state_dim_in + action_dim)
         # Output is the output state dim + reward if True
-        # Multiply dimension by 2 to predict mean, variance
-        self.predict_reward = predict_reward
         self.output_dim = state_dim_out + int(predict_reward)
         self.state_dim_out = state_dim_out
 
-        self.gru_input_dim = gru_input_dim
-        self.gru_hidden_dim = gru_hidden_dim
+        self.n_neurons = n_neurons
 
-        # Input MLP layer, encode input into GRU dimension
-        self.input_layer = nn.Linear(self.input_dim, self.gru_input_dim)
-        self.input_act = activation()
+        # Dynamically construct nn according to arguments
+        layer_list = []
+        # First add the input layer and activation
+        layer_list.append(nn.Linear(self.input_dim, n_neurons))
+        layer_list.append(activation())
 
+        # For each hidden layer
+        for _ in range(n_hidden_layers):
+            # Add Linear layer
+            layer_list.append(nn.Linear(n_neurons, n_neurons))
+            # Add activation
+            layer_list.append(activation())
+            # Add dropout if enabled
+            if(drop_prob != 0):
+                layer_list.append(nn.Dropout(p = drop_prob))
 
-        # Construct GRU
-        # Construct GRU
-        self.gru = nn.GRU(input_size = self.gru_input_dim,
-                            hidden_size = self.gru_hidden_dim,
-                            batch_first = True)
+        # Register shared layers by putting them in a module list
+        self.shared_layers = nn.ModuleList(layer_list)
 
-        # Output MLP layer, change to output dim
-        self.mean_state_head = nn.Linear(self.gru_hidden_dim, self.output_dim)
-        self.std_state_head = nn.Linear(self.gru_hidden_dim, self.output_dim)
-        self.std_act = torch.exp
+        # Next, build the head for the state prediction
+        layer_list = []
+        # For each hidden layer
+        for _ in range(n_head_layers):
+            # Add Linear layer
+            layer_list.append(nn.Linear(n_neurons, n_neurons))
+            # Add activation
+            layer_list.append(activation())
+            # Add dropout if enabled
+            if(drop_prob != 0):
+                layer_list.append(nn.Dropout(p = drop_prob))
+        layer_list.append(nn.Linear(n_neurons, self.state_dim_out))
+
+        # Register state prediction head layers by putting them in a module list
+        self.state_head = nn.ModuleList(layer_list)
 
         # Build reward head if we're predicting reward
         self.reward_head = None
         if(predict_reward):
-            self.reward_head = nn.Linear(self.gru_hidden_dim, 1)
+            layer_list = []
+            # For each hidden layer
+            for _ in range(n_head_layers):
+                # Add Linear layer
+                layer_list.append(nn.Linear(n_neurons, n_neurons))
+                # Add activation
+                layer_list.append(activation())
+                # Add dropout if enabled
+                if(drop_prob != 0):
+                    layer_list.append(nn.Dropout(p = drop_prob))
+            layer_list.append(nn.Linear(n_neurons, self.state_dim_out))
 
-    def forward(self, x, hidden_state = None):
+            # Register state prediction head layers by p
+            # Register state prediction head layers by putting them in a module list
+            self.reward_head = nn.ModuleList(layer_list)
+
+
+
+    def forward(self, x):
         # x = torch.flatten(x)
         # Shared layers
-        x = self.input_layer(x)
-        x = self.input_act(x)
-        x, hidden_state = self.gru(x, hx = hidden_state)
+        for layer in self.shared_layers:
+            x = layer(x)
 
-        # Compute mean and std, return values concatenated
-        mean = self.mean_state_head(x)
-        std = self.std_state_head(x)
-        std = self.std_act(std)
+        # State Head
+        # Apply first layer
+        output = self.state_head[0](x)
+        # Apply all other layers
+        for layer in self.state_head[1:]:
+            output = layer(output)
 
         # Apply reward head if we are predicting rewards
-        reward_out = None
         if self.reward_head is not None:
-            reward_out = self.reward_head(x)
+            reward_out = self.reward_head[0](x)
+            for layer in self.reward_head[1:]:
+                reward_out = layer(reward_out)
+            output = torch.cat([output, reward_out], dim = 1)
 
-        return mean, std, reward_out
+        return output
 
-class ProbabilisticDynamicsGRUEnsemble(nn.Module):
+class MLPDynamicsEnsemble(nn.Module):
     log_dir = "dynamics_ensemble"
     model_log_dir = os.path.join(log_dir, "models")
 
@@ -117,7 +134,7 @@ class ProbabilisticDynamicsGRUEnsemble(nn.Module):
 
                     logger = None,
                     log_freq = 500):
-        super(ProbabilisticDynamicsGRUEnsemble, self).__init__()
+        super(MLPDynamicsEnsemble, self).__init__()
 
         self.config = config
 
@@ -126,7 +143,7 @@ class ProbabilisticDynamicsGRUEnsemble(nn.Module):
 
         # Save config to load in the future
         if logger is not None:
-            self.logger.pickle_save(self.config, ProbabilisticDynamicsGRUEnsemble.log_dir, "config.pkl")
+            self.logger.pickle_save(self.config, MLPDynamicsEnsemble.log_dir, "config.pkl")
 
 
         self.log_freq = log_freq
@@ -178,7 +195,7 @@ class ProbabilisticDynamicsGRUEnsemble(nn.Module):
                             self.action_dim,
                             self.frame_stack,
                             self.normalization_stats)
-            self.logger.pickle_save(state_params, ProbabilisticDynamicsGRUEnsemble.log_dir, "state_params.pkl")
+            self.logger.pickle_save(state_params, MLPDynamicsEnsemble.log_dir, "state_params.pkl")
 
         # Model parameters
         self.n_models = config.n_models
@@ -186,14 +203,20 @@ class ProbabilisticDynamicsGRUEnsemble(nn.Module):
 
         self.lr = config.lr
         # Build the loss function using loss args
-        #TODO FIX THIS
-        self.loss = MaskedNLLLoss() #config.loss(**config.loss_args)
+        self.loss = config.loss(**config.loss_args)
+
+        # Validation loss
+        self.mse_loss = torch.nn.MSELoss()
 
         # Save optimizer object
         self.optimizer_type = config.optimizer_type
+        self.optimizer_args = config.optimizer_args
 
         # Setup GPU
-        self.gpu = self.config.gpu
+        if(gpu is None):
+            self.gpu = self.config.gpu
+        else:
+            self.gpu = gpu
         if self.gpu == -1:
             self.device = "cpu"
         else:
@@ -202,82 +225,80 @@ class ProbabilisticDynamicsGRUEnsemble(nn.Module):
         # Create n_models models
         self.models = nn.ModuleList()
         for i in range(self.n_models):
-            self.models.append(ProbabilisticDynamicsGRU(
+            self.models.append(DynamicsMLP(
                 state_dim_in = self.state_dim_in,
                 state_dim_out = self.state_dim_out,
                 action_dim = self.action_dim,
+                frame_stack = self.frame_stack,
                 predict_reward = self.network_cfg.predict_reward,
-                gru_input_dim = self.network_cfg.gru_input_dim,
-                gru_hidden_dim = self.network_cfg.gru_hidden_dim,
+                n_neurons = self.network_cfg.n_neurons,
+                n_hidden_layers = self.network_cfg.n_hidden_layers,
+                n_head_layers = self.network_cfg.n_head_layers,
                 drop_prob = self.network_cfg.drop_prob,
                 activation = self.network_cfg.activation
             ))
             self.models[-1].to(self.device)
 
-    def forward(self, x, model_idx=None, hidden_state = None, return_dist = False):
-        # Create a list of the models to iterate over
+    # def create_log_directories(self):
+    #     # Construct the dynamics_ensemble log dir
+    #     # Base log dir
+    #     self.log_dir = os.path.join(self.logger.log_dir, "dynamics_ensmemble")
+    #     os.mkdir(self.log_dir)
+
+    #     # Log dir for models
+    #     self.model_log_dir = os.path.join(self.log_dir, "models")
+    #     os.mkdir(self.model_log_dir)
+
+
+    #
+    def forward(self, x, model_idx=None):
         if model_idx is None:
-            model_indices = list(range(self.n_models))
+            # predict for all models
+            predictions = [model(x) for model in self.models]
+            return predictions
         else:
-            model_indices = [model_idx]
+            # predict for specified model
+            return self.models[model_idx](x)
 
-        # If the hidden state is None, then create an array of hidden states to pass to the model
-        if(hidden_state is None):
-            hidden_state = [None] * len(model_indices)
 
-        predictions = []
-        # predict for all models
-        for model_i, h in zip(model_indices, hidden_state):
-            # Get output from model
-            mean, std, reward = self.models[model_i](x, hidden_state = h)
-
-            # Build diagonal gaussian model
-            dist = torch.distributions.normal.Normal(
-                            loc = mean,
-                            scale = std
-                        )
-
-            # If not return distribtuon, then sample from the distribution
-            if(not return_dist):
-                output = dist.sample()
-                # Concat reward if not None
-                if reward is not None:
-                    output = torch.cat([output, reward], dim = -1)
-            # Return (dist, reward)
-            else:
-                output = (dist, reward)
-
-            predictions.append(output)
-
-        if(len(predictions) == 1):
-            predictions = predictions[0]
-
-        return predictions, hidden_state
-
-    def prepare_batch(self, state_in, actions, delta, reward, mask):
+    def prepare_feed(self, state_in, actions):
         # Input should be obs and actions concatenated, and flattened
+        # Convert to cuda first
+        state_in = state_in.to(self.device)
+        actions = actions.to(self.device)
 
         # state_in is [batch_size, frame_stack, state_dim]
         # action is [batch_size, frame_stack, action_dim]
         # feed tensor is [batch_size, frame_stack * (state_dim + action_dim)]
+        feed_tensor = torch.reshape(
+                            torch.cat([state_in, actions], dim = -1),
+                                (-1, self.frame_stack * (self.state_dim_in + self.action_dim)
+                            )
+                      )
 
-        # Convert to cuda first
-        state_in = state_in.to(self.device)
-        actions = actions.to(self.device)
+        return feed_tensor
+
+    def prepare_target(self, delta, reward):
         delta = delta.to(self.device)
         reward = reward.to(self.device)
 
-        feed_tensor = torch.cat([state_in, actions], dim = 2)
-        # print('state in', state_in.shape)
-        # print('act',actions.shape)
-        # print('feed tensor should be (-1, B x f(s + a)', feed_tensor.shape)
-        # print('delta', delta.shape)
         # Concatenate delta and reward if we are predicting reward
         if(self.network_cfg.predict_reward):
-            return feed_tensor, torch.cat([delta,reward], dim = 2)
-
+            return torch.cat([delta,reward], dim = 1)
         # Else, just return delta
-        return feed_tensor, delta, mask.to(self.device)
+
+        return delta
+
+
+
+
+    def prepare_batch(self, state_in, actions, delta, reward):
+        feed_tensor = self.prepare_feed(state_in, actions)
+
+        delta = self.prepare_target(delta, reward)
+
+
+        return feed_tensor, delta
 
 
     def training_step(self, batch, model_idx):
@@ -285,7 +306,7 @@ class ProbabilisticDynamicsGRUEnsemble(nn.Module):
         self.optimizers[model_idx].zero_grad()
 
         # Split batch into componenets
-        obs, actions, rewards, delta, done, vehicle_pose, mask = batch
+        obs, actions, rewards, delta, done, vehicle_pose = batch
 
         # print('obs', obs.shape, obs)
         # print('actions', actions.shape, actions)
@@ -295,13 +316,13 @@ class ProbabilisticDynamicsGRUEnsemble(nn.Module):
         # print('vehpose', vehicle_pose.shape, vehicle_pose)
 
         # Combine tensors and reshape batch to flat inputs
-        feed, target, mask = self.prepare_batch(obs, actions, delta, rewards, mask)
+        feed, target = self.prepare_batch(obs, actions, delta, rewards)
 
         # Make prediction with selected model
-        (y_hat, reward), hidden_state = self.forward(feed, model_idx = model_idx, return_dist = True)
+        y_hat = self.forward(feed, model_idx = model_idx)
 
         # Compute loss
-        loss = self.loss(y_hat, target, mask)
+        loss = self.loss(y_hat, target)
 
         # Backpropagate
         loss.backward()
@@ -314,20 +335,22 @@ class ProbabilisticDynamicsGRUEnsemble(nn.Module):
 
 
     def validation_step(self, batch, model_idx = 0):
-        with torch.no_grad():
-            # Split batch into componenets
-            obs, actions, rewards, delta, done, vehicle_pose, mask = batch
 
-            # Combine tensors and reshape batch to flat inputs
-            feed, target, mask = self.prepare_batch(obs, actions, delta, rewards, mask)
+        # Split batch into componenets
+        obs, actions, rewards, delta, done, vehicle_pose = batch
 
-            # Predictions by each model
-            (y_hat, reward), hidden_state = self.forward(feed, model_idx = model_idx, return_dist = True)
+        # Combine tensors and reshape batch to flat inputs
+        feed, target = self.prepare_batch(obs, actions, delta, rewards)
 
-            # Compute loss
-            loss = self.loss(y_hat, target, mask)
+        # Predictions by each model
+        y_hat = self.forward(feed, model_idx = model_idx)
 
-            return {"model_{}_val_loss".format(model_idx): loss}
+        # Compute loss
+        loss = self.loss(y_hat, target)
+        mse_loss = self.mse_loss(y_hat, target)
+
+        return {"model_{}_val_loss".format(model_idx): loss,
+                "model_{}_val_mse_loss".format(model_idx) : mse_loss}
 
 
     def log_metrics(self, epoch, batch_idx, num_batches, metric_dict):
@@ -337,7 +360,7 @@ class ProbabilisticDynamicsGRUEnsemble(nn.Module):
             for metric_name, value in metric_dict.items():
                 self.logger.log_scalar(metric_name, value, step)
 
-    def train(self, epochs, n_incremental_models = 10):
+    def train_model(self, epochs, n_incremental_models = 10):
         train_dataloader = self.data_module.train_dataloader()
         val_dataloader = self.data_module.val_dataloader()
 
@@ -349,15 +372,20 @@ class ProbabilisticDynamicsGRUEnsemble(nn.Module):
             self.logger.log_hyperparameters({
                 "dyn_ens/lr" : self.lr,
                 "dyn_ens/optimizer" : str(self.optimizer_type),
+                "dyn_ens/optimizer_args" : str(self.optimizer_args),
                 "dyn_ens/n_models" : self.n_models,
                 "dyn_ens/batch_size" : train_dataloader.batch_size,
                 "dyn_ens/train_val_split" : self.data_module.train_val_split,
                 "dyn_ens/epochs" : epochs,
                 "dyn_ens/predict_reward" : self.network_cfg.predict_reward,
-                "dyn_ens/gru_input_dim" : self.network_cfg.gru_input_dim,
-                "dyn_ens/gru_hidden_dim" : self.network_cfg.gru_hidden_dim,
+                "dyn_ens/n_neurons" : self.network_cfg.n_neurons,
+                "dyn_ens/n_hidden_layers" : self.network_cfg.n_hidden_layers,
+                "dyn_ens/n_head_layers" : self.network_cfg.n_head_layers,
                 "dyn_ens/drop_prob" : self.network_cfg.drop_prob,
-                "dyn_ens/activation" : str(self.network_cfg.activation)
+                "dyn_ens/activation" : str(self.network_cfg.activation),
+                "dyn_ens/frame_stack" : str(self.network_cfg.frame_stack),
+                "dyn_ens/network_type" : "Deterministic MLP"
+
 
             })
 
@@ -371,10 +399,13 @@ class ProbabilisticDynamicsGRUEnsemble(nn.Module):
 
 
         steps_between_model_save = epochs // n_incremental_models
+        if(steps_between_model_save == 0):
+            steps_between_model_save = 1
 
         for epoch in range(epochs): # Loop over epochs
             for model_idx in range(self.n_models): # Loop over models
 
+                self.train()
                 with tqdm(total = num_train_batches) as pbar:
                     pbar.set_description_str("Train epoch {}, Model {}:".format(epoch, model_idx))
                     for batch_idx, batch in enumerate(train_dataloader): # Loop over batches
@@ -388,29 +419,51 @@ class ProbabilisticDynamicsGRUEnsemble(nn.Module):
                             self.log_metrics(epoch, batch_idx, num_train_batches, log_params)
 
 
+                self.eval()
                 with tqdm(total = num_val_batches) as pbar:
+                    # Store running count of validation metrics
+                    val_running_counts = None
                     pbar.set_description_str("Validation:".format(epoch))
                     for batch_idx, batch in enumerate(val_dataloader): # Loop over batches
                         # Run training step for jth model
                         log_params = self.validation_step(batch, model_idx)
 
+                        # Add values
+                        if(val_running_counts is None):
+                            val_running_counts = log_params
+                        else:
+                            for key, val in val_running_counts.items():
+                                val_running_counts[key] += log_params[key]
+
                         pbar.set_postfix_str("epoch {}, model_idx: {}, loss: {}".format(epoch, model_idx, log_params['model_{}_val_loss'.format(model_idx)]))
                         pbar.update(1)
 
-                        if batch_idx % self.log_freq == 0 and self.logger is not None:
-                            self.log_metrics(epoch, batch_idx, num_val_batches, log_params)
+                    if self.logger is not None:
+                        for key, val in val_running_counts.items():
+                            val_running_counts[key] /= num_val_batches
+                        self.log_metrics(epoch, num_train_batches, num_train_batches, log_params)
 
             if(epoch % steps_between_model_save == 0):
                 self.save("incremental-step-{}".format(epoch, ))
 
         self.save("final")
 
+    def predict(self, obs, actions):
+        self.eval()
+
+        feed = self.prepare_feed(obs, actions)
+
+        return self.forward(feed)
+
+
+
 
     def configure_optimizers(self):
         # Define optimizers
         # self.optimizer is defined in __init__
         # This is the type of optimizer we want to use
-        optimizers = [self.optimizer_type(model.parameters()) for model in self.models]
+        optimizers = [self.optimizer_type(model.parameters(), lr = self.lr, **self.optimizer_args) for model in self.models]
+        # optimizers = [self.optimizer_type(model.parameters(), lr = self.lr) for model in self.models]
 
         return optimizers
 
@@ -424,7 +477,7 @@ class ProbabilisticDynamicsGRUEnsemble(nn.Module):
         print("DYNAMICS ENSEMBLE: Saving model {}".format(model_name))
 
         # Save model
-        self.logger.torch_save(self.state_dict(), ProbabilisticDynamicsGRUEnsemble.model_log_dir, model_name)
+        self.logger.torch_save(self.state_dict(), MLPDynamicsEnsemble.model_log_dir, model_name)
 
     @classmethod
     def load(cls, logger, model_name, gpu):
@@ -435,10 +488,10 @@ class ProbabilisticDynamicsGRUEnsemble(nn.Module):
 
         print("DYNAMICS ENSEMBLE: Loading dynamics model {}".format(model_name))
         # Get config from pickle first
-        config = logger.pickle_load(ProbabilisticDynamicsGRUEnsemble.log_dir, "config.pkl")
+        config = logger.pickle_load(MLPDynamicsEnsemble.log_dir, "config.pkl")
 
         # Next, get pickle containing the state parameters
-        state_dim_in, state_dim_out, action_dim, frame_stack, norm_stats = logger.pickle_load(ProbabilisticDynamicsGRUEnsemble.log_dir, "state_params.pkl")
+        state_dim_in, state_dim_out, action_dim, frame_stack, norm_stats = logger.pickle_load(MLPDynamicsEnsemble.log_dir, "state_params.pkl")
         print("DYNAMICS ENSEMBLE: state_dim_in: {}\tstate_dim_out: {}\taction_dim: {}\tframe_stack: {}".format(
             state_dim_in,
             state_dim_out,
@@ -455,7 +508,7 @@ class ProbabilisticDynamicsGRUEnsemble(nn.Module):
                     norm_stats = norm_stats,
                     gpu = gpu)
 
-        model.load_state_dict(logger.torch_load(ProbabilisticDynamicsGRUEnsemble.model_log_dir, model_name))
+        model.load_state_dict(logger.torch_load(MLPDynamicsEnsemble.model_log_dir, model_name))
 
         return model
 

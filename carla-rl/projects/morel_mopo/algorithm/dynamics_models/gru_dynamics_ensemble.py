@@ -8,8 +8,6 @@ import scipy.spatial
 import os
 from tqdm import tqdm
 
-from projects.morel_mopo.config.dynamics_ensemble_config import BaseDynamicsEnsembleConfig
-
 # class MaskedMSELoss:
 #     __constants__ = ['reduction']
 
@@ -96,7 +94,7 @@ class DynamicsGRU(nn.Module):
 
         return output, hidden_state
 
-class DynamicsGRUEnsemble(nn.Module):
+class GRUDynamicsEnsemble(nn.Module):
     log_dir = "dynamics_ensemble"
     model_log_dir = os.path.join(log_dir, "models")
 
@@ -113,7 +111,7 @@ class DynamicsGRUEnsemble(nn.Module):
 
                     logger = None,
                     log_freq = 500):
-        super(DynamicsGRUEnsemble, self).__init__()
+        super(GRUDynamicsEnsemble, self).__init__()
 
         self.config = config
 
@@ -122,7 +120,7 @@ class DynamicsGRUEnsemble(nn.Module):
 
         # Save config to load in the future
         if logger is not None:
-            self.logger.pickle_save(self.config, DynamicsGRUEnsemble.log_dir, "config.pkl")
+            self.logger.pickle_save(self.config, GRUDynamicsEnsemble.log_dir, "config.pkl")
 
 
         self.log_freq = log_freq
@@ -174,7 +172,7 @@ class DynamicsGRUEnsemble(nn.Module):
                             self.action_dim,
                             self.frame_stack,
                             self.normalization_stats)
-            self.logger.pickle_save(state_params, DynamicsGRUEnsemble.log_dir, "state_params.pkl")
+            self.logger.pickle_save(state_params, GRUDynamicsEnsemble.log_dir, "state_params.pkl")
 
         # Model parameters
         self.n_models = config.n_models
@@ -185,7 +183,7 @@ class DynamicsGRUEnsemble(nn.Module):
         self.loss = config.loss(**config.loss_args)
 
         # Validation loss
-        self.mse_loss = torch.nn.MSELoss()
+        self.mse_loss = torch.nn.MSELoss(reduction='none')
 
         # Save optimizer object
         self.optimizer_type = config.optimizer_type
@@ -238,6 +236,21 @@ class DynamicsGRUEnsemble(nn.Module):
             # predict for specified model
             return self.models[model_idx](x, hidden_state = hidden_state)
 
+    def prepare_feed(self, state_in, actions):
+        # Convert to cuda first
+        state_in = state_in.to(self.device)
+        actions = actions.to(self.device)
+
+        return torch.cat([state_in, actions], dim = -1)
+
+    def prepare_target(self, delta, reward):
+        delta = delta.to(self.device)
+        reward = reward.to(self.device)
+
+        if(self.network_cfg.predict_reward):
+            return torch.cat([delta,reward], dim = -1)
+
+        return delta
 
     def prepare_batch(self, state_in, actions, delta, reward, mask):
         # Input should be obs and actions concatenated, and flattened
@@ -246,23 +259,12 @@ class DynamicsGRUEnsemble(nn.Module):
         # action is [batch_size, frame_stack, action_dim]
         # feed tensor is [batch_size, frame_stack * (state_dim + action_dim)]
 
-        # Convert to cuda first
-        state_in = state_in.to(self.device)
-        actions = actions.to(self.device)
-        delta = delta.to(self.device)
-        reward = reward.to(self.device)
+        feed_tensor = self.prepare_feed(state_in, actions)
 
-        feed_tensor = torch.cat([state_in, actions], dim = 2)
-        # print('state in', state_in.shape)
-        # print('act',actions.shape)
-        # print('feed tensor should be (-1, B x f(s + a)', feed_tensor.shape)
-        # print('delta', delta.shape)
-        # Concatenate delta and reward if we are predicting reward
-        if(self.network_cfg.predict_reward):
-            return feed_tensor, torch.cat([delta,reward], dim = 2)
+        target_tensor = self.prepare_target(delta, reward)
 
         # Else, just return delta
-        return feed_tensor, delta, mask.unsqueeze(-1).to(self.device)
+        return feed_tensor, target_tensor, mask.unsqueeze(-1).to(self.device)
 
 
     def training_step(self, batch, model_idx):
@@ -290,6 +292,8 @@ class DynamicsGRUEnsemble(nn.Module):
 
         # Compute loss
         loss = self.loss(y_hat, target)
+        # Normalize loss
+        loss = torch.sum(loss) / (torch.sum(mask) * self.state_dim_out)
 
         # Backpropagate
         loss.backward()
@@ -319,6 +323,10 @@ class DynamicsGRUEnsemble(nn.Module):
             loss = self.loss(y_hat, target)
             mse_loss = self.mse_loss(y_hat, target)
 
+            # Normalize losses
+            loss = torch.sum(loss) / (torch.sum(mask) * self.state_dim_out)
+            mse_loss = torch.sum(mse_loss) / (torch.sum(mask) * self.state_dim_out)
+
             return {"model_{}_val_loss".format(model_idx): loss,
                     "model_{}_val_mse_loss".format(model_idx) : mse_loss}
 
@@ -330,7 +338,7 @@ class DynamicsGRUEnsemble(nn.Module):
             for metric_name, value in metric_dict.items():
                 self.logger.log_scalar(metric_name, value, step)
 
-    def train(self, epochs, n_incremental_models = 10):
+    def train_model(self, epochs, n_incremental_models = 10):
         train_dataloader = self.data_module.train_dataloader()
         val_dataloader = self.data_module.val_dataloader()
 
@@ -350,7 +358,10 @@ class DynamicsGRUEnsemble(nn.Module):
                 "dyn_ens/gru_input_dim" : self.network_cfg.gru_input_dim,
                 "dyn_ens/gru_hidden_dim" : self.network_cfg.gru_hidden_dim,
                 "dyn_ens/drop_prob" : self.network_cfg.drop_prob,
-                "dyn_ens/activation" : str(self.network_cfg.activation)
+                "dyn_ens/activation" : str(self.network_cfg.activation),
+                "dyn_ens/frame_stack" : self.network_cfg.frame_stack,
+                "dyn_ens/network_type" : "Deterministic GRU",
+
 
             })
 
@@ -367,7 +378,7 @@ class DynamicsGRUEnsemble(nn.Module):
 
         for epoch in range(epochs): # Loop over epochs
             for model_idx in range(self.n_models): # Loop over models
-
+                self.train()
                 with tqdm(total = num_train_batches) as pbar:
                     pbar.set_description_str("Train epoch {}, Model {}:".format(epoch, model_idx))
                     for batch_idx, batch in enumerate(train_dataloader): # Loop over batches
@@ -380,8 +391,10 @@ class DynamicsGRUEnsemble(nn.Module):
                         if batch_idx % self.log_freq == 0 and self.logger is not None:
                             self.log_metrics(epoch, batch_idx, num_train_batches, log_params)
 
-
+                self.eval()
                 with tqdm(total = num_val_batches) as pbar:
+                    # Store running count of validation metrics
+                    val_running_counts = None
                     pbar.set_description_str("Validation:".format(epoch))
                     for batch_idx, batch in enumerate(val_dataloader): # Loop over batches
                         # Run training step for jth model
@@ -390,13 +403,29 @@ class DynamicsGRUEnsemble(nn.Module):
                         pbar.set_postfix_str("epoch {}, model_idx: {}, loss: {}".format(epoch, model_idx, log_params['model_{}_val_loss'.format(model_idx)]))
                         pbar.update(1)
 
-                        if batch_idx % self.log_freq == 0 and self.logger is not None:
-                            self.log_metrics(epoch, batch_idx, num_val_batches, log_params)
+                        # Add values
+                        if(val_running_counts is None):
+                            val_running_counts = log_params
+                        else:
+                            for key, val in val_running_counts.items():
+                                val_running_counts[key] += log_params[key]
+
+                    if self.logger is not None:
+                        for key, val in val_running_counts.items():
+                            val_running_counts[key] /= num_val_batches
+                        self.log_metrics(epoch, num_train_batches, num_train_batches, log_params)
 
             if(epoch % steps_between_model_save == 0):
                 self.save("incremental-step-{}".format(epoch, ))
 
         self.save("final")
+
+    def predict(self, obs, actions, hidden_state = None):
+        self.eval()
+
+        feed = self.prepare_feed(obs, actions)
+
+        return self.forward(feed, hidden_state = hidden_state)
 
 
     def configure_optimizers(self):
@@ -417,7 +446,7 @@ class DynamicsGRUEnsemble(nn.Module):
         print("DYNAMICS ENSEMBLE: Saving model {}".format(model_name))
 
         # Save model
-        self.logger.torch_save(self.state_dict(), DynamicsGRUEnsemble.model_log_dir, model_name)
+        self.logger.torch_save(self.state_dict(), GRUDynamicsEnsemble.model_log_dir, model_name)
 
     @classmethod
     def load(cls, logger, model_name, gpu):
@@ -428,10 +457,10 @@ class DynamicsGRUEnsemble(nn.Module):
 
         print("DYNAMICS ENSEMBLE: Loading dynamics model {}".format(model_name))
         # Get config from pickle first
-        config = logger.pickle_load(DynamicsGRUEnsemble.log_dir, "config.pkl")
+        config = logger.pickle_load(GRUDynamicsEnsemble.log_dir, "config.pkl")
 
         # Next, get pickle containing the state parameters
-        state_dim_in, state_dim_out, action_dim, frame_stack, norm_stats = logger.pickle_load(DynamicsGRUEnsemble.log_dir, "state_params.pkl")
+        state_dim_in, state_dim_out, action_dim, frame_stack, norm_stats = logger.pickle_load(GRUDynamicsEnsemble.log_dir, "state_params.pkl")
         print("DYNAMICS ENSEMBLE: state_dim_in: {}\tstate_dim_out: {}\taction_dim: {}\tframe_stack: {}".format(
             state_dim_in,
             state_dim_out,
@@ -448,7 +477,7 @@ class DynamicsGRUEnsemble(nn.Module):
                     norm_stats = norm_stats,
                     gpu = gpu)
 
-        model.load_state_dict(logger.torch_load(DynamicsGRUEnsemble.model_log_dir, model_name))
+        model.load_state_dict(logger.torch_load(GRUDynamicsEnsemble.model_log_dir, model_name))
 
         return model
 
