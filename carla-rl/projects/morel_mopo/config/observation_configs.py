@@ -11,9 +11,7 @@ class BaseObservationConfig(BaseConfig):
 class DefaultObservationConfig(BaseObservationConfig):
     def __init__(self):
         self.obs_dim = 4
-        self.frame_stack = 2
-
         # dist to traj, angle, speed, steer
-        self.obs_space = Box(low=np.array([0,-180,0,-0.5]),\
+        self.observation_space = Box(low=np.array([0,-180,0,-0.5]),\
                              high=np.array([100,180,20, 0.5]), dtype=np.float32)
    

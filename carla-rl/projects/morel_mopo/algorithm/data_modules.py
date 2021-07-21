@@ -54,6 +54,8 @@ class WaypointModule():
 class OfflineCarlaDataset(Dataset):
     """ Offline dataset """
 
+    # pull data from buffer
+    # don't normalize data
     def __init__(self,
                     path,
                     use_images=True,
@@ -185,15 +187,6 @@ class OfflineCarlaDataset(Dataset):
                                                 samples[i][steer_key] - samples[i-1][steer_key],
                                                 samples[i][speed_key] - samples[i-1][speed_key]])
 
-                    # print()
-                    # print("Obs: ", obs)
-                    # print("Action: ", action)
-
-                    # print("delta: ", delta)
-
-                    # print("Prev Pose: ", vehicle_pose_prev)
-                    # print("Cur Pose: ", vehicle_pose_cur)
-
                     # convert stacked frame list to torch tensor
                     self.obs.append(torch.stack(obs))
                     # self.additional_state.append(torch.stack(additional_state))
@@ -267,14 +260,15 @@ class OfflineCarlaDataModule():
             "delta" : None,
             "action" : None
         }
-
-
     # Updates dataset with newly-collected trajectories saved to new_path
     def update(self, new_path):
         self.setup(new_path)
 
 
     def setup(self, new_path = None):
+
+        # Create a dataset for each trajectory
+        print('DATAMODULES SETUP: self.paths', self.paths)
 
 
         # If new_path passed in, simply add newly collected data to existing datasets
@@ -286,7 +280,6 @@ class OfflineCarlaDataModule():
         else:
             self.datasets = [OfflineCarlaDataset(path=path, frame_stack=self.frame_stack) for path in self.paths]
 
-
         # Dimensions
         self.state_dim_in = self.datasets[0].obs_dim + self.datasets[0].additional_state_dim
         self.state_dim_out = self.datasets[0].state_dim_out
@@ -295,6 +288,7 @@ class OfflineCarlaDataModule():
 
         # normalize across all trajectories
         if self.normalize_data:
+            print("DATA_MODULE: NORMALIZING")
             # number of total timesteps
             n = sum(len(d.rewards) for d in self.datasets)
 
@@ -312,9 +306,13 @@ class OfflineCarlaDataModule():
             self.normalization_stats["action"]           = compute_mean_std(traj_actions, n)
             self.normalization_stats["delta"]            = compute_mean_std(traj_delta, n)
 
+            print('DATA_MODULE: after norm obs', self.normalization_stats["obs"])
+            print('DATA_MODULE: after norm act',  self.normalization_stats["obs"]["action"])
+            print('DATA_MODULE: after norm delta', self.normalization_stats["obs"]["delta"])
+
 
         else:
-            print('No normalization: Setting normalization stats to Mean=0, Std=1')
+            print('DATA_MODULE: No normalization: Setting normalization stats to Mean=0, Std=1')
             self.normalization_stats["obs"] = {"mean" : torch.zeros((1, self.datasets[0].obs_dim)), "std" : torch.ones((1, self.datasets[0].obs_dim))}
             self.normalization_stats["action"] = {"mean" : torch.zeros((1, self.datasets[0].action_dim)), "std" : torch.ones((1, self.datasets[0].action_dim))}
             self.normalization_stats["delta"] = {"mean" : torch.zeros((1, self.datasets[0].state_dim_out)), "std" : torch.ones((1, self.datasets[0].state_dim_out))}

@@ -11,8 +11,8 @@ import py_trees
 # Leaerboard Import
 import sys, os
 # Add paths to get leaderboard to work
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../leaderboard'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../scenario_runner'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../../leaderboard'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../../scenario_runner'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), './'))
 from leaderboard.utils.route_manipulation import interpolate_trajectory
 from leaderboard.utils.route_parser import RouteParser, TRIGGER_THRESHOLD, TRIGGER_ANGLE_THRESHOLD
@@ -311,7 +311,7 @@ class Carla910Interface_Leaderboard:
 
     def setup(self):
         # Start the carla server and get a client
-        # self.server.start()
+        self.server.start()
         self.client = self._spawn_client()
         print(self.client.get_available_maps())
         self.avail_map = {name[-6:]: name for name in self.client.get_available_maps()}
@@ -319,7 +319,7 @@ class Carla910Interface_Leaderboard:
         print("server_version", self.client.get_server_version())
         # print(os.getcwd())
         self.world_annotations = RouteParser.parse_annotations_file(
-            '../../leaderboard/data/all_towns_traffic_scenarios_public.json')
+            '../../../../leaderboard/data/all_towns_traffic_scenarios_public.json')
         # print(self.world_annotations)
         CarlaDataProvider.set_client(self.client)
         CarlaDataProvider.set_traffic_manager_port(4050)

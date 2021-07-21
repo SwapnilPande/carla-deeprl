@@ -13,7 +13,6 @@ class BaseActionConfig(BaseConfig):
 class DefaultActionConfig(BaseActionConfig):
     def __init__(self):
         self.action_dim = 2 # TODO
-        self.frame_stack = 1
         self.action_space = Box(np.array([-0.5, -0.5]), \
                                 high=np.array([0.5, 0.5]), dtype=np.float32)
 

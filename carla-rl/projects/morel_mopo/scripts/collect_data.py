@@ -18,10 +18,8 @@ from projects.morel_mopo.config.logger_config import CometLoggerConfig
 import gym
 from algorithms import PPO
 from stable_baselines3.common.callbacks import EvalCallback
-from stable_baselines3.common.env_util import DummyVecEnv
+from stable_baselines3.common.env_util import VecEnv
 #from common.loggers.logger_callbacks import PPOLoggerCallback
-
-
 
 # Environment
 from environment.env import CarlaEnv
@@ -30,6 +28,15 @@ EXPERIMENT_NAME = "NO_CRASH_EMPTY_FIRST_TEST"
 
 logger_conf = CometLoggerConfig()
 logger_conf.populate(experiment_name = EXPERIMENT_NAME, tags = ["Online_PPO"])
+
+
+
+class NumpyEncoder(json.JSONEncoder):
+    """ json encoder for numpy array """
+    def default(self, obj):
+        if isinstance(obj, (np.ndarray,)):
+            return obj.tolist()
+        return json.JSONEncoder.default(self, obj)
 
 
 class AutopilotPolicy:
@@ -61,100 +68,139 @@ class AutopilotNoisePolicy:
         return res
 
 
-def collect_trajectory(env, save_dir, policy, max_path_length=5000):
-    now = datetime.datetime.now()
-    salt = np.random.randint(100)
+class DataCollector():
+    def __init__(self):
+        self.env = None
+        self.policy = None
+        self.path = None
 
-    fname = '_'.join(map(lambda x: '%02d' % x, (now.month, now.day, now.hour, now.minute, now.second, salt)))
-    save_path = os.path.join(save_dir, fname)
-    # rgb_path = os.path.join(save_path, 'rgb')
-    # topdown_path = os.path.join(save_path, 'topdown')
-    measurements_path = os.path.join(save_path, 'measurements')
+    def collect_data(self, path=None,
+                           policy=None,
+                           n_samples=1,
+                           carla_gpu=0,
+                    ):
 
-    if os.path.isdir(save_path):
-        print('Directory conflict, trying again...')
-        return 0
+        assert(path is not None), "path cannot be None"
+        self.path = path
 
-    # make directories
-    os.mkdir(save_path)
-    # os.mkdir(rgb_path)
-    # os.mkdir(topdown_path)
-    os.mkdir(measurements_path)
+        print('************using path', self.path)
 
-    seed = np.random.randint(10000000)
-    obs = env.reset()
+        # Set env if not passed in
+        if self.env is None:
+            config = DefaultMainConfig()
+            config.populate_config(
+                observation_config = "VehicleDynamicsNoCameraConfig",
+                action_config = "MergedSpeedTanhConfig",
+                reward_config = "Simple2RewardConfig",
+                scenario_config = "NoCrashEmptyTown01Config",
+                testing = False,
+                carla_gpu = carla_gpu
+            )
+            self.env = CarlaEnv(config = config, log_dir = "/home/scratch/vccheng/carla_test")
 
-    for step in tqdm(range(max_path_length)):
-
-
-        action = policy(obs)
-
-        next_obs, reward, done, info = env.step(action)
-        experience = {
-            'obs': obs.tolist(),
-            'next_obs': next_obs.tolist(),
-            'action': action.tolist(),
-            'reward': reward,
-            'done': done
-        }
-        experience.update(info)
-
-        save_env_state(experience, save_path, step)
-
-        if done:
-            break
-
-        obs = next_obs
-
-    return step + 1
-
-
-def save_env_state(measurements, save_path, idx, rgb = None, topdown = None):
-    if rgb is not None:
-        rgb_path = os.path.join(save_path, 'rgb', '{:04d}.png'.format(idx))
-        cv2.imwrite(rgb_path, rgb)
-
-    if topdown is not None:
-        topdown_path = os.path.join(save_path, 'topdown', '{:04d}.png'.format(idx))
-        cv2.imwrite(topdown_path, topdown)
-
-    measurements_path = os.path.join(save_path, 'measurements', '{:04d}.json'.format(idx))
-    with open(measurements_path, 'w') as out:
-        json.dump(measurements, out)
-
-
-def main(args):
-
-    config = DefaultMainConfig()
-    config.populate_config(
-        observation_config = "LowDimObservationNoCameraConfig",
-        action_config = "MergedSpeedTanhConfig",
-        reward_config = "Simple2RewardConfig",
-        scenario_config = "NoCrashEmptyTown01Config",
-        testing = False,
-        carla_gpu = args.gpu
-    )
-
-
-
-    with CarlaEnv(config = config, log_dir = "/home/scratch/swapnilp/carla_test") as env:
         # Create the policy
-        policy = RandomPolicy(env)
+        if policy is None:
+            self.policy = AutopilotPolicy(self.env)
+        else:
+            # if policy passed in
+            self.policy = policy
 
+        # Collect trajectories until <n_samples>
         total_samples = 0
-        while total_samples < args.n_samples:
-            traj_length = collect_trajectory(env, args.path, policy)
+        while total_samples < n_samples:
+            traj_length = self.collect_trajectory()
             total_samples += traj_length
 
-    print('Done')
+        print('Done collecting data')
+        return self
+
+
+    def collect_trajectory(self, max_path_length=5000, save_to_json=True):
+
+        assert(self.path is not None), "path cannot be None"
+        assert(self.policy is not None), "policy cannot be None"
+        assert(self.env is not None), "envcannot be None"
+
+        now = datetime.datetime.now()
+        salt = np.random.randint(100)
+
+        fname = '_'.join(map(lambda x: '%02d' % x, (now.month, now.day, now.hour, now.minute, now.second, salt)))
+        save_path = os.path.join(self.path, fname)
+        # rgb_path = os.path.join(save_path, 'rgb')
+        # topdown_path = os.path.join(save_path, 'topdown')
+        measurements_path = os.path.join(save_path, 'measurements')
+        print("Saving measurements to: ", measurements_path)
+
+        if save_to_json:
+            if os.path.isdir(save_path):
+                print('Directory conflict, trying again...')
+                return 0
+            # make directories
+            os.makedirs(save_path)
+            # os.mkdir(rgb_path)
+            # os.mkdir(topdown_path)
+            os.makedirs(measurements_path)
+
+        seed = np.random.randint(10000000)
+        print('Resetting env in collect_data')
+        obs = self.env.reset()
+
+        for step in tqdm(range(max_path_length)):
+
+            try:
+                action, _ = self.policy.predict(obs)
+                next_obs, reward, done, info = self.env.step(action)
+
+            except:
+                action = self.policy(obs)
+                next_obs, reward, done, info = self.env.step(action)
+
+            # print(f'next_obs: {next_obs}, rew: {reward}, done: {done}, info: {info}')
+            experience = {
+                'obs': obs.tolist(),
+                'next_obs': next_obs.tolist(),
+                'action': action.tolist(),
+                'reward': reward,
+                'done': done.tolist()
+            }
+
+            experience.update(info)
+            # save as json
+            if save_to_json:
+                self.save_env_state(experience, save_path, step) # TODO add back in
+
+
+            if done:
+                break
+            obs = next_obs
+
+        return step + 1
+
+
+    def save_env_state(self, measurements, save_path, idx, rgb = None, topdown = None):
+        if rgb is not None:
+            rgb_path = os.path.join(save_path, 'rgb', '{:04d}.png'.format(idx))
+            cv2.imwrite(rgb_path, rgb)
+
+        if topdown is not None:
+            topdown_path = os.path.join(save_path, 'topdown', '{:04d}.png'.format(idx))
+            cv2.imwrite(topdown_path, topdown)
+
+        measurements_path = os.path.join(save_path, 'measurements', '{:04d}.json'.format(idx))
+        with open(measurements_path, 'w') as out:
+            json.dump(measurements, out, cls=NumpyEncoder)
 
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--gpu', type=str, default='0')
-    parser.add_argument('--n_samples', type=int, default=100000)
-    #parser.add_argument('--behavior', type=str, default='cautious')
-    parser.add_argument('--path', type=str)
-    args = parser.parse_args()
-    main(args)
+
+# parser = argparse.ArgumentParser()
+# parser.add_argument('--gpu', type=str, default='0')
+# parser.add_argument('--n_samples', type=int, default=100000)
+# parser.add_argument('--policy')
+# parser.add_argument('--env')
+# # parser.add_argument('--behavior', type=str, default='cautious')
+# parser.add_argument('--path', type=str)
+# args = parser.parse_args()
+
+
+# collect_data(args.env, args.policy, args.path, args.n_samples, args.gpu)
