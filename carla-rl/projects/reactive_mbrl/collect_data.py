@@ -16,7 +16,7 @@ def main(config):
     try:
         total_samples = 0
         while total_samples < n_samples:
-            traj_length = collector.collect_trajectory(speed)
+            traj_length = collector.collect_trajectory(speed, max_path_length=int(config.data['max_path_length']))
             total_samples += traj_length
     except:
         env.close()

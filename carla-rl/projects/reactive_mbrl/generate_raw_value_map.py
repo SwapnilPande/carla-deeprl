@@ -1,36 +1,19 @@
-import click
 import hydra
-import torch
-import os
 import glob
-import json
+import os
+import torch
 import numpy as np
+import json
 
-from projects.reactive_mbrl.algorithms.multiprocessing import Multiprocessor
-from projects.reactive_mbrl.algorithms.dynamic_programming import QSolver
+from projects.reactive_mbrl.algorithms.dynamic_programming import ACTIONS, num_acts
 from projects.reactive_mbrl.ego_model import EgoModel, EgoModelRails
 
 
-def qsolver_worker(id, queue, model):
-    try:
-        while True:
-            data_path = queue.get(timeout=60)
-            data = load_data(data_path)
-            solver = QSolver(model)
-            solver.solve(data)
-    except:
-        print(id)
-        raise
-
-
-def load_ego_model():
-    project_home = os.environ["PROJECT_HOME"]
-    model_weights = torch.load(
-        os.path.join(project_home, "carla-rl/projects/reactive_mbrl/ego_model.th")
-    )
-    model = EgoModel()
-    model.load_state_dict(model_weights)
-    return model
+def create_output_dir_if_not_exists(path, dir_name):
+    output_dir = os.path.join(path, dir_name)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    return output_dir
 
 
 def load_trajectory(path):
@@ -62,13 +45,6 @@ def load_trajectory(path):
         yield reward, world_pts, value_path, action_value_path, measurement
 
 
-def create_output_dir_if_not_exists(path, dir_name):
-    output_dir = os.path.join(path, dir_name)
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    return output_dir
-
-
 def construct_QV_paths(reward_path):
     value_path = reward_path.split("/")
     value_path[-2] = "value"
@@ -81,23 +57,44 @@ def construct_QV_paths(reward_path):
     return value_path, action_value_path
 
 
+def calculate_raw_map(model, data):
+    for reward, world_pts, value_path, action_val_path, measurements in data:
+        locs = np.array([measurements["ego_vehicle_x"], measurements["ego_vehicle_y"]])
+        locs = np.tile(locs, (num_acts, 1))
+        yaws = np.array([measurements["yaw"]])
+        yaws = np.tile(yaws, (num_acts, 1))
+        speeds = np.array([measurements["speed"]])
+        speeds = np.tile(speeds, (num_acts, 1))
+
+        locs = torch.tensor(locs)
+        yaws = torch.tensor(yaws)
+        speeds = torch.tensor(speeds)
+        actions = torch.tensor(ACTIONS)
+
+        pred_locs, pred_yaws, pred_speeds = model.forward(locs, yaws, speeds, actions)
+        action_value = reward.calculate_action_value_map(pred_locs, pred_yaws, pred_speeds)
+
+        np.save(action_value, action_val_path)
+        # np.save(value, value_path)
+
+
+def load_ego_model():
+    project_home = os.environ["PROJECT_HOME"]
+    model_weights = torch.load(
+        os.path.join(project_home, "carla-rl/projects/reactive_mbrl/ego_model.th")
+    )
+    model = EgoModel()
+    model.load_state_dict(model_weights)
+    return model
+
+
 @hydra.main(config_path="configs", config_name="reward_map.yaml")
 def main(cfg):
-
-    model = load_ego_model()
     trajectory_paths = glob.glob(cfg["dataset_path"] + "/*")
-
-    if cfg["num_processes"] == 1:
-        # Running single processing.
-        solver = QSolver(model, cfg)
-        for path in trajectory_paths:
-            data = load_trajectory(path)
-            solver.solve(data)
-    else:
-        processor = Multiprocessor(model, queue_size=len(trajectory_paths))
-        processor.process(
-            qsolver_worker, trajectory_paths, num_processes=int(cfg["num_processes"])
-        )
+    model = load_ego_model()
+    for path in trajectory_paths:
+        data = load_trajectory(path)
+        calculate_raw_map(model, data)
 
 
 if __name__ == "__main__":

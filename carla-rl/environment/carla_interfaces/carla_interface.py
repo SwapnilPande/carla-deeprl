@@ -236,10 +236,10 @@ class Carla910Interface():
         sensor_readings = self.actor_fleet.sensor_manager.get_sensor_readings(world_frame)
         location = self.actor_fleet.ego_vehicle._vehicle.get_location()
 
-        left_steer = self.actor_fleet.ego_vehicle._vehicle.get_wheel_steer_angle(carla.VehicleWheelLocation.FL_Wheel)
-        right_steer = self.actor_fleet.ego_vehicle._vehicle.get_wheel_steer_angle(carla.VehicleWheelLocation.FR_Wheel)
+        #left_steer = self.actor_fleet.ego_vehicle._vehicle.get_wheel_steer_angle(carla.VehicleWheelLocation.FL_Wheel)
+        #right_steer = self.actor_fleet.ego_vehicle._vehicle.get_wheel_steer_angle(carla.VehicleWheelLocation.FR_Wheel)
         # Average steering angle between front two wheels, and normalize by diving by 90
-        steer_angle = (left_steer + right_steer) / (2* 90)
+        #steer_angle = (left_steer + right_steer) / (2* 90)
 
         transform = self.actor_fleet.get_ego_vehicle_transform()
         self.spectator.set_transform(transform)
@@ -269,7 +269,7 @@ class Carla910Interface():
             'ego_vehicle_velocity' : ego_vehicle_velocity,
             'location' : location,
             'waypoints' : self.all_waypoints,
-            "steer_angle" : steer_angle
+            #"steer_angle" : steer_angle
         }
 
         obs = {**control, **ep_measurements, **sensor_readings}
@@ -516,10 +516,10 @@ class Carla910Interface_Leaderboard:
         sensor_readings = self.actor_fleet.sensor_manager.get_sensor_readings(world_frame)
         location = self.actor_fleet.ego_vehicle._vehicle.get_location()
 
-        left_steer = self.actor_fleet.ego_vehicle._vehicle.get_wheel_steer_angle(carla.VehicleWheelLocation.FL_Wheel)
-        right_steer = self.actor_fleet.ego_vehicle._vehicle.get_wheel_steer_angle(carla.VehicleWheelLocation.FR_Wheel)
+        #left_steer = self.actor_fleet.ego_vehicle._vehicle.get_wheel_steer_angle(carla.VehicleWheelLocation.FL_Wheel)
+        #right_steer = self.actor_fleet.ego_vehicle._vehicle.get_wheel_steer_angle(carla.VehicleWheelLocation.FR_Wheel)
         # Average steering angle between front two wheels, and normalize by diving by 90
-        steer_angle = (left_steer + right_steer) / (2* 90)
+        #steer_angle = (left_steer + right_steer) / (2* 90)
 
         transform = self.actor_fleet.get_ego_vehicle_transform()
         self.spectator.set_transform(carla.Transform(transform.location + carla.Location(z=50), carla.Rotation(pitch=-90)))
@@ -549,7 +549,7 @@ class Carla910Interface_Leaderboard:
             'ego_vehicle_velocity' : ego_vehicle_velocity,
             'location' : location,
             "waypoints" : self.all_waypoints,
-            'steer_angle': steer_angle
+            #'steer_angle': steer_angle
         }
 
         obs = {**control, **ep_measurements, **sensor_readings}

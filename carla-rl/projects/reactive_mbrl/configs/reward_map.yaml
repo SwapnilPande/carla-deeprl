@@ -1,3 +1,5 @@
 dataset_path: "/zfsauton/datasets/ArgoRL/jhoang/small_dataset/"
 
 num_processes: 1
+
+steering_reward_coeff: 0.2

@@ -26,6 +26,7 @@ def populate_cameras_configs(cfg):
         "fov": "90",
         "sensor_tick": "0.0",
     }
+    
     cfg["sensor.camera.rgb/map"] = {
         "x": 13.0,
         "z": 18.0,
@@ -48,6 +49,7 @@ def populate_cameras_configs(cfg):
         "sensor_y_res": "240",
         "sensor_tick": "0.0",
     }
+    
     cfg["sensor.camera.semantic_segmentation/front_wide"] = {
         "x": x,
         "y": y,
@@ -62,6 +64,7 @@ def populate_cameras_configs(cfg):
         "num_classes": 23,
         "seg_channels": [4, 6, 7, 10, 18],
     }
+    
     cfg["sensor.camera.rgb/front_narrow"] = {
         "x": x,
         "y": y,
@@ -74,6 +77,7 @@ def populate_cameras_configs(cfg):
         "sensor_y_res": "240",
         "sensor_tick": "0.0",
     }
+    
     cfg["sensor.camera.semantic_segmentation/front_narrow"] = {
         "x": x,
         "y": y,

@@ -266,7 +266,7 @@ class CarlaEnv(gym.Env):
                 "next_orientation"
             ]
             self.episode_measurements["control_steer"] = carla_obs["control_steer"]
-            self.episode_measurements["steer_angle"] = carla_obs["steer_angle"]
+            #self.episode_measurements["steer_angle"] = carla_obs["steer_angle"]
             self.episode_measurements["dist_to_trajectory"] = carla_obs[
                 "dist_to_trajectory"
             ]

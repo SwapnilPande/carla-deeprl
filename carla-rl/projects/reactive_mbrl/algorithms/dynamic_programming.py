@@ -1,9 +1,16 @@
 import numpy as np
 import torch
 import time
+import sys
+import matplotlib
+import matplotlib.pyplot as plt
 
 from scipy.interpolate import RegularGridInterpolator
-from projects.reactive_mbrl.data.reward_map import MAP_SIZE
+from projects.reactive_mbrl.data.reward_map import MAP_SIZE, MIN_REWARD
+
+# ACTIONS = np.array([[-1, 1 / 3], [0, 1 / 3], [1, 1 / 3],], dtype=np.float32).reshape(
+#     3, 2
+# )
 
 ACTIONS = np.array(
     [
@@ -52,14 +59,17 @@ def rotate_pts(pts, theta):
 
 
 class QSolver:
-    def __init__(self, model):
+    def __init__(self, model, config):
         self.model = model
+        self.config = config
 
-    def run_bellman(self, rewards, locs, next_locs, prev_V, discount_factor=0.9):
+    def run_bellman(
+        self, rewards, locs, next_locs, prev_V, measurement, discount_factor=0.9
+    ):
         with torch.no_grad():
             start = time.time()
-            # Why?
-            reward = (rewards == 0).float() - 1
+            # reward = (rewards == 0).float() - 1
+            ref_yaw = torch.tensor(np.radians(measurement["yaw"]))
 
             speeds, yaws, actions = (
                 torch.tensor(SPEEDS),
@@ -72,11 +82,18 @@ class QSolver:
             )
 
             Q = torch.zeros((MAP_SIZE, MAP_SIZE, num_spds, num_yaws, num_acts))
+            terminal = (rewards <= MIN_REWARD)[..., None]
+            action_rewards = self.calculate_action_rewards(ACTIONS)
+            final_reward = rewards[..., None] + action_rewards
+            #final_reward = rewards[..., None]
 
             for s, speed, in enumerate(speeds):
                 for y, yaw in enumerate(yaws):
+                    # pred_locs, pred_yaws, pred_spds = self.predict(
+                    #     locs, yaw, speed, actions
+                    # )
                     pred_locs, pred_yaws, pred_spds = self.predict(
-                        locs, yaw, speed, actions
+                        locs, ref_yaw + yaw, speed, actions
                     )
 
                     # convert locs to normalized grid coordinates and interpolate next Vs
@@ -84,20 +101,58 @@ class QSolver:
                         grid_interpolator,
                         pred_locs,
                         pred_spds,
-                        pred_yaws,
+                        pred_yaws - ref_yaw,
+                        # pred_yaws,
                         offset,
                         theta,
                     )
+                    # ego_pos = np.array(
+                    #     [measurement["ego_vehicle_x"], measurement["ego_vehicle_y"]]
+                    # )
+                    # plt.plot(ego_pos[0], ego_pos[1], "x", color="red", label="AV")
+                    # plt.plot(
+                    #     locs[:, 0],
+                    #     locs[:, 1],
+                    #     "o",
+                    #     color="black",
+                    #     alpha=0.5,
+                    #     label="current",
+                    # )
+                    # plt.plot(
+                    #     next_locs[:, 0],
+                    #     next_locs[:, 1],
+                    #     "o",
+                    #     color="green",
+                    #     label="next",
+                    # )
+                    # plt.plot(
+                    #     pred_locs[:, 0], pred_locs[:, 1], "o", color="red", label="next"
+                    # )
+                    # plt.legend()
+                    # plt.savefig("/zfsauton/datasets/ArgoRL/jhoang/logs/world.png")
+                    # plt.clf()
+                    # next_Vs = next_Vs.reshape(16, 16, num_acts)
+                    # plt.pcolormesh(next_Vs[:, :, 0])
+                    # plt.savefig("/zfsauton/datasets/ArgoRL/jhoang/logs/next_Vs_-1.png")
+                    # plt.clf()
+                    # plt.pcolormesh(next_Vs[:, :, 1])
+                    # plt.savefig("/zfsauton/datasets/ArgoRL/jhoang/logs/next_Vs_0.png")
+                    # plt.clf()
+                    # plt.pcolormesh(next_Vs[:, :, 2])
+                    # plt.savefig("/zfsauton/datasets/ArgoRL/jhoang/logs/next_Vs_1.png")
+                    # plt.clf()
+                    # sys.exit(0)
 
                     # Bellman backup
                     Q_target = bellman_backup(
-                        next_Vs, reward, num_acts, discount_factor
+                        next_Vs, final_reward, terminal, discount_factor
                     )
-                    Q[:, :, s, y] = torch.clamp(Q_target, -1, 0)
+                    Q[:, :, s, y] = torch.clamp(Q_target, MIN_REWARD, 0)
 
             # max over all actions
             V = Q.max(dim=-1)[0]
-            V = V.detach().numpy()
+            # max_action = torch.argmax(Q, dim=-1)[8, 8, 3, :]
+            # print(ACTIONS[max_action])
 
         end = time.time()
         # print('total: {}'.format(end - start))
@@ -105,7 +160,10 @@ class QSolver:
 
     def solve(self, data):
         start = time.time()
-        for i, (reward, world_pts, value_path, action_val_path) in enumerate(data):
+        for (
+            i,
+            (reward, world_pts, value_path, action_val_path, measurement),
+        ) in enumerate(data):
             reward = reward.reshape(MAP_SIZE, MAP_SIZE)
             if i == 0:
                 V = reward.reshape(MAP_SIZE, MAP_SIZE, 1, 1).repeat(
@@ -115,7 +173,9 @@ class QSolver:
                     1, 1, num_spds, num_yaws, num_acts
                 )
             else:
-                V, Q = self.run_bellman(reward, world_pts, next_world_pts, V)
+                V, Q = self.run_bellman(
+                    reward, world_pts, next_world_pts, V, measurement
+                )
 
             np.save(value_path, V)
             np.save(action_val_path, Q)
@@ -133,11 +193,20 @@ class QSolver:
 
         return pred_locs, pred_yaws, pred_spds
 
+    def calculate_action_rewards(self, actions):
+        steering = actions[:, 0]
+        steering_penalty = -np.abs(steering) * float(self.config.steering_reward_coeff)
+        steering_penalty = torch.tensor(steering_penalty)
+        return (
+            steering_penalty.reshape(num_acts, 1)
+            .repeat(1, MAP_SIZE * MAP_SIZE)
+            .reshape(num_acts, MAP_SIZE, MAP_SIZE)
+            .transpose(0, 2)
+        )
 
-def bellman_backup(next_Vs, reward, num_acts, discount_factor=0.9):
-    terminal = (reward < 0)[..., None]
-    #terminal = (reward > 0)[..., None]
-    Q_target = reward[..., None] + (
+
+def bellman_backup(next_Vs, reward, terminal, discount_factor=0.9):
+    Q_target = reward + (
         discount_factor * ~terminal * next_Vs.reshape(MAP_SIZE, MAP_SIZE, num_acts)
     )
     Q_target[torch.isnan(Q_target)] = -1

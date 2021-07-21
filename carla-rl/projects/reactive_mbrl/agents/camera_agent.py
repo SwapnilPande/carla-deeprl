@@ -50,9 +50,9 @@ class CameraAgent(pl.LightningModule):
     def compute_losses(self, inputs, prefix="train"):
         wide_rgbs, wide_segs, narr_rgbs, narr_segs, action_values = inputs
         action_logits, pred_wide_seg, pred_narr_seg = self.model(wide_rgbs, narr_rgbs)
-        # 2 is the index of 0-yaw in [-1, -0.5, 0, 0.5 1]
+        # 4 is the index of 1-yaw in [-1, -0.5, 0, 0.5 1] which points upward
         action_value = action_values[
-            :, int(MAP_SIZE / 2), int(MAP_SIZE / 2), :, 2, :
+            :, int(MAP_SIZE / 2), int(MAP_SIZE / 2), :, 4, :
         ].unsqueeze(1)
         action_loss = calculate_action_loss(action_value, action_logits)
         seg_loss1 = calculate_segmentation_loss(wide_segs, pred_wide_seg)
