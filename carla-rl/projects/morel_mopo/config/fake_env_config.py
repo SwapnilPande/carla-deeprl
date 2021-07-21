@@ -7,7 +7,7 @@ sys.path.append(os.path.abspath(os.path.join('../../../')))
 
 # Import other necessary configs
 from environment.config.base_config import BaseConfig
-from projects.morel_mopo.config import observation_configs, action_configs, reward_configs
+from environment.config import observation_configs, action_configs, reward_configs
 
 
 class BaseFakeEnvConfig(BaseConfig):

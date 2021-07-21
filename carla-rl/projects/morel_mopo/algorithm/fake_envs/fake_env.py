@@ -469,8 +469,7 @@ class FakeEnv(gym.Env):
 
             print(f'State: {self.state.unnormalized}, Action: {self.past_action.unnormalized}')
 
-            # dynamics_input = torch.cat([self.state.normalized, self.past_action.normalized], dim = -1).unsqueeze(0).float()
-            dynamics_input = torch.cat([self.state.normalized, self.past_action.normalized.reshape(-1,2)], dim = -1).unsqueeze(0).float()
+            dynamics_input = torch.cat([self.state.normalized, self.past_action.normalized], dim = -1).unsqueeze(0).float()
             # Get predictions across all models
             all_predictions = torch.stack(self.dynamics.predict(self.state.normalized, self.past_action.normalized)).squeeze(dim = 1)
 
