@@ -11,7 +11,7 @@ from environment.env import CarlaEnv
 
 # Stable baselines PPO
 from stable_baselines3.common.env_util import DummyVecEnv
-from stable_baselines3 import PPO
+from stable_baselines3 import PPO, SAC
 
 # Environment
 from stable_baselines3.common.callbacks import EvalCallback
@@ -46,6 +46,7 @@ class MOPO():
 
         self.fake_env = None
 
+        self.policy_algo = self.config.policy_algorithm
         self.policy  = None
 
     def train(self):
@@ -54,6 +55,7 @@ class MOPO():
         self.logger.log_hyperparameters({
             "mopo/uncertainty_penalty" : self.fake_env_config.uncertainty_coeff,
             "mopo/rollout_length" : self.fake_env_config.timeout_steps,
+            "mopo/policy_algorithm" : str(self.policy_algo)
         })
 
 
@@ -70,7 +72,6 @@ class MOPO():
 
         print("MOPO: Constructing Real Env for evaluation")
 
-
         env = CarlaEnv(config = self.eval_env_config, logger = self.logger, log_dir = self.logger.log_dir)
         eval_env = env.get_eval_env(eval_frequency = 5000)
         dummy_eval_env = DummyVecEnv([lambda: eval_env])
@@ -82,8 +83,8 @@ class MOPO():
 
         print("MOPO: Beginning Policy Training")
 
-        import ipdb; ipdb.set_trace()
-        self.policy = PPO("MlpPolicy", fake_env, verbose=1, carla_logger = self.logger)
+        # import ipdb; ipdb.set_trace()
+        self.policy = self.policy_algo("MlpPolicy", fake_env, verbose=1, carla_logger = self.logger)
         self.policy.learn(total_timesteps=self.policy_epochs, callback = eval_callback)
 
 

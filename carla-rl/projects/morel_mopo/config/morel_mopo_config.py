@@ -5,6 +5,8 @@ from environment.config.config import DefaultMainConfig
 from projects.morel_mopo.config import dynamics_config
 from projects.morel_mopo.config import fake_env_config
 
+import stable_baselines3
+
 class BaseMOPOConfig(BaseConfig):
     def __init__(self):
         super().__init__()
@@ -18,10 +20,14 @@ class BaseMOPOConfig(BaseConfig):
 
         self.eval_env_config = None
 
-    def populate_config(self, gpu = 0):
+        self.policy_algorithm = None
+
+    def populate_config(self, gpu = 0, policy_algorithm = "PPO"):
         self.gpu = 0
         self.dynamics_config.populate_config(gpu = gpu)
         self.eval_env_config.carla_gpu = gpu
+
+        self.policy_algorithm = getattr(stable_baselines3, policy_algorithm)
 
         self.verify()
 
@@ -49,4 +55,5 @@ class DefaultMLPMOPOConfig(BaseMOPOConfig):
             testing = False,
             carla_gpu = self.gpu
         )
+
 

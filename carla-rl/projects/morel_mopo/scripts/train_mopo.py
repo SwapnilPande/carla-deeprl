@@ -22,7 +22,7 @@ def main(args):
     logger = CometLogger(logger_conf)
 
     config = DefaultMLPMOPOConfig()
-    config.populate_config(gpu = args.gpu)
+    config.populate_config(gpu = args.gpu, policy_algorithm = "PPO")
 
     model = MOPO(config = config,
                 logger=logger)
