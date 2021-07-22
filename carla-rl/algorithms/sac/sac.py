@@ -167,8 +167,8 @@ class SAC(pl.LightningModule):
 
     def training_step(self, batch, batch_idx, optimizer_idx):
         self._step += 1
-        (obs, actions, rewards, next_obs, terminals), indices, weights = batch
-        # obs, actions, rewards, next_obs, terminals = batch
+        # (obs, actions, rewards, next_obs, terminals), indices, weights = batch
+        obs, actions, rewards, next_obs, terminals = batch
 
         """
         Policy and Alpha Loss
@@ -263,9 +263,9 @@ class SAC(pl.LightningModule):
         qf2_loss = self.qf_criterion(q2_pred, q_target)
 
         # update PER
-        td_error_1 = F.mse_loss(q1_pred.flatten(), q_target.flatten(), reduction='none')
-        td_error_2 = F.mse_loss(q2_pred.flatten(), q_target.flatten(), reduction='none')
-        self._datamodule.dataset.replay_buffer.update_priorities(indices, td_error_1 + td_error_2)
+        # td_error_1 = F.mse_loss(q1_pred.flatten(), q_target.flatten(), reduction='none')
+        # td_error_2 = F.mse_loss(q2_pred.flatten(), q_target.flatten(), reduction='none')
+        # self._datamodule.dataset.replay_buffer.update_priorities(indices, td_error_1 + td_error_2)
 
         self.log('qf1/mse_loss', qf1_loss)
         self.log('qf2/mse_loss', qf2_loss)

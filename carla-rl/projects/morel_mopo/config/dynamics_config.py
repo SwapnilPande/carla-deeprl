@@ -226,6 +226,65 @@ class DefaultProbabilisticGRUDynamicsConfig(BaseDynamicsConfig):
         self.fake_env_type = fake_envs.RNNFakeEnv
 
 
+################# probabilistic dynamics ensemble #################
 
+class BaseProbabilisticDynamicsModuleConfig(BaseConfig):
+    def __init__(self):
+        self.state_dim_in = None
+        self.state_dim_out = None
+        self.action_dim = None
+        self.frame_stack = None
+        self.predict_reward = None
+        self.n_neurons = None
+        self.n_hidden_layers = None
+        self.n_head_layers = None
+        self.drop_prob = None
+        self.activation = None
+
+
+
+class DefaultProbabilisticDynamicsModuleConfig(BaseConfig):
+    def __init__(self):
+        self.state_dim_in = 3
+        self.state_dim_out = 5
+        self.action_dim = 2
+        self.frame_stack = 1
+        self.predict_reward = False
+        self.n_neurons = 200
+        self.n_hidden_layers = 4
+        self.n_head_layers = 1
+        self.drop_prob = 0
+        self.activation = nn.SiLU
+
+
+class DefaultProbabilisticEnsembleDynamicsConfig(BaseConfig):
+    def __init__(self):
+        self.lr = 0.001
+        self.n_models = 5
+        #self.loss_args = {"beta" : 0.5, "reduction" : 'none'}
+        self.optimizer_type = optim.Adam
+        self.network_cfg = DefaultProbabilisticDynamicsModuleConfig()
+        self.gpu = 2
+        self.norm_stats = None
+
+class DefaultProbabilisticDynamicsConfig(BaseDynamicsConfig):
+    def __init__(self):
+        super().__init__()
+
+        self.gpu = 2
+
+        # Which model class to import
+        self.dynamics_model_type = dynamics_models.ProbabilisticDynamicsEnsemble
+        self.dynamics_model_config = DefaultProbabilisticEnsembleDynamicsConfig()
+
+        # Which dataset is associated with the model
+        self.dataset_type = data_modules.OfflineCarlaDataModule
+
+        # Config for the associated dataset
+        self.dataset_config = data_module_config.MixedProbabilisticMLPDataModuleConfig()
+        self.dataset_config.frame_stack = self.dynamics_model_config.network_cfg.frame_stack
+
+        self.train_epochs = 200
+        self.fake_env_type = fake_envs.FakeEnv
 
 

@@ -10,7 +10,7 @@ server_port: 2000
 
 use_images: false
 
-factored: true
+factored: false
 
 data_module:
     batch_size: 32
@@ -46,6 +46,9 @@ offline_epochs: 500
 
 train_online: true
 online_epochs: 10000
+
+
+value_model: ???
 
 
 trainer:

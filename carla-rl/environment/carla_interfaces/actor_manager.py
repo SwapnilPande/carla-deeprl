@@ -414,7 +414,9 @@ class ActorManager910_Leaderboard():
         # tm is valid for carla0.9.10. If using carla0.9.6, this has to be commented out
         # This is for autopilot purpose on npcs
         # push it to spawn_npc() function?
-        self.tm = client.get_trafficmanager(4050)
+
+        tm_port = np.random.randint(10000, 60000)
+        self.tm = client.get_trafficmanager(tm_port)
         self.tm.set_synchronous_mode(True)
 
         self.actor_list = []
@@ -427,7 +429,13 @@ class ActorManager910_Leaderboard():
             'K_D': 0.0005,
             'K_I': 0.4,
             'dt': 1/10.0}
+        self.args_lateral_dict = {
+            'K_P': 0.88,
+            'K_D': 0.02,
+            'K_I': 0.5,
+            'dt': 1/10.0}
         self.controller = controller.PIDLongitudinalController(K_P=self.args_longitudinal_dict['K_P'], K_D=self.args_longitudinal_dict['K_D'], K_I=self.args_longitudinal_dict['K_I'], dt=self.args_longitudinal_dict['dt'])
+        self.lateral_controller = controller.PIDLateralController(self.vehicle_actor, K_P=self.args_lateral_dict['K_P'], K_D=self.args_lateral_dict['K_D'], K_I=self.args_lateral_dict['K_I'], dt=self.args_lateral_dict['dt'])
         self.target_speed = self.config.action_config.target_speed
 
         self.sensor_manager = self.spawn_sensors()
@@ -483,7 +491,7 @@ class ActorManager910_Leaderboard():
 
         # Agent uses proximity_threshold to detect traffic lights.
         # Hence we use traffic_light_proximity_threshold while creating an Agent.
-        vehicle_agent = Agent(self.vehicle_actor, self.config.scenario_config.traffic_light_proximity_threshold)
+        vehicle_agent = BasicAgent(self.vehicle_actor, self.config.obs_config.traffic_light_proximity_threshold)
         return vehicle_agent
 
     def get_ego_vehicle_transform(self):
@@ -619,8 +627,9 @@ class ActorManager910_Leaderboard():
 
         return ep_measurements
 
-
-
+    def check_for_vehicle_elimination(self):
+        # https://github.com/carla-simulator/carla/issues/3860
+        self.actor_list = [actor for actor in self.actor_list if actor.is_alive]
 
     def spawn_sensors(self):
         if self.ego_vehicle is None:

@@ -230,7 +230,7 @@ class BaseMainConfig(BaseConfig):
 
             # Instantiate Object
             self.scenario_config = config_type()
-        elif(isinstance(scenario_config, scenario_configs.BaseRewardConfig)):
+        elif(isinstance(scenario_config, scenario_configs.BaseScenarioConfig)):
             # Just save object, since it is already instantiated
             self.scenario_config = scenario_config
         else:

@@ -19,7 +19,7 @@ from environment.env import CarlaEnv
 from environment.config.config import DefaultMainConfig
 
 from projects.morel_mopo.config.fake_env_config import DefaultFakeEnvConfig
-from fake_env import FakeEnv
+from fake_envs.fake_env import FakeEnv
 
 from projects.morel_mopo.scripts.collect_data import DataCollector
 from projects.morel_mopo.algorithm.dynamics_init import DynamicsEnsemble
@@ -44,7 +44,6 @@ from stable_baselines3.common.vec_env import VecEnv, DummyVecEnv
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, RolloutReturn, Schedule, TrainFreq, TrainFrequencyUnit
 # Dynamics 
 from projects.morel_mopo.config.dynamics_ensemble_config import MBPODynamicsEnsembleConfig, BaseDynamicsEnsembleConfig, MBPODynamicsModuleConfig, BaseDynamicsModuleConfig
-from projects.morel_mopo.algorithm.dynamics_ensemble_module import DynamicsEnsemble
 # Datamodule
 from data_modules import OfflineCarlaDataModule
 import copy
@@ -54,27 +53,20 @@ import copy
 
 
 class MBPO:
-    def __init__(self,
-                logger,
-                n_epochs = 400,\
-                n_models = 7,\
-                n_timesteps = 1000,\
-                n_rollouts = 400,\
-                n_grad_updates = 40,\
-                batch_size = 512,\
-                buffer_size = 1000000,
-                gpu = 2):
+    def __init__(self, args,
+                logger):
 
         print('------------------Initializing MBPO Parameters-----------------')
         # hyperparams
-        self.n_epochs = n_epochs                # N
-        self.n_models = n_models                # ensemble size
-        self.n_timesteps = n_timesteps          # environment steps per epoch
-        self.n_rollouts = n_rollouts            # number model rollouts per environment step
-        self.n_grad_updates = n_grad_updates    # same as number of steps
-        self.batch_size = batch_size            # Batch size
-        self.buffer_size = buffer_size          # replay buffer
-        self.gpu = gpu
+        self.experiment_name = args.exp_name
+        self.n_epochs = args.n_epochs                # N
+        self.n_models = args.n_models                # ensemble size
+        self.n_timesteps = args.n_timesteps          # environment steps per epoch
+        self.n_rollouts = args.n_rollouts            # number model rollouts per environment step
+        self.n_grad_updates = args.n_grad_updates    # same as number of steps
+        self.batch_size = args.batch_size            # Batch size
+        self.buffer_size = args.buffer_size          # replay buffer
+        self.gpu = args.gpu
 
 
         self.dynamics_epochs = 200 # TODO 
@@ -118,11 +110,12 @@ class MBPO:
                 self.frame_stack = 2
                 self.num_workers = 2
                 self.train_val_split = 0.95
+                self.normalize_data = False
 
         # data config
         data_config = TempDataModuleConfig([self.collect_data_path])
         
-        self.data_module = OfflineCarlaDataModule(data_config, normalize_data=False)
+        self.data_module = OfflineCarlaDataModule(data_config)
 
         # dynamics ensemble
         dyn_ensemble_config = MBPODynamicsEnsembleConfig()
@@ -195,14 +188,14 @@ class MBPO:
                 self.policy.learn(total_timesteps = policy_timesteps)
 
 
-def main():
+def main(args):
     # import pdb; pdb.set_trace()
-    EXPERIMENT_NAME = "vivian_mbpo_new"
+    EXPERIMENT_NAME = args.exp_name
     logger_conf = CometLoggerConfig()
     logger_conf.populate(experiment_name = EXPERIMENT_NAME, tags = ["MBPO"])
     logger = CometLogger(logger_conf)
     print('logger.logdir', logger.log_dir)
-    m = MBPO(logger=logger)
+    m = MBPO(args, logger=logger)
     m.train()
 
 if __name__ == "__main__":
@@ -221,8 +214,16 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', type=int, default=512)
     # replay buffer size
     parser.add_argument('--buffer_size', type=int, default=1000000)
+    # load
+    parser.add_argument('--load', action='store_true', default=False)
+    # gpu 
+    parser.add_argument('--gpu', type=int, default=2)
+    # experiment name
+    parser.add_argument('--exp_name', default="MBPO")
+
     args = parser.parse_args()
-    main()
+    main(args)
+
 
 
 
