@@ -27,6 +27,8 @@ from data_modules import TransformerDataModule
 # from algorithms.bc import BC, ImageBC
 # from algorithms.sac import SAC, ImageSAC
 from models.decision_transformer import DecisionTransformer
+from models.trajectory_transformer import TrajectoryTransformer
+from models.ebm import EBMTransformer
 from environment import CarlaEnv
 from environment.config.config import DefaultMainConfig
 from environment.config.observation_configs import *
@@ -137,32 +139,9 @@ class EvaluationCallback(Callback):
 @hydra.main(config_path='../affordance_maps/conf', config_name='train.yaml')
 def main(cfg):
     # For reproducibility
-    # seed_everything(cfg.seed)
+    seed_everything(cfg.seed)
 
-    agent = DecisionTransformer(8, 2, 128)
-
-    config = DefaultMainConfig()
-    config.server_fps = 20
-
-    obs_config = LowDimObservationConfig()
-    obs_config.sensors['sensor.camera.rgb/topdown'] = {
-        'x':13.0,
-        'z':18.0,
-        'pitch':270,
-        'sensor_x_res':'64',
-        'sensor_y_res':'64',
-        'fov':'90', \
-        'sensor_tick': '0.0'}
-
-    scenario_config = NoCrashDenseTown01Config()
-
-    action_config = MergedSpeedScaledTanhConfig()
-    action_config.frame_skip = 5
-
-    config.populate_config(observation_config=obs_config, scenario_config=scenario_config, action_config=action_config)
-
-    env_class = CarlaEnv # if not cfg.data_module.use_images else CarlaImageEnv
-    env = env_class(config=config, log_dir=os.getcwd())
+    agent = TrajectoryTransformer()
 
     # Setting up logger and checkpoint/eval callbacks
     logger = TensorBoardLogger(save_dir=os.getcwd(), name='', version='')
@@ -171,39 +150,45 @@ def main(cfg):
     checkpoint_callback = ModelCheckpoint(period=cfg.checkpoint_freq, save_top_k=-1)
     callbacks.append(checkpoint_callback)
 
-    evaluation_callback = EvaluationCallback(env=env, eval_freq=cfg.eval_freq, eval_length=cfg.eval_length, num_eval_episodes=cfg.num_eval_episodes)
-    callbacks.append(evaluation_callback)
-
     cfg.trainer.gpus = str(cfg.trainer.gpus) # str denotes gpu id, not quantity
 
-    offline_data_module = TransformerDataModule(['/zfsauton/datasets/ArgoRL/brianyan/expert_data/'])
+    offline_data_module = TransformerDataModule(['/zfsauton/datasets/ArgoRL/brianyan/town01_expert_speed=0.5/',
+                        '/zfsauton/datasets/ArgoRL/brianyan/town01_expert_speed=0.75/',
+                        '/zfsauton/datasets/ArgoRL/brianyan/town01_expert_speed=1.0/',
+                        '/zfsauton/datasets/ArgoRL/brianyan/town01_noisy_speed=0.5/',
+                        '/zfsauton/datasets/ArgoRL/brianyan/town01_noisy_speed=0.75/',
+                        '/zfsauton/datasets/ArgoRL/brianyan/town01_noisy_speed=1.0/',
+                        # '/zfsauton/datasets/ArgoRL/brianyan/town01_random/',
+                        '/zfsauton/datasets/ArgoRL/brianyan/town04_expert_speed=0.5/',
+                        '/zfsauton/datasets/ArgoRL/brianyan/town04_expert_speed=0.75/',
+                        '/zfsauton/datasets/ArgoRL/brianyan/town04_expert_speed=1.0/',
+                        '/zfsauton/datasets/ArgoRL/brianyan/town04_noisy_speed=0.5/',
+                        '/zfsauton/datasets/ArgoRL/brianyan/town04_noisy_speed=0.75/',
+                        '/zfsauton/datasets/ArgoRL/brianyan/town04_noisy_speed=1.0/',
+                        # '/zfsauton/datasets/ArgoRL/brianyan/town04_random/',
+                        '/zfsauton/datasets/ArgoRL/brianyan/town06_expert_speed=0.5/',
+                        '/zfsauton/datasets/ArgoRL/brianyan/town06_expert_speed=0.75/',
+                        '/zfsauton/datasets/ArgoRL/brianyan/town06_expert_speed=1.0/',
+                        '/zfsauton/datasets/ArgoRL/brianyan/town06_noisy_speed=0.5/',
+                        '/zfsauton/datasets/ArgoRL/brianyan/town06_noisy_speed=0.75/',
+                        '/zfsauton/datasets/ArgoRL/brianyan/town06_noisy_speed=1.0/',
+                        # '/zfsauton/datasets/ArgoRL/brianyan/town06_random/'],
+                        ],
+                       ['/zfsauton/datasets/ArgoRL/brianyan/town03_expert_speed=0.5/',
+                        '/zfsauton/datasets/ArgoRL/brianyan/town03_expert_speed=0.75/',
+                        '/zfsauton/datasets/ArgoRL/brianyan/town03_expert_speed=1.0/',
+                        '/zfsauton/datasets/ArgoRL/brianyan/town03_noisy_speed=0.5/',
+                        '/zfsauton/datasets/ArgoRL/brianyan/town03_noisy_speed=0.75/',
+                        '/zfsauton/datasets/ArgoRL/brianyan/town03_noisy_speed=1.0/',
+                        # '/zfsauton/datasets/ArgoRL/brianyan/town03_random/'
+                        ])
     offline_data_module.setup(None)
 
-    try:
-        # Offline training
-        if cfg.train_offline:
-            trainer = pl.Trainer(**cfg.trainer, 
-                logger=logger,
-                callbacks=callbacks,
-                max_epochs=cfg.offline_epochs)
-            trainer.fit(agent, offline_data_module)
-
-
-        # # Online training
-        # if cfg.train_online:
-        #     online_data_module = OnlineCarlaDataModule(agent, env, cfg.data_module)
-        #     agent._datamodule = online_data_module
-        #     online_data_module.populate(cfg.data_module.populate_size) # populate buffer with offline data
-        #     trainer = pl.Trainer(**cfg.trainer,
-        #         logger=logger,
-        #         callbacks=callbacks,
-        #         max_epochs=cfg.online_epochs)
-        #     if cfg.train_offline:
-        #         trainer.current_epoch = cfg.offline_epochs
-                
-        #     trainer.fit(agent, online_data_module)
-    finally:
-        env.close()
+    trainer = pl.Trainer(**cfg.trainer, 
+        logger=logger,
+        callbacks=callbacks,
+        max_epochs=cfg.offline_epochs)
+    trainer.fit(agent, offline_data_module)
 
     print('Done')
 

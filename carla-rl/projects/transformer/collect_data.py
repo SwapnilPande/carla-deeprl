@@ -84,14 +84,11 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
             'next_obs': next_obs.tolist(),
             'action': action.tolist(),
             'reward': reward,
-            'done': done.item(),
-
-            'actor_tf': transform_to_list(ego_actor.get_transform()),
-            'camera_tf': transform_to_list(camera_actor.get_transform()),
+            'done': done.item()
         }
         experience.update(info)
 
-        save_env_state(rgb, segmentation, topdown, reward_map, experience, save_path, step)
+        save_env_state(rgb, segmentation, topdown, experience, save_path, step)
 
         if done:
             break
