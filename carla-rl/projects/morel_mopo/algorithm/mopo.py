@@ -82,7 +82,6 @@ class MOPO():
 
         print("MOPO: Beginning Policy Training")
 
-        import ipdb; ipdb.set_trace()
         self.policy = PPO("MlpPolicy", fake_env, verbose=1, carla_logger = self.logger)
         self.policy.learn(total_timesteps=self.policy_epochs, callback = eval_callback)
 

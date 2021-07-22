@@ -5,6 +5,7 @@ from environment.carla_interfaces.actor_manager import ActorManager910, ActorMan
 from abc import ABC
 import time
 import random
+import numpy as np
 import numpy.random as nprandom
 import py_trees
 
@@ -160,21 +161,17 @@ class Carla910Interface():
             else:
                 self._set_scenario(unseen=unseen, index=self.scenario_index, town=self.config.scenario_config.city_name)
         else:
-            self.source_transform, self.destination_transform = random.choice(self.spawn_points), random.choice(self.spawn_points)
+            while True:
+                self.source_transform, self.destination_transform = random.choice(self.spawn_points), random.choice(self.spawn_points)
+                distance = np.linalg.norm([
+                    self.source_transform.location.x - self.destination_transform.location.x,
+                    self.source_transform.location.y - self.destination_transform.location.y,
+                    self.source_transform.location.z - self.destination_transform.location.z])
+                if distance > 100:
+                    break
 
         ### Spawn new actors
         self.actor_fleet.spawn(self.source_transform, unseen)
-
-        # Tick for 15 frames to handle car initialization in air
-        for _ in range(15):
-            transform = self.actor_fleet.get_ego_vehicle_transform()
-            self.spectator.set_transform(transform)
-            world_frame = self.world.tick()
-
-
-        transform = self.actor_fleet.get_ego_vehicle_transform()
-        self.spectator.set_transform(transform)
-
 
         # Create a global planner to generate dense waypoints along route
         self.global_planner = planner.GlobalPlanner()
@@ -184,6 +181,19 @@ class Carla910Interface():
                                 self.source_transform, self.destination_transform)
 
         self.global_planner.set_global_plan(self.dense_waypoints)
+
+        # If waypoint is behind vehicle, rotate the vehicle
+        if abs(self.global_planner.get_next_orientation_new(self.source_transform)[0]) > .5:
+            self.reset(unseen=unseen, index=index)
+
+        # Tick for 15 frames to handle car initialization in air
+        for _ in range(15):
+            transform = self.actor_fleet.get_ego_vehicle_transform()
+            self.spectator.set_transform(transform)
+            world_frame = self.world.tick()
+
+        transform = self.actor_fleet.get_ego_vehicle_transform()
+        self.spectator.set_transform(transform)
 
         ego_vehicle_transform = self.actor_fleet.get_ego_vehicle_transform()
         ego_vehicle_velocity = self.actor_fleet.get_ego_vehicle_velocity()
@@ -240,7 +250,7 @@ class Carla910Interface():
         steer_angle = (left_steer + right_steer) / (2* 90)
 
         transform = self.actor_fleet.get_ego_vehicle_transform()
-        self.spectator.set_transform(transform)
+        self.spectator.set_transform(carla.Transform(transform.location + carla.Location(z=50), carla.Rotation(pitch=-90)))
 
         sensor_readings["location"] = location
 
@@ -407,13 +417,6 @@ class Carla910Interface_Leaderboard:
         ### Delete old actors
         self.actor_fleet.destroy_actors()
 
-        if self.config.scenario_config.scenarios in ["long_straight", "long_straight_junction"] and not unseen:
-            # Way to test two scenarios with and without dynamic actors
-            # in training run in long_straight scenario
-            self.scenario_index = (self.scenario_index + 1) % self.config.scenario_config.num_episodes
-        # else:
-        #     self.scenario_index = index
-
         ## Set the new scenarios
         if self.config.scenario_config.use_scenarios:
             self._set_scenario(unseen=unseen, index=self.scenario_index, town=self.curr_town)
@@ -455,9 +458,9 @@ class Carla910Interface_Leaderboard:
         # Sample the scenarios to be used for this route instance.
         self.sampled_scenarios_definitions = scenario_sampling(potential_scenarios_definitions)
         # print(236, self.sampled_scenarios_definitions)
-        self.scenarios = build_scenario_instances(self.world, self.actor_fleet.vehicle_actor, self.sampled_scenarios_definitions, debug_mode=1)
+        self.scenarios = build_scenario_instances(self.world, self.actor_fleet.vehicle_actor, self.sampled_scenarios_definitions, debug_mode=0)
         # print(244, self.scenarios)
-        self.running = Trigger(self.world, self.actor_fleet.vehicle_actor, self.route, self.scenarios, debug_mode=1)
+        self.running = Trigger(self.world, self.actor_fleet.vehicle_actor, self.route, self.scenarios, debug_mode=0)
 
         ego_vehicle_transform = self.actor_fleet.get_ego_vehicle_transform()
         ego_vehicle_velocity = self.actor_fleet.get_ego_vehicle_velocity()
@@ -504,6 +507,7 @@ class Carla910Interface_Leaderboard:
         CarlaDataProvider.on_carla_tick()
         world_frame = self.world.tick()
         # print(290, self.running.scenario.scenario_tree.status)
+        self.actor_fleet.check_for_vehicle_elimination()
         self.running.scenario.scenario_tree.tick_once()
         # print(291, self.running.scenario.scenario_tree.status)
         # if self.running.debug_mode == 1:
@@ -516,6 +520,11 @@ class Carla910Interface_Leaderboard:
 
         sensor_readings = self.actor_fleet.sensor_manager.get_sensor_readings(world_frame)
         location = self.actor_fleet.ego_vehicle._vehicle.get_location()
+
+        left_steer = self.actor_fleet.ego_vehicle._vehicle.get_wheel_steer_angle(carla.VehicleWheelLocation.FL_Wheel)
+        right_steer = self.actor_fleet.ego_vehicle._vehicle.get_wheel_steer_angle(carla.VehicleWheelLocation.FR_Wheel)
+        # Average steering angle between front two wheels, and normalize by diving by 90
+        steer_angle = (left_steer + right_steer) / (2* 90)
 
         transform = self.actor_fleet.get_ego_vehicle_transform()
         self.spectator.set_transform(carla.Transform(transform.location + carla.Location(z=50), carla.Rotation(pitch=-90)))
@@ -542,7 +551,8 @@ class Carla910Interface_Leaderboard:
             'ego_vehicle_location' : ego_vehicle_transform,
             'ego_vehicle_velocity' : ego_vehicle_velocity,
             'location' : location,
-            "waypoints" : self.all_waypoints
+            "waypoints" : self.all_waypoints,
+            'steer_angle': steer_angle
         }
 
         obs = {**control, **ep_measurements, **sensor_readings}
@@ -566,7 +576,11 @@ class Carla910Interface_Leaderboard:
         # raise NotImplementedError()
         pass
 
+    def close(self):
+        self.actor_fleet.destroy_actors()
 
+        if self.server is not None:
+            self.server.close()
 
 
 

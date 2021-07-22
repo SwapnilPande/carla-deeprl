@@ -8,17 +8,17 @@ The configuration for the environment is defined as a set of config files locate
 At the same time, however, it is also designed to be flexible, allowing users to easily modify existing configurations or create new configurations.
 
 ## Config Architecture
-The config is designed to be a nested group of config objects, that are all subclasses of `BaseConfig`. The config contains many different types of configs, each configuring a different portion of the environment. Each of these config types define a base type, that defines the minimum set of parameters that need to be set for the config of that type. Note that the base type should NOT contain default values for the parameters, instead they should all be instantiated with the value of `None`. The base class for each config type should also contain comments describing the effect of each parameter. For each type of config, the base type should be subclassed to define values of the parameters. The subclasses can additionally define parameters not included in the base config if necessary. The types of configs include `main_configs`, `obs_configs`, `action_configs`, `reward_configs`, and `scenario_configs`.
+The config is a nested group of config objects, that are all subclasses of `BaseConfig`. The config contains many different types of configs, each configuring a different portion of the environment. Each of these config types define a base type, that defines the minimum set of parameters that need to be set for the config of that type. Note that the base type should NOT contain default values for the parameters, instead they should all be instantiated with the value of `None`. The base class for each config type should also contain comments describing the effect of each parameter. For each type of config, the base type should be subclassed to define values of the parameters. The subclasses can additionally define parameters not included in the base config if necessary. The types of configs include `main_configs`, `obs_configs`, `action_configs`, `reward_configs`, and `scenario_configs`.
 
 ### BaseConfig
 This is the default config object that all config objects are a subclass of. This config defines the following methods:
 
 * `set(name, value)`: Dynamically set a new parameter named `name` with value `value` in the config
 * `get(name)`: Retrieve the value of a parameter `name` from the config. This is equivalent to running `config.name`.
-* `verify()` : Verifies that no parameter in the config has a value of `None`. This can be overrided by subclasses of `BaseConfig` to do more detailed config verification.
+* `verify(ignore_keys = None)` : Verifies that no parameter in the config has a value of `None`. This can be overrided by subclasses of `BaseConfig` to do more detailed config verification. If tehre are parameters in the config that we want to intentionally ignore, their keys can be passed in a list to `ignore_keys`. These parameters will not be included in the verification process.
 
 ### MainConfig
-This is the top-level config, which contains parameters for the server configuration, as well as parameters for the other types of configs. We define a `DefaultMainConfig` that contains the default server parameters, which likely do not need to be modified.
+This is the top-level config for the environment, which contains parameters for the server configuration, as well as parameters for the other types of configs. We define a `DefaultMainConfig` that contains the default server parameters, which likely do not need to be modified.
 
 `MainConfig` also defines a `populate` function, to define values for the parameters that are never set by default:
 
@@ -67,3 +67,17 @@ config.populate_config(
 
 env = CarlaEnv(config = config, log_dir = "/home/foo/bar/carla-rl-logs")
 ```
+
+You can modify or add additional parameters by using the config get/set methods.
+```
+config.set("carla_gpu", 1)
+
+config.get("carla_gpu)
+config.carla_gpu # Same as the line before.
+```
+
+## Writing Additional Configs
+To create your own config, you should match the following conventions to ensure consistency across the code base:
+* Define a "Base" config whose name is `Base<CONFIG NAME>Config`. This should inherit from the environment `BaseConfig`. In this base config, you should define all of the variables the config must contain, but set their values to `None`. You can also additionally define a `populate` function to set the values for standard fields, or a verify function that does additional verification steps over the `BaseConfig` verify.
+
+* Define additional configs that inherit from the BaseConfig that set the values desired for your algorithm. In some cases, it is useful to define a Default Config that can be used if no custom values need to be set.

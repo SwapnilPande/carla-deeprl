@@ -18,7 +18,7 @@ from spatial_data import EgoDataModule
 
 
 class EgoModel(pl.LightningModule):
-    def __init__(self, dt=5./10):
+    def __init__(self, dt=1./10):
         super().__init__()
         
         self.dt = dt
@@ -37,7 +37,7 @@ class EgoModel(pl.LightningModule):
     def forward(self, locs, yaws, spds, acts):
         steer = acts[...,0:1]
         throt = acts[...,1:2]
-        brake = (throt < -.99).byte() # acts[...,2:3].byte()
+        brake = (throt < 0).byte() # acts[...,2:3].byte()
         
         accel = torch.where(brake, self.brake_accel.expand(*brake.size()), self.throt_accel(throt))
         wheel = self.steer_gain * steer
@@ -118,8 +118,9 @@ class EgoModel(pl.LightningModule):
 @hydra.main(config_path='conf', config_name='train.yaml')
 def main(cfg):
     model = EgoModel()
-    dataset_paths = ['/media/brian/linux-data/reward_maps_v2']
-    val_path = '/media/brian/linux-data/reward_maps_val/'
+    dataset_paths = ['/home/brian/carla-rl/carla-rl/projects/affordance_maps/random_data']
+    # val_path = '/media/brian/linux-data/reward_maps_val/'
+    val_path = None
     dm = EgoDataModule(dataset_paths, val_path)
 
     logger = TensorBoardLogger(save_dir=os.getcwd(), name='', version='')
@@ -130,7 +131,7 @@ def main(cfg):
     trainer = pl.Trainer(
         logger=logger,
         callbacks=callbacks,
-        max_epochs=2
+        max_epochs=5
     )
     trainer.fit(model, dm)
 
@@ -141,8 +142,7 @@ def main(cfg):
     print(model.brake_accel)
     print(model.throt_accel[0].weight)
 
-    import ipdb; ipdb.set_trace()
-    pass
+    torch.save(model, "ego_model.th")
 
 
 if __name__ == '__main__':

@@ -15,18 +15,15 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.utilities.seed import seed_everything
 
-# from leaderboard.utils.statistics_manager import StatisticsManager
-
 from omegaconf import DictConfig, OmegaConf
 import hydra
 
-# from stable_baselines.common.vec_env import DummyVecEnv
-# from agents.tf.ppo import PPO
-
 from common.data_modules import OfflineCarlaDataModule, OnlineCarlaDataModule
-from algorithms.bc import BC, ImageBC
-from algorithms.sac import SAC, ImageSAC
 from environment import CarlaEnv
+from environment.config.config import DefaultMainConfig
+from environment.config.observation_configs import *
+from environment.config.scenario_configs import *
+from environment.config.action_configs import *
 
 
 class EvaluationCallback(Callback):
@@ -63,7 +60,7 @@ class EvaluationCallback(Callback):
             for _ in range(self.eval_length):
                 action = model.predict(obs)[0]
                 obs, reward, done, info = self.env.step(action)
-                frames.append(self.env.render(mode='rgb_array'))
+                frames.append(self.env.render(camera='sensor.camera.rgb/top'))
                 total_reward += reward
                 if done:
                     break
@@ -74,13 +71,13 @@ class EvaluationCallback(Callback):
 
         model.log('val/avg_reward', np.mean(rewards))
         model.log('val/num_succeses', successes)
-        video_path = os.path.join(os.getcwd(), 'epoch_{}.mp4'.format(epoch))
+        video_path = os.path.join(os.getcwd(), 'epoch_{}.avi'.format(epoch))
         self.save_video(frames, video_path)
 
     def save_video(self, frames, fname, fps=15):
         frames = [np.array(frame) for frame in frames]
         height, width = frames[0].shape[0], frames[0].shape[1]
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        fourcc = cv2.VideoWriter_fourcc(*'MPEG')
         out = cv2.VideoWriter(fname, fourcc, fps, (width, height))
         for frame in frames:
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -90,19 +87,26 @@ class EvaluationCallback(Callback):
 @hydra.main(config_path='conf', config_name='train.yaml')
 def main(cfg):
     # For reproducibility
-    # seed_everything(cfg.seed)
-
-    # Loading encoder
-    # from agents.torch.representation import IA
-    # affordances = IA.load_from_checkpoint('/home/scratch/brianyan/outputs/bc_embedding/2021-04-08_18-48-03/checkpoints/epoch=3-step=45295.ckpt', obs_dim=8, action_dim=2)
-    # encoder = affordances.encoder.eval().cuda()
+    seed_everything(cfg.seed)
 
     # Loading agent and environment
     agent = hydra.utils.instantiate(cfg.algo.agent)
-    # agent.set_encoder(encoder)
 
-    env_class = CarlaEnv # if not cfg.data_module.use_images else CarlaImageEnv
-    env = env_class(log_dir=os.getcwd(), **cfg.environment)
+    config = DefaultMainConfig()
+    obs_config = LowDimObservationConfig()
+    obs_config.sensors['sensor.camera.rgb/top'] = {
+        'x':13.0,
+        'z':18.0,
+        'pitch':270,
+        'sensor_x_res':'64',
+        'sensor_y_res':'64',
+        'fov':'90', \
+        'sensor_tick': '0.0'}
+    scenario_config = NoCrashDenseTown02Config()
+    action_config = MergedSpeedScaledTanhConfig()
+
+    config.populate_config(observation_config=obs_config, scenario_config=scenario_config)
+    env = CarlaEnv(config=config)
 
     # Setting up logger and checkpoint/eval callbacks
     logger = TensorBoardLogger(save_dir=os.getcwd(), name='', version='')
@@ -116,8 +120,7 @@ def main(cfg):
 
     cfg.trainer.gpus = str(cfg.trainer.gpus) # str denotes gpu id, not quantity
 
-    # offline_data_module = OfflineCarlaDataModule(cfg.data_module)
-    # offline_data_module.setup(None)
+    offline_data_module = OfflineCarlaDataModule(cfg.data_module)
 
     try:
         # Offline training

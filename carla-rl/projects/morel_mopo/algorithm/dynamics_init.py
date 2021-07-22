@@ -76,6 +76,8 @@ class DynamicsMLP(nn.Module):
         layer_list_logsd.append(nn.Linear(n_neurons, self.state_dim_out))
         layer_list_logsd.append(torch.exp)
 
+        # print('layerlistmean', layer_list_mean)
+
         # Register state prediction head layers by putting them in a module list
         self.mean_head = nn.ModuleList(layer_list_mean)
         self.var_head = nn.ModuleList(layer_list_logsd)
