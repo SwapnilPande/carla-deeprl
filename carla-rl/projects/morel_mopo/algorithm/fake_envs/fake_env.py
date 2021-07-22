@@ -161,8 +161,9 @@ def vehicle_to_line_distance(vehicle_pose, waypoint1, waypoint2, device):
     waypoint2 = torch.FloatTensor(waypoint2).to(device)
 
     if torch.allclose(waypoint1, waypoint2):
-        distance = distance_vehicle(waypoint1, vehicle_pose, device)
-        return abs(distance)
+        # distance = distance_vehicle(waypoint1, vehicle_pose, device)
+        # return abs(distance)
+        raise Exception(f"FAKE_ENV: Waypoints are too close together: {waypoint1}, {waypoint2}")
 
 
     vehicle_loc   = vehicle_pose[:2] # x, y coords
@@ -175,9 +176,29 @@ def vehicle_to_line_distance(vehicle_pose, waypoint1, waypoint2, device):
     b_vec_3d = torch.hstack((b_vec, torch.Tensor([0]).to(device)))
 
     dist_vec = torch.cross(a_vec_3d, b_vec_3d) / torch.linalg.norm(a_vec_3d)
-    distance =  abs(dist_vec[2]) # dist
-    # print("Distance: ", distance, '\n')
+    distance =  dist_vec[2] # dist
+
     return distance
+
+def filter_waypoints(waypoints):
+    """This function will remove duplicate waypoints from the waypoint list
+
+    Sometimes, the waypoints in the dataset contain duplicate waypoints. We need to remove these duplicates to prevent errors in processing waypoints.
+    """
+    waypoints = waypoints.tolist()
+    popped = False
+    i = 1
+
+    while(i < len(waypoints)):
+        if(torch.allclose(torch.FloatTensor(waypoints[i-1]), torch.FloatTensor(waypoints[i]))):
+            waypoints.pop(i)
+            popped = True
+        else:
+            i += 1
+    if(popped):
+        print("FAKE_ENV: POPPED DUPLICATE WAYPOINTS")
+
+    return torch.FloatTensor(waypoints)
 
 '''
 Calculate dist to trajectory, angle
@@ -229,15 +250,10 @@ def process_waypoints(waypoints, vehicle_pose, device):
         # dist to waypoint
         dot, angle, w_vec = get_dot_product_and_angle(vehicle_pose, waypoint, device)
 
-        if len(next_waypoints_angles) == 0:
-            next_waypoints_angles = [angle]
-            next_waypoints = [waypoint]
-            next_waypoints_vectors = [w_vec]
-        else:
-            # add back waypoints
-            next_waypoints_angles.append(angle)
-            next_waypoints.append(waypoint)
-            next_waypoints_vectors.append(w_vec)
+        # add back waypoints
+        next_waypoints_angles.append(angle)
+        next_waypoints.append(waypoint)
+        next_waypoints_vectors.append(w_vec)
 
     # get mean of all angles to figure out which direction to turn
     if len(next_waypoints_angles) > 0:
@@ -245,8 +261,6 @@ def process_waypoints(waypoints, vehicle_pose, device):
     else:
         # print("No next waypoint found!")
         angle = 0
-
-
 
     if len(next_waypoints) > 1:
         # get dist from vehicle to a line formed by the next two wps
@@ -367,6 +381,9 @@ class FakeEnv(gym.Env):
             if(self.offline_data_module is None):
                 raise Exception("FAKE_ENV: Cannot sample from dataset since dynamics model does not have associated dataset.")
             ((obs, action, _, _, _, vehicle_pose), waypoints) = self.sample()
+            self.state.normalized = obs[:,:2]
+            self.past_action.normalized = action
+
         else:
             (obs, action, vehicle_pose, waypoints) = inp
 
@@ -386,11 +403,13 @@ class FakeEnv(gym.Env):
             if(not isinstance(waypoints, torch.Tensor)):
                 waypoints = torch.FloatTensor(waypoints)
 
-        # state only includes speed, steer
-        self.state.unnormalized =  obs[:,:2]
-        self.past_action.unnormalized = action
-        self.waypoints = torch.squeeze(waypoints).to(self.device)
-        self.vehicle_pose = torch.squeeze(vehicle_pose).to(self.device)
+            # state only includes speed, steer
+            self.state.unnormalized =  obs[:,:2]
+            self.past_action.unnormalized = action
+
+        self.waypoints = filter_waypoints(waypoints).to(self.device)        
+
+        self.vehicle_pose = vehicle_pose.to(self.device)
 
         self.steps_elapsed = 0
 
@@ -435,7 +454,7 @@ class FakeEnv(gym.Env):
         dist_to_trajectory = torch.Tensor([dist_to_trajectory]).to(self.device)
         angle              = torch.Tensor([angle]).to(self.device)
 
-        return torch.cat([dist_to_trajectory, angle, torch.flatten(self.state.unnormalized[0, :])], dim=0).float().to(self.device), dist_to_trajectory, angle
+        return torch.cat([angle, self.state.unnormalized[0,1:2], self.state.unnormalized[0,0:1], dist_to_trajectory], dim=0).float().to(self.device), dist_to_trajectory, angle
 
     '''
     Takes one step according to action
@@ -465,9 +484,9 @@ class FakeEnv(gym.Env):
             # input [[speed_t, steer_t, Δtime_t, action_t], [speed_t-1, steer_t-1, Δt-1, action_t-1]]
             # unsqueeze to form batch dimension for dynamics input
 
-            print(f'Curr vehicle pose: {self.vehicle_pose}')
+            # print(f'Curr vehicle pose: {self.vehicle_pose}')
 
-            print(f'State: {self.state.unnormalized}, Action: {self.past_action.unnormalized}')
+            # print(f'State: {self.state.unnormalized}, Action: {self.past_action.unnormalized}')
 
             dynamics_input = torch.cat([self.state.normalized, self.past_action.normalized], dim = -1).unsqueeze(0).float()
             # Get predictions across all models
