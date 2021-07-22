@@ -11,12 +11,6 @@ from tqdm import tqdm
 from projects.morel_mopo.config.dynamics_ensemble_config import BaseDynamicsEnsembleConfig
 
 
-'''
-1. The dropout probability is set to zero
-2. Return a distribution rather than number
-3. Changed the activation function
-4. The loss function is changed
-'''
 
 class DynamicsMLP(nn.Module):
     def __init__(self,
@@ -74,7 +68,7 @@ class DynamicsMLP(nn.Module):
         # add last head layer to match the output size
         layer_list_mean.append(nn.Linear(n_neurons, self.state_dim_out))
         layer_list_logsd.append(nn.Linear(n_neurons, self.state_dim_out))
-        layer_list_logsd.append(torch.exp)
+        layer_list_logsd.append(torch.nn.Exp())
 
         # Register state prediction head layers by putting them in a module list
         self.mean_head = nn.ModuleList(layer_list_mean)
@@ -120,7 +114,7 @@ class DynamicsMLP(nn.Module):
         
                 
 
-class DynamicsEnsemble(nn.Module):
+class ProbabilisticDynamicsEnsemble(nn.Module):
     log_dir = "dynamics_ensemble"
     model_log_dir = os.path.join(log_dir, "models")
 
@@ -133,10 +127,9 @@ class DynamicsEnsemble(nn.Module):
                     frame_stack = None,
                     norm_stats = None,
                     gpu = None,
-
                     logger = None,
                     log_freq = 100):
-        super(DynamicsEnsemble, self).__init__()
+        super(ProbabilisticDynamicsEnsemble, self).__init__()
 
         self.config = config
 
@@ -145,7 +138,7 @@ class DynamicsEnsemble(nn.Module):
 
         # Save config to load in the future
         if logger is not None:
-            self.logger.pickle_save(self.config, DynamicsEnsemble.log_dir, "config.pkl")
+            self.logger.pickle_save(self.config, ProbabilisticDynamicsEnsemble.log_dir, "config.pkl")
 
 
         self.log_freq = log_freq
@@ -197,7 +190,7 @@ class DynamicsEnsemble(nn.Module):
                             self.action_dim,
                             self.frame_stack,
                             self.normalization_stats)
-            self.logger.pickle_save(state_params, DynamicsEnsemble.log_dir, "state_params.pkl")
+            self.logger.pickle_save(state_params, ProbabilisticDynamicsEnsemble.log_dir, "state_params.pkl")
 
         # Model parameters
         self.n_models = config.n_models
@@ -461,7 +454,7 @@ class DynamicsEnsemble(nn.Module):
         print("DYNAMICS ENSEMBLE: Saving model {}".format(model_name))
 
         # Save model
-        self.logger.torch_save(self.state_dict(), DynamicsEnsemble.model_log_dir, model_name)
+        self.logger.torch_save(self.state_dict(), ProbabilisticDynamicsEnsemble.model_log_dir, model_name)
 
     @classmethod
     def load(cls, logger, model_name, gpu):
@@ -472,10 +465,10 @@ class DynamicsEnsemble(nn.Module):
 
         print("DYNAMICS ENSEMBLE: Loading dynamics model {}".format(model_name))
         # Get config from pickle first
-        config = logger.pickle_load(DynamicsEnsemble.log_dir, "config.pkl")
+        config = logger.pickle_load(ProbabilisticDynamicsEnsemble.log_dir, "config.pkl")
 
         # Next, get pickle containing the state parameters
-        state_dim_in, state_dim_out, action_dim, frame_stack, norm_stats = logger.pickle_load(DynamicsEnsemble.log_dir, "state_params.pkl")
+        state_dim_in, state_dim_out, action_dim, frame_stack, norm_stats = logger.pickle_load(ProbabilisticDynamicsEnsemble.log_dir, "state_params.pkl")
         print("DYNAMICS ENSEMBLE: state_dim_in: {}\tstate_dim_out: {}\taction_dim: {}\tframe_stack: {}".format(
             state_dim_in,
             state_dim_out,
