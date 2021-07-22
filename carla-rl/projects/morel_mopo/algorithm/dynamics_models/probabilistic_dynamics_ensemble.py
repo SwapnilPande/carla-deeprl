@@ -8,7 +8,7 @@ import scipy.spatial
 import os
 from tqdm import tqdm
 
-#from projects.morel_mopo.config.dynamics_ensemble_config import BaseDynamicsEnsembleConfig
+
 
 
 
@@ -68,7 +68,7 @@ class DynamicsMLP(nn.Module):
         # add last head layer to match the output size
         layer_list_mean.append(nn.Linear(n_neurons, self.state_dim_out))
         layer_list_logsd.append(nn.Linear(n_neurons, self.state_dim_out))
-        layer_list_logsd.append(torch.nn.Exp())
+        #layer_list_logsd.append(torch.nn.Exp())
 
         # Register state prediction head layers by putting them in a module list
         self.mean_head = nn.ModuleList(layer_list_mean)
@@ -110,7 +110,7 @@ class DynamicsMLP(nn.Module):
             for layer in self.reward_head:
                 reward_hat =  layer(reward_hat)
             return [mean_hat, var_hat, reward_hat]
-        return [mean_hat, var_hat, reward_hat]
+        return [mean_hat, torch.exp(torch.tensor(var_hat)), reward_hat]
         
                 
 
