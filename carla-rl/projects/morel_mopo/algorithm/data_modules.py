@@ -307,8 +307,8 @@ class OfflineCarlaDataModule():
             self.normalization_stats["delta"]            = compute_mean_std(traj_delta, n)
 
             print('DATA_MODULE: after norm obs', self.normalization_stats["obs"])
-            print('DATA_MODULE: after norm act',  self.normalization_stats["obs"]["action"])
-            print('DATA_MODULE: after norm delta', self.normalization_stats["obs"]["delta"])
+            print('DATA_MODULE: after norm act',  self.normalization_stats["action"])
+            print('DATA_MODULE: after norm delta', self.normalization_stats["delta"])
 
 
         else:
