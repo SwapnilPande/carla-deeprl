@@ -226,28 +226,13 @@ class DefaultProbabilisticGRUDynamicsConfig(BaseDynamicsConfig):
         self.fake_env_type = fake_envs.RNNFakeEnv
 
 
-################# probabilistic dynamics ensemble #################
+################# Probabilistic MLP #################
 
-class BaseProbabilisticDynamicsModuleConfig(BaseConfig):
+class DefaultProbabilisticMLPDynamicsModuleConfig(BaseDynamicsModuleConfig):
     def __init__(self):
-        self.state_dim_in = None
-        self.state_dim_out = None
-        self.action_dim = None
-        self.frame_stack = None
-        self.predict_reward = None
-        self.n_neurons = None
-        self.n_hidden_layers = None
-        self.n_head_layers = None
-        self.drop_prob = None
-        self.activation = None
-
-
-
-class DefaultProbabilisticDynamicsModuleConfig(BaseConfig):
-    def __init__(self):
-        self.state_dim_in = 3
+        super().__init__()
+        self.state_dim_in = 7
         self.state_dim_out = 5
-        self.action_dim = 2
         self.frame_stack = 1
         self.predict_reward = False
         self.n_neurons = 200
@@ -257,21 +242,22 @@ class DefaultProbabilisticDynamicsModuleConfig(BaseConfig):
         self.activation = nn.SiLU
 
 
-class DefaultProbabilisticEnsembleDynamicsConfig(BaseConfig):
+class DefaultMLPEnsembleDynamicsConfig(BaseConfig):
     def __init__(self):
+        super().__init__()
         self.lr = 0.001
         self.n_models = 5
-        #self.loss_args = {"beta" : 0.5, "reduction" : 'none'}
         self.optimizer_type = optim.Adam
-        self.network_cfg = DefaultProbabilisticDynamicsModuleConfig()
-        self.gpu = 2
+        self.network_cfg = DefaultProbabilisticMLPDynamicsModuleConfig()
+        self.gpu = None
         self.norm_stats = None
 
-class DefaultProbabilisticDynamicsConfig(BaseDynamicsConfig):
+
+class DefaultProbabilisticMLPDynamicsConfig(BaseDynamicsConfig):
     def __init__(self):
         super().__init__()
 
-        self.gpu = 2
+        self.gpu = None
 
         # Which model class to import
         self.dynamics_model_type = dynamics_models.ProbabilisticDynamicsEnsemble
