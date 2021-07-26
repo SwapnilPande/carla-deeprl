@@ -10,8 +10,6 @@ from tqdm import tqdm
 
 
 
-
-
 class ProbabilisticDynamicsMLP(nn.Module):
     def __init__(self,
                 state_dim_in,
@@ -214,7 +212,7 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
         # Create n_models models
         self.models = nn.ModuleList()
         for i in range(self.n_models):
-            self.models.append(DynamicsMLP(
+            self.models.append(ProbabilisticDynamicsMLP(
                 state_dim_in = self.state_dim_in,
                 state_dim_out = self.state_dim_out,
                 action_dim = self.action_dim,
