@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 
 
-class DynamicsMLP(nn.Module):
+class ProbabilisticDynamicsMLP(nn.Module):
     def __init__(self,
                 state_dim_in,
                 state_dim_out,
@@ -24,19 +24,18 @@ class DynamicsMLP(nn.Module):
                 n_head_layers = 1,
                 drop_prob = 0,
                 activation = nn.SiLU):
-        super(DynamicsMLP, self).__init__()
+        super(ProbabilisticDynamicsMLP, self).__init__()
 
         # Validate inputs
         assert state_dim_in > 0
         assert state_dim_out > 0
-        assert action_dim > 0
         assert n_neurons > 0
         assert drop_prob >= 0
 
         # Store configuration parameters
 
         # Input is the input state plus actions state
-        self.input_dim = frame_stack*(state_dim_in + action_dim)
+        self.input_dim = frame_stack*(state_dim_in)
         # Output is the output state dim + reward if True
         self.output_dim = (state_dim_out + int(predict_reward))
         self.state_dim_out = state_dim_out
@@ -113,8 +112,7 @@ class DynamicsMLP(nn.Module):
         return [mean_hat, torch.exp(torch.tensor(var_hat)), reward_hat]
         
                 
-
-class ProbabilisticDynamicsEnsemble(nn.Module):
+class ProbabilisticMLPDynamicsEnsemble(nn.Module):
     log_dir = "dynamics_ensemble"
     model_log_dir = os.path.join(log_dir, "models")
 
@@ -123,13 +121,12 @@ class ProbabilisticDynamicsEnsemble(nn.Module):
                     data_module = None,
                     state_dim_in = None,
                     state_dim_out = None,
-                    action_dim = None,
                     frame_stack = None,
                     norm_stats = None,
                     gpu = None,
                     logger = None,
                     log_freq = 100):
-        super(ProbabilisticDynamicsEnsemble, self).__init__()
+        super(ProbabilisticMLPDynamicsEnsemble, self).__init__()
 
         self.config = config
 
@@ -155,7 +152,7 @@ class ProbabilisticDynamicsEnsemble(nn.Module):
             # Get the shape of the input, output, and frame stack from the data module
             self.state_dim_in = self.data_module.state_dim_in
             self.state_dim_out = self.data_module.state_dim_out
-            self.action_dim = self.data_module.action_dim
+            self.action_dim = self.state_dim_in - self.state_dim_out
             self.frame_stack = self.data_module.frame_stack
             self.normalization_stats = self.data_module.normalization_stats
         else:
@@ -276,7 +273,7 @@ class ProbabilisticDynamicsEnsemble(nn.Module):
 
         feed_tensor = torch.reshape(
                             torch.cat([state_in, actions], dim = 2),
-                                (-1, self.frame_stack * (self.state_dim_in + self.action_dim)
+                                (-1, self.frame_stack * (self.state_dim_in)
                             )
                       )
         # print('state in', state_in.shape)
