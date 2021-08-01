@@ -12,10 +12,12 @@ from transformers import GPT2Model, GPT2LMHeadModel, AutoModelForCausalLM
 
 from .model import TrajectoryModel
 from .vqvae import VQVAE
+from .action_binner import *
 
 
-STATE_TOKENIZER_CHECKPOINT = '/home/scratch/brianyan/outputs/tokenizer/2021-07-22_11-13-40/checkpoints/epoch=10-step=18367.ckpt'
-VOCAB_SIZE = 128
+STATE_TOKENIZER_CHECKPOINT = '/home/scratch/brianyan/outputs/tokenizer/2021-07-27_10-53-00/checkpoints/epoch=34-step=30449.ckpt'
+# ACTION_TOKENIZER_CHECKPOINT = '/home/scratch/brianyan/outputs/action_vqvae/2021-07-26_20-00-26/checkpoints/epoch=25-step=7048.ckpt'
+VOCAB_SIZE = 256
 NUM_EMBEDDINGS = 128
 
 class TrajectoryTransformer(pl.LightningModule):
@@ -29,82 +31,69 @@ class TrajectoryTransformer(pl.LightningModule):
         )
 
         self.transformer = GPT2LMHeadModel(config)
-        self.state_tokenizer = VQVAE.load_from_checkpoint(STATE_TOKENIZER_CHECKPOINT)
+        self.state_tokenizer = VQVAE.load_from_checkpoint(STATE_TOKENIZER_CHECKPOINT, input_dim=8)
+        # self.action_tokenizer = VQVAE.load_from_checkpoint(ACTION_TOKENIZER_CHECKPOINT, input_dim=2)
 
-    def forward(self, states):
-        batch_size, seq_length = states.shape[0], states.shape[1]-1
+    def forward(self, state_tokens, action_tokens):
+        batch_size, seq_length = state_tokens.shape[0], state_tokens.shape[1]-1
+        # num_tokens = 2 * (seq_length+1)
 
-        state_tokens, gt_recon = self.state_tokenizer(states, reconstruct=True)
-        state_tokens = state_tokens.reshape(batch_size, seq_length+1, -1).argmax(dim=-1)
-    
-        logits = self.transformer(state_tokens[:,:-1]).logits
+        # interleave states and actions
+        # tokens = torch.stack([state_tokens, action_tokens], dim=2).view(batch_size, num_tokens)
 
-        loss = F.cross_entropy(logits.reshape(batch_size * seq_length, VOCAB_SIZE), state_tokens[:,1:].reshape(batch_size * seq_length))
-        preds = logits.argmax(dim=-1)
-        accuracy = (preds == state_tokens[:,1:]).sum() / (batch_size * seq_length)
+        # logits = self.transformer(tokens[:,:-1]).logits
+        logits = self.transformer(state_tokens).logits
 
-        pred_recon = self.state_tokenizer.decode(preds.reshape(-1,1)).reshape(batch_size, seq_length, 8)
-        gt_recon_error = F.mse_loss(states, gt_recon)
-        pred_recon_error = F.mse_loss(states[:,1:], pred_recon)
+        # loss = F.cross_entropy(logits.reshape(batch_size * (num_tokens-1), VOCAB_SIZE), 
+        #     tokens[:,1:].reshape(batch_size * (num_tokens-1)))
+        # preds = logits.argmax(dim=-1)
+        # accuracy = (preds == tokens[:,1:]).sum() / (batch_size * (num_tokens-1))
 
-        return logits, logits.argmax(dim=-1), loss, accuracy, gt_recon_error, pred_recon_error
+        logit = logits.reshape(batch_size, seq_length+1, VOCAB_SIZE)[:,-1]
+        action_token = action_tokens[:,-1]
 
-    # def get_action(self, states, actions, rewards, returns_to_go, **kwargs):
-    #     # we don't care about the past rewards in this model
+        loss = F.cross_entropy(logit, action_token)
+        accuracy = (logit.argmax(dim=-1) == action_token).float().mean()
 
-    #     states = states.reshape(1, -1, self.state_dim)
-    #     actions = actions.reshape(1, -1, self.act_dim)
-    #     returns_to_go = returns_to_go.reshape(1, -1, 1)
-    #     # timesteps = timesteps.reshape(1, -1)
+        return logits, logits.argmax(dim=-1), loss, accuracy
 
-    #     if self.max_length is not None:
-    #         states = states[:,-self.max_length:]
-    #         actions = actions[:,-self.max_length:]
-    #         returns_to_go = returns_to_go[:,-self.max_length:]
-    #         # timesteps = timesteps[:,-self.max_length:]
+    def get_action(self, states, actions):
+        # states = torch.FloatTensor(states).reshape(-1,8)
+        # actions = torch.FloatTensor(actions).reshape(-1,2)
 
-    #         # pad all tokens to sequence length
-    #         attention_mask = torch.cat([torch.zeros(self.max_length-states.shape[1]), torch.ones(states.shape[1])])
-    #         attention_mask = attention_mask.to(dtype=torch.long, device=states.device).reshape(1, -1)
-    #         states = torch.cat(
-    #             [torch.zeros((states.shape[0], self.max_length-states.shape[1], self.state_dim), device=states.device), states],
-    #             dim=1).to(dtype=torch.float32)
-    #         actions = torch.cat(
-    #             [torch.zeros((actions.shape[0], self.max_length - actions.shape[1], self.act_dim),
-    #                          device=actions.device), actions],
-    #             dim=1).to(dtype=torch.float32)
-    #         returns_to_go = torch.cat(
-    #             [torch.zeros((returns_to_go.shape[0], self.max_length-returns_to_go.shape[1], 1), device=returns_to_go.device), returns_to_go],
-    #             dim=1).to(dtype=torch.float32)
-    #         # timesteps = torch.cat(
-    #         #     [torch.zeros((timesteps.shape[0], self.max_length-timesteps.shape[1]), device=timesteps.device), timesteps],
-    #         #     dim=1
-    #         # ).to(dtype=torch.long)
-    #     else:
-    #         attention_mask = None
+        seq_length = states.shape[0]
+        num_tokens = 2 * seq_length - 1
 
-    #     _, action_preds, return_preds = self.forward(
-    #         states, actions, None, returns_to_go, attention_mask=attention_mask, **kwargs)
+        state_tokens = self.state_tokenizer(states).argmax(dim=-1)
 
-    #     return action_preds[0,-1]
+        # if len(actions) > 0:
+        #     action_tokens = self.action_tokenizer(actions).argmax(dim=-1)
+        #     tokens = torch.stack([state_tokens, action_tokens], dim=1).view(1, num_tokens)
+        # else:
+        #     tokens = state_tokens
+
+        tokens = state_tokens
+
+        # greedy decoding
+        logits = self.transformer(tokens).logits
+        pred_action_token = logits.argmax(dim=-1)[-1]
+        pred_action = decode_action_tokens(pred_action_token[None,None])
+
+        return pred_action
 
     def configure_optimizers(self):
         return Adam(self.parameters(), lr=2e-4)
 
     def training_step(self, batch, batch_idx):
         states, actions = batch
-        logits, preds, loss, accuracy, gt_recon_error, pred_recon_error = self.forward(states)
+        logits, preds, loss, accuracy = self.forward(states, actions)
         self.log('train/loss', loss)
         self.log('train/acc', accuracy)
-        self.log('train/gt_recon_error', gt_recon_error)
-        self.log('train/pred_recon_error', pred_recon_error)
         return loss
 
     def validation_step(self, batch, batch_idx):
         states, actions = batch
-        logits, preds, loss, accuracy, gt_recon_error, pred_recon_error = self.forward(states)
+        logits, preds, loss, accuracy = self.forward(states, actions)
         self.log('val/loss', loss)
         self.log('val/acc', accuracy)
-        self.log('val/gt_recon_error', gt_recon_error)
-        self.log('val/pred_recon_error', pred_recon_error)
         return loss

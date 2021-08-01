@@ -6,6 +6,7 @@ import hydra
 import torch
 
 from models.decision_transformer import DecisionTransformer
+from models.trajectory_transformer import TrajectoryTransformer
 from environment import CarlaEnv
 from environment.config.config import DefaultMainConfig
 from environment.config.observation_configs import *
@@ -19,32 +20,47 @@ CHECKPOINT = 'epoch=0-step=25318.ckpt'
 
 @hydra.main(config_name='{}/.hydra/config.yaml'.format(EXPERIMENT_DIR))
 def main(cfg):
-    # agent = hydra.utils.instantiate(cfg.algo.agent)
-    # agent = SAC.load_from_checkpoint('{}/checkpoints/{}'.format(EXPERIMENT_DIR, CHECKPOINT), **cfg.algo.agent)
-    # agent = agent.cuda().eval()
-
-    # model = DecisionTransformer(8, 2, 128)
-    model = DecisionTransformer.load_from_checkpoint('{}/checkpoints/{}'.format(EXPERIMENT_DIR, CHECKPOINT), state_dim=8, act_dim=2, hidden_size=128)
+    # model = DecisionTransformer.load_from_checkpoint('{}/checkpoints/{}'.format(EXPERIMENT_DIR, CHECKPOINT), state_dim=8, act_dim=2, hidden_size=128)
+    model = TrajectoryTransformer.load_from_checkpoint('{}/checkpoints/{}'.format(EXPERIMENT_DIR, CHECKPOINT))
     model = model.cuda().eval()
 
     device = 'cuda'
 
     config = DefaultMainConfig()
+
     obs_config = LowDimObservationConfig()
-    obs_config.sensors['sensor.camera.rgb/topdown'] = {
-        'x':13.0,
+    obs_config.sensors['sensor.camera.rgb/top'] = {
+        'x':0.0,
         'z':18.0,
         'pitch':270,
         'sensor_x_res':'64',
         'sensor_y_res':'64',
         'fov':'90', \
         'sensor_tick': '0.0'}
-    scenario_config = NoCrashDenseTown01Config()
-    scenario_config.city_name = 'Town02'
-    config.populate_config(observation_config=obs_config, scenario_config=scenario_config)
+    obs_config.sensors['sensor.camera.rgb/map'] = {
+        'x':0.0,
+        'z':18.0,
+        'pitch':270,
+        'sensor_x_res':'64',
+        'sensor_y_res':'64',
+        'fov':'90', \
+        'sensor_tick': '0.0'}
 
-    env_class = CarlaEnv # if not cfg.data_module.use_images else CarlaImageEnv
-    env = env_class(config=config, log_dir=os.getcwd())
+    scenario_config = NoCrashDenseTown01Config() # LeaderboardConfig()
+    scenario_config.city_name = 'Town02'
+    scenario_config.num_pedestrians = 50
+    scenario_config.sample_npc = True
+    scenario_config.num_npc_lower_threshold = 50
+    scenario_config.num_npc_upper_threshold = 150
+
+    action_config = MergedSpeedScaledTanhConfig()
+    action_config.frame_skip = 5
+
+    config.populate_config(observation_config=obs_config, scenario_config=scenario_config)
+    config.server_fps = 20
+    config.carla_gpu = cfg.gpu
+
+    env = CarlaEnv(config=config, log_dir=os.getcwd() + '/')
 
     state_mean = torch.tensor([0]).to(device=device)
     state_std = torch.tensor([1]).to(device=device)

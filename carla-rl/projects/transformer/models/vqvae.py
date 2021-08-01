@@ -62,7 +62,7 @@ class VectorQuantizer(nn.Module):
 
 
 class VectorQuantizerEMA(nn.Module):
-    def __init__(self, num_embeddings=128, embedding_dim=8, commitment_cost=.25, decay=0.99, epsilon=1e-5):
+    def __init__(self, num_embeddings=256, embedding_dim=128, commitment_cost=.25, decay=0.99, epsilon=1e-5):
         super(VectorQuantizerEMA, self).__init__()
         
         self._embedding_dim = embedding_dim
@@ -134,48 +134,48 @@ class VectorQuantizerEMA(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self):
+    def __init__(self, input_dim):
         super(Encoder, self).__init__()
-        # self._mlp = nn.Sequential(
-        #     nn.Linear(8,32),
-        #     # nn.ReLU(),
-        #     # nn.Linear(128,256),
-        #     # nn.ReLU(),
-        #     # nn.Linear(256,512)
-        # )
+        self._mlp = nn.Sequential(
+            nn.Linear(input_dim,64),
+            nn.ReLU(),
+            nn.Linear(64,128),
+            # nn.ReLU(),
+            # nn.Linear(256,512)
+        )
 
     def forward(self, inputs):
-        out = inputs.clone()
-        out.requires_grad_()
-        return out
-        # return self._mlp(inputs)
+        # out = inputs.clone()
+        # out.requires_grad_()
+        # return out
+        return self._mlp(inputs)
 
 
 class Decoder(nn.Module):
-    def __init__(self):
+    def __init__(self, input_dim):
         super(Decoder, self).__init__()
-        # self._mlp = nn.Sequential(
-        #     # nn.Linear(512,256),
-        #     # nn.ReLU(),
-        #     # nn.Linear(256,128),
-        #     # nn.ReLU(),
-        #     nn.Linear(32,8)
-        # )
+        self._mlp = nn.Sequential(
+            # nn.Linear(512,256),
+            # nn.ReLU(),
+            nn.Linear(128,64),
+            nn.ReLU(),
+            nn.Linear(64,input_dim)
+        )
 
     def forward(self, inputs):
-        out = inputs.clone()
-        out.requires_grad_()
-        return out
-        # return self._mlp(inputs)
+        # out = inputs.clone()
+        # out.requires_grad_()
+        # return out
+        return self._mlp(inputs)
 
 
 class VQVAE(pl.LightningModule):
-    def __init__(self):
+    def __init__(self, input_dim=8):
         super(VQVAE, self).__init__()
         
-        self._encoder = Encoder()
-        self._vq_vae = VectorQuantizerEMA()
-        self._decoder = Decoder()
+        self._encoder = Encoder(input_dim=input_dim)
+        self._vq_vae = VectorQuantizerEMA(embedding_dim=128)
+        self._decoder = Decoder(input_dim=input_dim)
 
     def forward(self, x, reconstruct=False):
         z = self._encoder(x)

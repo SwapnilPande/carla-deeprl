@@ -25,7 +25,7 @@ def rotate_points(points, angle):
     return points @ np.array([[math.cos(radian), math.sin(radian)], [-math.sin(radian), math.cos(radian)]])
 
 
-def collect_trajectory(env, save_dir, speed=.5, max_path_length=2500):
+def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
     now = datetime.datetime.now()
     salt = np.random.randint(100)
     fname = '_'.join(map(lambda x: '%02d' % x, (now.month, now.day, now.hour, now.minute, now.second, salt)))
@@ -61,7 +61,7 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=2500):
     #                         [0, 64, 64],
     #                         [0,  0,  1]])
     ego_actor = env.carla_interface.get_ego_vehicle()._vehicle
-    camera_actor = env.carla_interface.actor_fleet.sensor_manager.sensors['sensor.camera.rgb/map'].sensor
+    # camera_actor = env.carla_interface.actor_fleet.sensor_manager.sensors['sensor.camera.rgb/map'].sensor
     # camera_actor.calibration = calibration
 
     for _ in range(25):
@@ -183,15 +183,16 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=2500):
             'reward': reward,
             'done': done.item(),
 
-            'actor_tf': transform_to_list(ego_actor.get_transform()),
-            'camera_tf': transform_to_list(camera_actor.get_transform()),
+            # 'actor_tf': transform_to_list(ego_actor.get_transform()),
+            # 'camera_tf': transform_to_list(camera_actor.get_transform()),
         }
         experience.update(info)
 
         # np.save(os.path.join(save_path, 'world', '{:04d}'.format(step)), world_pts)
-        # save_env_state(rgb, segmentation, topdown, reward_map, experience, save_path, step)
+        save_env_state(rgb, segmentation, topdown, reward_map, experience, save_path, step)
 
         if done:
+            print(step)
             break
 
         obs = next_obs
@@ -210,8 +211,8 @@ def save_env_state(rgb, segmentation, topdown, reward_map, measurements, save_pa
     topdown_path = os.path.join(save_path, 'topdown', '{:04d}.png'.format(idx))
     cv2.imwrite(topdown_path, topdown)
 
-    reward_path = os.path.join(save_path, 'reward', '{:04d}.png'.format(idx))
-    cv2.imwrite(reward_path, reward_map)
+    # reward_path = os.path.join(save_path, 'reward', '{:04d}.png'.format(idx))
+    # cv2.imwrite(reward_path, reward_map)
 
     measurements_path = os.path.join(save_path, 'measurements', '{:04d}.json'.format(idx))
     with open(measurements_path, 'w') as out:
@@ -236,18 +237,18 @@ def main(args):
         'sensor_y_res':'64',
         'fov':'90', \
         'sensor_tick': '0.0'}
-    obs_config.sensors['sensor.camera.rgb/map'] = {
-        'x':0.0,
-        'z':18.0,
-        'pitch':270,
-        'sensor_x_res':'64',
-        'sensor_y_res':'64',
-        'fov':'90', \
-        'sensor_tick': '0.0'}
+    # obs_config.sensors['sensor.camera.rgb/map'] = {
+    #     'x':0.0,
+    #     'z':18.0,
+    #     'pitch':270,
+    #     'sensor_x_res':'64',
+    #     'sensor_y_res':'64',
+    #     'fov':'90', \
+    #     'sensor_tick': '0.0'}
 
     scenario_config = NoCrashDenseTown01Config() # LeaderboardConfig()
     scenario_config.city_name = args.town
-    scenario_config.num_pedestrians = 50
+    # scenario_config.num_pedestrians = 250
     scenario_config.sample_npc = True
     scenario_config.num_npc_lower_threshold = 50
     scenario_config.num_npc_upper_threshold = 150
@@ -273,7 +274,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--n_samples', type=int, default=100000)
+    parser.add_argument('--n_samples', type=int, default=500000)
     parser.add_argument('--speed', type=float, default=1.)
     parser.add_argument('--town', type=str, default='Town01')
     parser.add_argument('--path', type=str)

@@ -3,6 +3,7 @@ VQ-VAE implementation
 Reference: https://github.com/zalandoresearch/pytorch-vq-vae/blob/master/vq-vae.ipynb
 """
 import os
+import glob
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -29,35 +30,9 @@ from data_modules import TransformerDataModule, VQVAEDataModule
 def main(cfg):
     model = VQVAE()
 
-    dm = VQVAEDataModule(['/zfsauton/datasets/ArgoRL/brianyan/town01_expert_speed=0.5/',
-                        '/zfsauton/datasets/ArgoRL/brianyan/town01_expert_speed=0.75/',
-                        '/zfsauton/datasets/ArgoRL/brianyan/town01_expert_speed=1.0/',
-                        '/zfsauton/datasets/ArgoRL/brianyan/town01_noisy_speed=0.5/',
-                        '/zfsauton/datasets/ArgoRL/brianyan/town01_noisy_speed=0.75/',
-                        '/zfsauton/datasets/ArgoRL/brianyan/town01_noisy_speed=1.0/',
-                        # '/zfsauton/datasets/ArgoRL/brianyan/town01_random/',
-                        '/zfsauton/datasets/ArgoRL/brianyan/town04_expert_speed=0.5/',
-                        '/zfsauton/datasets/ArgoRL/brianyan/town04_expert_speed=0.75/',
-                        '/zfsauton/datasets/ArgoRL/brianyan/town04_expert_speed=1.0/',
-                        '/zfsauton/datasets/ArgoRL/brianyan/town04_noisy_speed=0.5/',
-                        '/zfsauton/datasets/ArgoRL/brianyan/town04_noisy_speed=0.75/',
-                        '/zfsauton/datasets/ArgoRL/brianyan/town04_noisy_speed=1.0/',
-                        # '/zfsauton/datasets/ArgoRL/brianyan/town04_random/',
-                        '/zfsauton/datasets/ArgoRL/brianyan/town06_expert_speed=0.5/',
-                        '/zfsauton/datasets/ArgoRL/brianyan/town06_expert_speed=0.75/',
-                        '/zfsauton/datasets/ArgoRL/brianyan/town06_expert_speed=1.0/',
-                        '/zfsauton/datasets/ArgoRL/brianyan/town06_noisy_speed=0.5/',
-                        '/zfsauton/datasets/ArgoRL/brianyan/town06_noisy_speed=0.75/',
-                        '/zfsauton/datasets/ArgoRL/brianyan/town06_noisy_speed=1.0/'],
-                        # '/zfsauton/datasets/ArgoRL/brianyan/town06_random/'],
-                       ['/zfsauton/datasets/ArgoRL/brianyan/town03_expert_speed=0.5/',
-                        '/zfsauton/datasets/ArgoRL/brianyan/town03_expert_speed=0.75/',
-                        '/zfsauton/datasets/ArgoRL/brianyan/town03_expert_speed=1.0/',
-                        '/zfsauton/datasets/ArgoRL/brianyan/town03_noisy_speed=0.5/',
-                        '/zfsauton/datasets/ArgoRL/brianyan/town03_noisy_speed=0.75/',
-                        '/zfsauton/datasets/ArgoRL/brianyan/town03_noisy_speed=1.0/',
-                        # '/zfsauton/datasets/ArgoRL/brianyan/town03_random/'])
-                       ])
+    paths = glob.glob('/zfsauton/datasets/ArgoRL/brianyan/carla_dataset/town01/*/')
+
+    dm = VQVAEDataModule(paths)
     dm.setup(None)
 
     logger = TensorBoardLogger(save_dir=os.getcwd(), name='', version='')
@@ -69,10 +44,10 @@ def main(cfg):
     trainer = pl.Trainer(
         logger=logger,
         callbacks=callbacks,
-        gpus=[1],
+        gpus=[2],
         max_epochs=100
     )
-    trainer.fit(model, dm)
+    trainer.fit(model, train_dataloader=dm)
 
     print('Done')
 

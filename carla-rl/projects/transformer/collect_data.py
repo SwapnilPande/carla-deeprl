@@ -143,7 +143,7 @@ def main(args):
     action_config = MergedSpeedScaledTanhConfig()
     action_config.frame_skip = 5
 
-    config.populate_config(observation_config=obs_config, scenario_config=scenario_config)
+    config.populate_config(observation_config=obs_config, action_config=action_config, scenario_config=scenario_config)
     config.server_fps = 20
     config.carla_gpu = args.gpu
 
@@ -161,7 +161,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--n_samples', type=int, default=100000)
+    parser.add_argument('--n_samples', type=int, default=300000)
     parser.add_argument('--speed', type=float, default=1.)
     parser.add_argument('--town', type=str, default='Town01')
     parser.add_argument('--path', type=str)
