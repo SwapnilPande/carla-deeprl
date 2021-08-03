@@ -36,7 +36,7 @@ class MOPO():
 
         self.logger = logger
 
-        self.data_module = self.dynamics_config.dataset_type(self.dynamics_config.dataset_config)
+        self.data_module = self.dynamics_config.dataset_config.dataset_type(self.dynamics_config.dataset_config)
 
         self.dynamics = self.dynamics_config.dynamics_model_type(
             config = self.dynamics_config.dynamics_model_config,
