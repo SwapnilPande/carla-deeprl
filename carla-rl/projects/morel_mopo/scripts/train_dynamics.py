@@ -36,7 +36,7 @@ def main(args):
 
     ######### MLP
     # data config
-    data_module = dynamics_config.dataset_type(dynamics_config.dataset_config)
+    data_module = dynamics_config.dataset_config.dataset_type(dynamics_config.dataset_config) 
 
     # dynamics config
     # dyn_ensemble_config = DefaultDynamicsEnsembleConfig()
