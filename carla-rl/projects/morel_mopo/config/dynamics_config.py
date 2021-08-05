@@ -78,7 +78,7 @@ class DefaultDynamicsModuleConfig(BaseConfig):
     def __init__(self):
         self.state_dim_in = 3
         self.state_dim_out = 5
-        self.frame_stack = 2
+        self.frame_stack = 10
         self.predict_reward = False
         self.n_neurons = 1024
         self.n_hidden_layers = 2
@@ -218,7 +218,7 @@ class DefaultProbabilisticGRUDynamicsConfig(BaseDynamicsConfig):
         self.dataset_type = data_modules.RNNOfflineCarlaDataModule
 
         # Config for the associated dataset
-        self.dataset_config = data_module_config.MixedDeterministicMLPDataModuleConfig()
+        self.dataset_config = data_module_config.MixedProbabilisticGRUDataModuleConfig()
         self.dataset_config.frame_stack = self.dynamics_model_config.network_cfg.frame_stack
 
         self.train_epochs = 200

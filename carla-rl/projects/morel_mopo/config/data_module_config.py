@@ -21,7 +21,7 @@ class BaseMLPDataModuleConfig(BaseDataModuleConfig):
             self.normalize_data = None
 
 
-class BaseMLPDataModuleConfig(BaseDataModuleConfig):
+class BaseRNNDataModuleConfig(BaseDataModuleConfig):
         def __init__(self):
             super().__init__()
             self.dataset_paths = None
@@ -71,7 +71,7 @@ class MixedProbabilisticMLPDataModuleConfig(BaseMLPDataModuleConfig):
             self.normalize_data = False
 
 
-class MixedDeterministicRNNDataModuleConfig(BaseMLPDataModuleConfig):
+class MixedDeterministicRNNDataModuleConfig(BaseRNNDataModuleConfig):
         def __init__(self):
             super().__init__()
             self.dataset_paths = [
@@ -83,3 +83,16 @@ class MixedDeterministicRNNDataModuleConfig(BaseMLPDataModuleConfig):
             self.num_workers = 10
             self.train_val_split = 0.95
             self.normalize_data = True
+
+class MixedProbabilisticGRUDataModuleConfig(BaseRNNDataModuleConfig):
+        def __init__(self):
+            super().__init__()
+            self.dataset_paths = [
+                "/zfsauton/datasets/ArgoRL/swapnilp/carla-rl_datasets/no_crash_empty_noisy_policy",
+                "/zfsauton/datasets/ArgoRL/swapnilp/carla-rl_datasets/no_crash_empty_random_policy"
+            ]
+
+            self.batch_size = 512
+            self.num_workers = 10
+            self.train_val_split = 0.95
+            self.normalize_data = False
