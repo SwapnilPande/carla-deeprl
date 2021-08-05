@@ -10,6 +10,8 @@ from tqdm import tqdm
 
 
 
+
+
 class ProbabilisticDynamicsMLP(nn.Module):
     def __init__(self,
                 state_dim_in,
@@ -24,6 +26,11 @@ class ProbabilisticDynamicsMLP(nn.Module):
                 activation = nn.SiLU):
         super(ProbabilisticDynamicsMLP, self).__init__()
 
+
+        #print(state_dim_in,
+        #        state_dim_out,
+        #        action_dim,
+        #        frame_stack)
         # Validate inputs
         assert state_dim_in > 0
         assert state_dim_out > 0
@@ -33,7 +40,7 @@ class ProbabilisticDynamicsMLP(nn.Module):
         # Store configuration parameters
 
         # Input is the input state plus actions state
-        self.input_dim = frame_stack*(state_dim_in)
+        self.input_dim = int(frame_stack*(state_dim_in + action_dim))
         # Output is the output state dim + reward if True
         self.output_dim = (state_dim_out + int(predict_reward))
         self.state_dim_out = state_dim_out
@@ -48,23 +55,30 @@ class ProbabilisticDynamicsMLP(nn.Module):
         layer_list.append(activation())
 
         # add hidden layers
-        for _ in range(n_hidden_layers):
+        for i in range(n_hidden_layers):
             layer_list.append(nn.Linear(n_neurons, n_neurons))
             layer_list.append(activation())
 
             # add dropout if needed
             if(drop_prob != 0):
                 layer_list.append(nn.Dropout(p = drop_prob))
-                layer_list.append(nn.Dropout(p = drop_prob))
 
-
+        self.model = nn.ModuleList(layer_list)
 
         # build mean head and logsd head
-        layer_list_mean, layer_list_logsd = layer_list, layer_list
+        layer_list_mean, layer_list_logsd = [], []
 
         # add last head layer to match the output size
+        layer_list_mean.append(nn.Linear(n_neurons, n_neurons))
+        if(drop_prob != 0):
+            layer_list_mean.append(nn.Dropout(p = drop_prob))
         layer_list_mean.append(nn.Linear(n_neurons, self.state_dim_out))
+
+        layer_list_logsd.append(nn.Linear(n_neurons, n_neurons))
+        if(drop_prob != 0):
+            layer_list_logsd.append(nn.Dropout(p = drop_prob))
         layer_list_logsd.append(nn.Linear(n_neurons, self.state_dim_out))
+
         #layer_list_logsd.append(torch.nn.Exp())
 
         # Register state prediction head layers by putting them in a module list
@@ -97,17 +111,24 @@ class ProbabilisticDynamicsMLP(nn.Module):
     # one single prediction in the form of gaussian 
     # the output is [[meanhat1, meanhat2...], [varhat1, varhat2...], ([rewardhat1, rewardhat2...])]
     def forward(self, x, include_reward = False):
-        mean_hat, var_hat = x, x
-        for layer_mean in self.mean_head:
-            mean_hat = layer_mean(mean_hat)
-        for layer_var in self.var_head:
-            var_hat = layer_var(var_hat)
+        for layer in self.model:
+            #print("dim of x", x.shape)
+            #print("dim of layer", layer)
+            x = layer(x)
+        
+        mean_hat = x
+        for layer in self.mean_head:
+            mean_hat = layer(mean_hat)
+        var_hat = x
+        for layer in self.var_head:
+            var_hat = layer(var_hat)
+
         if include_reward:
             reward_hat = x
             for layer in self.reward_head:
                 reward_hat =  layer(reward_hat)
             return [mean_hat, var_hat, reward_hat]
-        return [mean_hat, torch.exp(torch.tensor(var_hat)), reward_hat]
+        return [mean_hat, torch.exp(torch.tensor(var_hat))]
         
                 
 class ProbabilisticMLPDynamicsEnsemble(nn.Module):
@@ -119,6 +140,7 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
                     data_module = None,
                     state_dim_in = None,
                     state_dim_out = None,
+                    action_dim = None,
                     frame_stack = None,
                     norm_stats = None,
                     gpu = None,
@@ -133,7 +155,7 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
 
         # Save config to load in the future
         if logger is not None:
-            self.logger.pickle_save(self.config, ProbabilisticDynamicsEnsemble.log_dir, "config.pkl")
+            self.logger.pickle_save(self.config, ProbabilisticMLPDynamicsEnsemble.log_dir, "config.pkl")
 
 
         self.log_freq = log_freq
@@ -150,7 +172,7 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
             # Get the shape of the input, output, and frame stack from the data module
             self.state_dim_in = self.data_module.state_dim_in
             self.state_dim_out = self.data_module.state_dim_out
-            self.action_dim = self.state_dim_in - self.state_dim_out
+            self.action_dim = self.data_module.action_dim
             self.frame_stack = self.data_module.frame_stack
             self.normalization_stats = self.data_module.normalization_stats
         else:
@@ -185,7 +207,7 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
                             self.action_dim,
                             self.frame_stack,
                             self.normalization_stats)
-            self.logger.pickle_save(state_params, ProbabilisticDynamicsEnsemble.log_dir, "state_params.pkl")
+            self.logger.pickle_save(state_params, ProbabilisticMLPDynamicsEnsemble.log_dir, "state_params.pkl")
 
         # Model parameters
         self.n_models = config.n_models
@@ -271,7 +293,7 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
 
         feed_tensor = torch.reshape(
                             torch.cat([state_in, actions], dim = 2),
-                                (-1, self.frame_stack * (self.state_dim_in)
+                                (-1, self.frame_stack * (self.state_dim_in + self.action_dim)
                             )
                       )
         # print('state in', state_in.shape)
@@ -296,7 +318,7 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
         mean = yhat[0]
         var = yhat[1]
         dist = torch.distributions.normal.Normal(mean, var)
-        return - dist.log_prob(target)
+        return torch.mean(- dist.log_prob(target))
 
 
     def training_step(self, batch, model_idx):
@@ -321,7 +343,11 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
         
 
         # Compute loss
+        #print("yhat", y_hat[0].shape)
+        #print('target', target.shape)
+
         loss = self.loss(y_hat, target)
+        #print(loss.shape)
 
         # Backpropagate
         loss.backward()
@@ -345,6 +371,7 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
         y_hat = self.forward(feed, model_idx = model_idx)
 
         # Compute loss
+        
         loss = self.loss(y_hat, target)
 
 
@@ -361,7 +388,7 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
             for metric_name, value in metric_dict.items():
                 self.logger.log_scalar(metric_name, value, step)
 
-    def train(self, epochs, n_incremental_models = 10):
+    def train_model(self, epochs, n_incremental_models = 10):
         train_dataloader = self.data_module.train_dataloader()
         val_dataloader = self.data_module.val_dataloader()
 
@@ -449,7 +476,7 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
         print("DYNAMICS ENSEMBLE: Saving model {}".format(model_name))
 
         # Save model
-        self.logger.torch_save(self.state_dict(), ProbabilisticDynamicsEnsemble.model_log_dir, model_name)
+        self.logger.torch_save(self.state_dict(), ProbabilisticMLPDynamicsEnsemble.model_log_dir, model_name)
 
     @classmethod
     def load(cls, logger, model_name, gpu):
@@ -460,10 +487,10 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
 
         print("DYNAMICS ENSEMBLE: Loading dynamics model {}".format(model_name))
         # Get config from pickle first
-        config = logger.pickle_load(ProbabilisticDynamicsEnsemble.log_dir, "config.pkl")
+        config = logger.pickle_load(ProbabilisticMLPDynamicsEnsemble.log_dir, "config.pkl")
 
         # Next, get pickle containing the state parameters
-        state_dim_in, state_dim_out, action_dim, frame_stack, norm_stats = logger.pickle_load(ProbabilisticDynamicsEnsemble.log_dir, "state_params.pkl")
+        state_dim_in, state_dim_out, action_dim, frame_stack, norm_stats = logger.pickle_load(ProbabilisticMLPDynamicsEnsemble.log_dir, "state_params.pkl")
         print("DYNAMICS ENSEMBLE: state_dim_in: {}\tstate_dim_out: {}\taction_dim: {}\tframe_stack: {}".format(
             state_dim_in,
             state_dim_out,

@@ -1,35 +1,17 @@
 
+import projects.morel_mopo.algorithm.data_modules as data_modules
+from environment.config.base_config import BaseConfig
 
-class BaseDataModuleConfig():
+class BaseDataModuleConfig(BaseConfig):
         def __init__(self):
+            super().__init__()
             self.dataset_paths = None
             self.batch_size = None
             self.frame_stack = None
             self.num_workers = None
             self.train_val_split = None
             self.normalize_data = None
-
-
-class BaseMLPDataModuleConfig(BaseDataModuleConfig):
-        def __init__(self):
-            super().__init__()
-            self.dataset_paths = None
-            self.batch_size = 512
-            self.frame_stack = 2
-            self.num_workers = 10
-            self.train_val_split = 0.95
-            self.normalize_data = None
-
-
-class BaseRNNDataModuleConfig(BaseDataModuleConfig):
-        def __init__(self):
-            super().__init__()
-            self.dataset_paths = None
-            self.batch_size = 512
-            self.frame_stack = 50
-            self.num_workers = 10
-            self.train_val_split = 0.95
-            self.normalize_data = None
+            self.dataset_type = None
 
 
 
@@ -43,7 +25,7 @@ class BaseRNNDataModuleConfig(BaseDataModuleConfig):
 
 
 
-class MixedDeterministicMLPDataModuleConfig(BaseMLPDataModuleConfig):
+class MixedDeterministicMLPDataModuleConfig(BaseDataModuleConfig):
         def __init__(self):
             super().__init__()
             self.dataset_paths = [
@@ -52,12 +34,14 @@ class MixedDeterministicMLPDataModuleConfig(BaseMLPDataModuleConfig):
             ]
 
             self.batch_size = 512
+            self.frame_stack = 2
             self.num_workers = 10
             self.train_val_split = 0.95
             self.normalize_data = True
+            self.dataset_type = data_modules.OfflineCarlaDataModule
 
 
-class MixedProbabilisticMLPDataModuleConfig(BaseMLPDataModuleConfig):
+class MixedProbabilisticMLPDataModuleConfig(BaseDataModuleConfig):
         def __init__(self):
             super().__init__()
             self.dataset_paths = [
@@ -66,12 +50,14 @@ class MixedProbabilisticMLPDataModuleConfig(BaseMLPDataModuleConfig):
             ]
 
             self.batch_size = 512
+            self.frame_stack = 2
             self.num_workers = 10
             self.train_val_split = 0.95
             self.normalize_data = False
+            self.dataset_type = data_modules.OfflineCarlaDataModule
 
 
-class MixedDeterministicRNNDataModuleConfig(BaseRNNDataModuleConfig):
+class MixedDeterministicGRUDataModuleConfig(BaseDataModuleConfig):
         def __init__(self):
             super().__init__()
             self.dataset_paths = [
@@ -80,11 +66,14 @@ class MixedDeterministicRNNDataModuleConfig(BaseRNNDataModuleConfig):
             ]
 
             self.batch_size = 512
+            self.frame_stack = 50
             self.num_workers = 10
             self.train_val_split = 0.95
             self.normalize_data = True
+            self.dataset_type = data_modules.RNNOfflineCarlaDataModule
 
-class MixedProbabilisticGRUDataModuleConfig(BaseRNNDataModuleConfig):
+
+class MixedProbabilisticGRUDataModuleConfig(BaseDataModuleConfig):
         def __init__(self):
             super().__init__()
             self.dataset_paths = [
@@ -93,6 +82,8 @@ class MixedProbabilisticGRUDataModuleConfig(BaseRNNDataModuleConfig):
             ]
 
             self.batch_size = 512
+            self.frame_stack = 50
             self.num_workers = 10
             self.train_val_split = 0.95
             self.normalize_data = False
+            self.dataset_type = data_modules.RNNOfflineCarlaDataModule
