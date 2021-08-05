@@ -1,0 +1,302 @@
+import torch
+import numpy as np
+
+class NormalizedTensor:
+    def __init__(self, mean, std, device):
+        self.device = device
+
+        if(not isinstance(mean, torch.Tensor)):
+            if(not isinstance(mean, (np.ndarray, list))):
+                raise Exception("Mean must be torch tensor, list, or numpy array")
+
+            mean = torch.FloatTensor(mean)
+
+        if(not isinstance(std, torch.Tensor)):
+            if(not isinstance(std, (np.ndarray, list))):
+                raise Exception("Std must be torch tensor, list, or numpy array")
+
+            std = torch.FloatTensor(std)
+
+        self.mean = mean.to(self.device)
+        self.std = std.to(self.device)
+
+        self.dim = self.mean.shape[-1]
+        if(self.dim != self.std.shape[-1]):
+            raise Exception("Mean and Std dimensions are different")
+
+        self._unnormalized_array = None
+
+    @property
+    def unnormalized(self):
+        return self._unnormalized_array
+
+    @unnormalized.setter
+    def unnormalized(self, unnormalized_arr):
+        if(not isinstance(unnormalized_arr, torch.Tensor)):
+            if(not isinstance(unnormalized_arr, (np.ndarray, list))):
+                raise Exception("Input must be torch tensor, list, or numpy array")
+
+            unnormalized_arr = torch.FloatTensor(unnormalized_arr)
+
+        if(self.dim != unnormalized_arr.shape[-1]):
+            raise Exception("Dimension of input tensor ({}) does not match dimension of mean ({})".format(unnormalized_arr.shape[-1],
+                                                                                                            self.dim))
+
+        unnormalized_arr = unnormalized_arr.to(self.device)
+
+        self._unnormalized_array = unnormalized_arr
+
+    @property
+    def normalized(self):
+        if(self._unnormalized_array is None):
+            return None
+
+        return self.normalize_array(self._unnormalized_array)
+
+    @normalized.setter
+    def normalized(self, normalized_arr):
+        if(not isinstance(normalized_arr, torch.Tensor)):
+            if(not isinstance(normalized_arr, (np.ndarray, list))):
+                raise Exception("Input must be torch tensor, list, or numpy array")
+
+            normalized_arr = torch.FloatTensor(normalized_arr)
+
+        if(self.dim != normalized_arr.shape[-1]):
+            raise Exception("Dimension of input tensor ({}) does not match dimension of mean ({})".format(
+                normalized_arr.shape[-1],
+                self.dim))
+
+        normalized_arr = normalized_arr.to(self.device)
+
+        self._unnormalized_array = self.unnormalize_array(normalized_arr)
+
+    def normalize_array(self, array):
+        return (array - self.mean)/self.std
+
+    def unnormalize_array(self, array):
+        return self.std * array + self.mean
+
+
+
+
+
+def distance_vehicle(waypoint, vehicle_pose, device):
+    '''
+    Calculates L2 distance between waypoint, vehicle
+    @param waypoint:     torch.Tensor([x,y])
+            vehicle_pose: torch.Tensor([x, y, yaw])
+    '''
+    if not torch.is_tensor(waypoint):
+        waypoint = torch.FloatTensor(waypoint).to(device)
+    vehicle_loc = vehicle_pose[:2].to(device) # get x, y
+    dist = torch.dist(waypoint, vehicle_loc).item()
+    return dist
+
+
+
+def get_dot_product_and_angle(vehicle_pose, waypoint, device):
+    '''
+    Calculates dot product, angle between vehicle, waypoint
+    @param waypoint:     [x, y]
+        vehicle_pose: torch.Tensor([x, y, yaw])
+    '''
+
+    waypoint = torch.FloatTensor(waypoint).to(device)
+
+    v_begin         = vehicle_pose[:2]
+    vehicle_yaw     = vehicle_pose[2]
+    v_end = v_begin + torch.Tensor([torch.cos(torch.deg2rad(vehicle_yaw)), \
+                                    torch.sin(torch.deg2rad(vehicle_yaw))]).to(device)
+
+    # vehicle vector: direction vehicle is pointing in global coordinates
+    v_vec = torch.sub(v_end, v_begin)
+    # vector from vehicle's position to next waypoint
+    w_vec = torch.sub(waypoint, v_begin)
+    # steering error: angle between vehicle vector and vector pointing from vehicle loc to
+    # waypoint
+    dot   = torch.dot(w_vec, v_vec)
+    angle = torch.acos(torch.clip(dot /
+                                (torch.linalg.norm(w_vec) * torch.linalg.norm(v_vec)), -1.0, 1.0))
+
+
+    assert(torch.isclose(torch.cos(angle), torch.clip(torch.dot(w_vec, v_vec) / \
+        (torch.linalg.norm(w_vec) * torch.linalg.norm(v_vec)), -1.0, 1.0), atol=1e-3))
+
+    # make vectors 3D for cross product
+    v_vec_3d = torch.hstack((v_vec, torch.Tensor([0]).to(device)))
+    w_vec_3d = torch.hstack((w_vec, torch.Tensor([0]).to(device)))
+
+    _cross = torch.cross(v_vec_3d, w_vec_3d)
+
+    # if negative steer, turn left
+    if _cross[2] < 0:
+        angle *= -1.0
+
+    # assert cross product a x b = |a||b|sin(angle)
+    # assert(torch.isclose(_cross[2], torch.norm(v_vec_3d) * torch.norm(w_vec_3d) * torch.sin(angle), atol=1e-2))
+
+    return dot, angle, w_vec
+
+
+
+def vehicle_to_line_distance(vehicle_pose, waypoint1, waypoint2, device):
+    '''
+    Gets distance of vehicle to a line formed by two waypoints
+    @param waypoint1:     [x,y]
+        waypoint2:     [x,y]
+        vehicle_pose:  torch.Tensor([x,y, yaw])
+    '''
+
+    waypoint1 = torch.FloatTensor(waypoint1).to(device)
+    waypoint2 = torch.FloatTensor(waypoint2).to(device)
+
+    if torch.allclose(waypoint1, waypoint2):
+        # distance = distance_vehicle(waypoint1, vehicle_pose, device)
+        # return abs(distance)
+        raise Exception(f"FAKE_ENV: Waypoints are too close together: {waypoint1}, {waypoint2}")
+
+
+    vehicle_loc   = vehicle_pose[:2] # x, y coords
+
+    a_vec = torch.sub(waypoint2, waypoint1)   # forms line between two waypoints
+    b_vec = torch.sub(vehicle_loc, waypoint1) # line from vehicle to first waypoint
+
+    # make 3d for cross product
+    a_vec_3d = torch.hstack((a_vec, torch.Tensor([0]).to(device)))
+    b_vec_3d = torch.hstack((b_vec, torch.Tensor([0]).to(device)))
+
+    dist_vec = torch.cross(a_vec_3d, b_vec_3d) / torch.linalg.norm(a_vec_3d)
+    distance =  dist_vec[2] # dist
+
+    return distance
+
+
+def filter_waypoints(waypoints):
+    """This function will remove duplicate waypoints from the waypoint list
+
+    Sometimes, the waypoints in the dataset contain duplicate waypoints. We need to remove these duplicates to prevent errors in processing waypoints.
+    """
+
+    waypoints = waypoints.tolist()
+    popped = False
+    i = 1
+
+    while(i < len(waypoints)):
+        if(torch.allclose(torch.FloatTensor(waypoints[i-1]), torch.FloatTensor(waypoints[i]))):
+            waypoints.pop(i)
+            popped = True
+        else:
+            i += 1
+    if(popped):
+        print("FAKE_ENV: POPPED DUPLICATE WAYPOINTS")
+
+    return torch.FloatTensor(waypoints)
+
+
+
+
+def process_waypoints(waypoints, vehicle_pose, device, second_last_waypoint = None, last_waypoint = None):
+    '''
+    Calculate dist to trajectory, angle
+    @param waypoints:    [torch.Tensor([wp1_x,wp1_y]), torch.Tensor([wp2_x,wp2_y)......]
+        vehicle pose: torch.Tensor([x,y,yaw])
+    @returns dist_to_trajectory, angle, ...
+    '''
+
+    vehicle_pose.to(device)
+
+    waypoints = waypoints[:, :2]
+    waypoints = waypoints.tolist()
+
+    next_waypoints_angles = []
+    next_waypoints_vectors = []
+    next_waypoints = []
+    num_next_waypoints = 5
+    last_waypoint, second_last_waypoint = None, None
+
+
+    # closest wp to car
+    min_dist_index = -1
+
+    # Minimum distance to waypoint before we delete it
+    # This number is taken from GlobalPlanner
+    MIN_REMOVE_DISTANCE = 1.8
+
+    for i, waypoint in enumerate(waypoints):
+        # find wp that yields min dist between itself and car
+        dist_i = distance_vehicle(waypoint, vehicle_pose, device)
+        # print(f'wp {i},  {waypoint}, dist: {dist_i}')
+        if dist_i <= MIN_REMOVE_DISTANCE:
+            min_dist_index = i
+
+    wp_len = len(waypoints)
+    if min_dist_index >= 0:
+        # pop waypoints up until the one with min distance to vehicle
+        for i in range(min_dist_index + 1):
+            waypoint = waypoints.pop(0)
+            # set last, second-to-last waypoints
+            if i == wp_len - 1:
+                last_waypoint = waypoint
+            elif i == wp_len - 2:
+                second_last_waypoint = waypoint
+
+    remaining_waypoints = waypoints
+    # only keep next N waypoints
+    for i, waypoint in enumerate(waypoints[:num_next_waypoints]):
+        # dist to waypoint
+        dot, angle, w_vec = get_dot_product_and_angle(vehicle_pose, waypoint, device)
+
+        # add back waypoints
+        next_waypoints_angles.append(angle)
+        next_waypoints.append(waypoint)
+        next_waypoints_vectors.append(w_vec)
+
+    # get mean of all angles to figure out which direction to turn
+    if len(next_waypoints_angles) > 0:
+        angle = torch.mean(torch.FloatTensor(next_waypoints_angles))
+    else:
+        # print("No next waypoint found!")
+        angle = 0
+
+    if len(next_waypoints) > 1:
+        # get dist from vehicle to a line formed by the next two wps
+        dist_to_trajectory = vehicle_to_line_distance(
+                                vehicle_pose,
+                                next_waypoints[0],
+                                next_waypoints[1],
+                                device)
+
+    # if only one next waypoint, use it and second to last
+    elif len(next_waypoints) == 1:
+        if second_last_waypoint:
+            dist_to_trajectory = vehicle_to_line_distance(
+                                    vehicle_pose,
+                                    second_last_waypoint,
+                                    next_waypoints[0],
+                                    device)
+        else:
+            print("CODE BROKE HERE UH OH _----------------------")
+            dist_to_trajectory = 0.0
+
+    else: # Run out of wps
+        if second_last_waypoint and last_waypoint:
+            dist_to_trajectory = vehicle_to_line_distance(
+                                    vehicle_pose,
+                                    second_last_waypoint,
+                                    last_waypoint,
+                                    device)
+
+        else:
+            print("CODE BROKE HERE UH OH _----------------------")
+            dist_to_trajectory = 0.0
+
+    return angle, dist_to_trajectory, next_waypoints, next_waypoints_angles, next_waypoints_vectors, remaining_waypoints, second_last_waypoint, last_waypoint
+
+
+
+def rot(theta):
+    R = torch.Tensor([[ torch.cos(theta), -torch.sin(theta)],
+                      [ torch.sin(theta), torch.cos(theta)]])
+    return R
+
+
