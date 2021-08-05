@@ -24,8 +24,11 @@ from stable_baselines3.common.callbacks import EvalCallback
 4. Train policy in FakeEnv
 '''
 class MOPO():
+    log_dir = "mopo"
+
     def __init__(self, config,
-                    logger):
+                    logger,
+                    load_data = True):
         self.config = config
         self.dynamics_config = self.config.dynamics_config
         self.fake_env_config = self.config.fake_env_config
@@ -36,18 +39,25 @@ class MOPO():
 
         self.logger = logger
 
-        self.data_module = self.dynamics_config.dataset_type(self.dynamics_config.dataset_config)
+        if(load_data):
+            self.data_module = self.dynamics_config.dataset_type(self.dynamics_config.dataset_config)
 
-        self.dynamics = self.dynamics_config.dynamics_model_type(
-            config = self.dynamics_config.dynamics_model_config,
-            data_module = self.data_module,
-            logger = logger
-        )
+            self.dynamics = self.dynamics_config.dynamics_model_type(
+                config = self.dynamics_config.dynamics_model_config,
+                data_module = self.data_module,
+                logger = logger
+            )
+        else:
+            print("MOPO: Skipping Loading dataset")
 
         self.fake_env = None
 
         self.policy_algo = self.config.policy_algorithm
         self.policy  = None
+
+        # Save config to load in the future
+        if logger is not None:
+            self.logger.pickle_save(self.config, MOPO.log_dir, "config.pkl")
 
     def train(self):
 
@@ -73,11 +83,11 @@ class MOPO():
         print("MOPO: Constructing Real Env for evaluation")
 
         env = CarlaEnv(config = self.eval_env_config, logger = self.logger, log_dir = self.logger.log_dir)
-        eval_env = env.get_eval_env(eval_frequency = 5000)
+        eval_env = env.get_eval_env(eval_frequency = 20000)
         dummy_eval_env = DummyVecEnv([lambda: eval_env])
 
         eval_callback = EvalCallback(dummy_eval_env, best_model_save_path=os.path.join(self.logger.log_dir, "policy", "models"),
-                                    log_path=os.path.join(self.logger.log_dir, "policy"), eval_freq=5000,
+                                    log_path=os.path.join(self.logger.log_dir, "policy"), eval_freq=20000,
                                     deterministic=False, render=False,
                                     n_eval_episodes=self.eval_env_config.scenario_config.num_episodes)
 
@@ -95,9 +105,33 @@ class MOPO():
         self.policy.save(save_dir)
         self.dynamics.save(save_dir)
 
+    def policy_predict(self, obs):
+        action, _ = self.policy.predict(obs)
+        return action
 
+    @classmethod
+    def load(cls, logger, model_name, gpu, policy_only = True):
+        # To load the model, we first need to build an instance of this class
+        # We want to keep the same config parameters, so we will build it from the pickled config
+        # Also, we will load the dimensional parameters of the model from the saved dimensions
+        # This allows us to avoid loading a dataloader every time we want to do inference
 
+        print("MOPO: Loading policy {}".format(model_name))
+        # Get config from pickle first
+        config = logger.pickle_load(MOPO.log_dir, "config.pkl")
 
-    def load(self, load_dir):
-        self.policy.load(load_dir)
-        # self.dynamics.load(load_dir)
+        # Create a configured dynamics ensemble object
+        mopo = cls(config = config,
+                    logger = logger,
+                    load_data = False)
+
+        device = f"cuda:{gpu}"
+
+        mopo.policy = mopo.policy_algo.load(
+                logger.other_load("policy/models", model_name),
+                device = device    )
+
+        if(not policy_only):
+            raise Exception("Loading dynamics model in Mopo not yet implemented")
+
+        return mopo
