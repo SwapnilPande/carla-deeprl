@@ -248,6 +248,18 @@ class CometLogger(BaseLogger):
 
         return obj
 
+    def other_load(self, log_path, name):
+        # Get full path to log directory
+        full_log_path = self.prep_dir(log_path)
+
+        file_path = os.path.join(full_log_path, name)
+
+        # Dowload file if not local
+        if(not self.experiment_exists_locally):
+            self.comet_download(os.path.join(log_path, name))
+
+        return file_path
+
 
 
 
