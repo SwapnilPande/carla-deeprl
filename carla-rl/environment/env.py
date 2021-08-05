@@ -118,6 +118,7 @@ class CarlaEnv(gym.Env):
         self.episode_measurements['red_light_dist'] = -1
         self.episode_measurements['traffic_light_orientation'] = -1
         self.episode_measurements["runover_light"] = False
+        self.episode_measurements["steer_angle"] = 0
 
         self.vehicle_collisions = 0
         self.static_collisions = 0
@@ -815,7 +816,7 @@ class CarlaEnv(gym.Env):
 
         elif self.config.obs_config.input_type == "wp_obs_info_speed_steer":
             speed = self.episode_measurements['speed'] / 10
-            steer = self.episode_measurements['control_steer']
+            steer = self.episode_measurements['steer_angle']
             ldist = self.episode_measurements['dist_to_trajectory']
 
             obs_output = np.concatenate((np.array([self.episode_measurements['next_orientation']]), np.array([speed]), np.array([steer]), np.array([ldist])))
