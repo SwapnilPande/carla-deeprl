@@ -1,6 +1,0 @@
-# @package _group_
-
-agent:
-    _target_: bc.BC
-    obs_dim: 10
-    action_dim: 2
