@@ -157,7 +157,7 @@ def n_step_eval(exp_name, logger, real_env, fake_env, policy, num_episodes, n = 
                 )
             )
 
-
+        
         real_done = False
         real_rollout_steps = 0
         fake_rollout_steps = 0
@@ -166,11 +166,18 @@ def n_step_eval(exp_name, logger, real_env, fake_env, policy, num_episodes, n = 
 
             action = policy(real_obs)
 
+            print(real_obs)
+            print(fake_obs)
+            input()
+
+
             # Generate new observations
 
 
             real_next_obs, real_reward, real_done, real_info =  real_env.step(action)
             fake_next_obs, fake_reward, fake_done, fake_info =  fake_env.step(action)
+
+            print(action)
 
             # Compare real obs, fake obs
             # Compare real reward, fake reward
@@ -411,7 +418,7 @@ def visualize_trajectory_distribution(exp_name, logger, real_env, fake_env, poli
 class DynamicsEvaluationConf:
     def __init__(self):
         self.model_name = "final"
-        self.experiment_key = "8f7f242e37434b80ac2109575c3c8942"
+        self.experiment_key = "a39e66159cd3477883b4301d3cc0057c"
 
 
 def main(args):
@@ -473,10 +480,13 @@ def main(args):
 
     policy = AutopilotPolicy(env)
 
-    visualize_trajectory_distribution("25_step", logger, env, fake_env, policy, 1, n = 25, n_samples = 50)
+    # n_step_eval("TEST_2_autopilot_5_step", logger, env, fake_env, policy, 5, n = 25, generate_videos = True)
+
+    import ipdb; ipdb.set_trace()
+    visualize_trajectory_distribution("50_step", logger, env, fake_env, policy, 1, n = 50, n_samples = 50)
 
     # Run desired experiments
-    # n_step_eval("TEST_2_autopilot_5_step", logger, env, fake_env, policy, 5, n = 5, generate_videos = True)
+    n_step_eval("TEST_2_autopilot_5_step", logger, env, fake_env, policy, 5, n = 25, generate_videos = True)
 
     # n_step_eval("TEST_2_autopilot_25_step", logger, env, fake_env, policy, 5, n = 25, generate_videos = True)
 

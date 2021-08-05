@@ -13,12 +13,10 @@ sys.path.append(os.path.abspath(os.path.join('../../../')))
 
 from common.loggers.comet_logger import CometLogger
 from projects.morel_mopo.config.logger_config import ExistingCometLoggerConfig
-from projects.morel_mopo.config.dynamics_ensemble_config import DefaultDynamicsEnsembleConfig, DefaultGRUDynamicsConfig
-from projects.morel_mopo.algorithm.dynamics_ensemble_module import DynamicsEnsemble
-from projects.morel_mopo.algorithm.dynamics_gru import DynamicsGRUEnsemble
-from projects.morel_mopo.algorithm.data_modules import OfflineCarlaDataModule
-from projects.morel_mopo.algorithm.fake_env import FakeEnv
+from projects.morel_mopo.config.dynamics_config import DefaultMLPDynamicsConfig, DefaultDeterministicGRUDynamicsConfig, DefaultProbabilisticGRUDynamicsConfig
 from projects.morel_mopo.config.fake_env_config import DefaultFakeEnvConfig
+from projects.morel_mopo.algorithm.data_modules import OfflineCarlaDataModule
+
 
 # Environment
 from environment.env import CarlaEnv
@@ -148,7 +146,7 @@ def n_step_eval(exp_name, logger, real_env, fake_env, policy, num_episodes, n = 
                              real_info["ego_vehicle_y"],
                              real_info["ego_vehicle_theta"]])
 
-
+        import ipdb; ipdb.set_trace()
         fake_obs = fake_env.reset(inp = (
                     np.array(real_dynamics_obs_history),
                     np.array(real_dynamics_action_history),
@@ -161,16 +159,25 @@ def n_step_eval(exp_name, logger, real_env, fake_env, policy, num_episodes, n = 
         real_done = False
         real_rollout_steps = 0
         fake_rollout_steps = 0
-        import ipdb; ipdb.set_trace()
+        
         while not real_done and real_rollout_steps < 1000:
 
             action = policy(real_obs)
+
+            
+            print(real_obs)
+            print(fake_obs)
+            input()
 
             # Generate new observations
 
 
             real_next_obs, real_reward, real_done, real_info =  real_env.step(action)
             fake_next_obs, fake_reward, fake_done, fake_info =  fake_env.step(action)
+
+            print(action)
+
+            
 
             # Compare real obs, fake obs
             # Compare real reward, fake reward
@@ -410,7 +417,7 @@ def visualize_trajectory_distribution(exp_name, logger, real_env, fake_env, poli
 
 class DynamicsEvaluationConf:
     def __init__(self):
-        self.model_name = "incremental-step-80"
+        self.model_name = "final"
         self.experiment_key = "10ffdb5d92634b17879c41161e699647"
 
 
@@ -433,27 +440,18 @@ def main(args):
         carla_gpu = args.gpu
     )
 
+
+
+
     env = CarlaEnv(config = env_config, log_dir = logger.log_dir)
 
+
+    dynamics_config = DefaultMLPDynamicsConfig()
+
     ### Create the fake environment
-    dynamics = DynamicsEnsemble.load(logger, dynamics_evaluation_conf.model_name, gpu = args.gpu)
+    dynamics = dynamics_config.dynamics_model_type.load(logger, dynamics_evaluation_conf.model_name, gpu = args.gpu)
 
-
-    # dynamics = DynamicsGRUEnsemble.load(logger, dynamics_evaluation_conf.model_name, gpu = args.gpu)
-    # class TempDataModuleConfig():
-    #     def __init__(self):
-    #         self.dataset_paths = ["/zfsauton/datasets/ArgoRL/swapnilp/carla-rl_datasets/no_crash_empty"]
-    #         self.batch_size = 1
-    #         self.frame_stack = 2
-    #         self.num_workers = 2
-    #         self.train_val_split = 0.95
-
-    # # data config
-    # data_config = TempDataModuleConfig()
-    # data_module = OfflineCarlaDataModule(data_config)
-
-    # import ipdb; ipdb.set_trace()
-
+    dynamics_config.dynamics_model_config = dynamics.config
 
 
 
@@ -467,7 +465,7 @@ def main(args):
         reward_config="Simple2RewardConfig"
     )
 
-    fake_env = FakeEnv(dynamics,
+    fake_env = dynamics_config.fake_env_type(dynamics,
                 config=fake_env_config,
                 logger = logger)
 
@@ -478,7 +476,7 @@ def main(args):
 
     # n_step_eval("V3_autopilot_25_step", logger, env, fake_env, policy, 5, n = 25, generate_videos = True)
 
-    visualize_trajectory_distribution("100_step", logger, env, fake_env, policy, 1, n = 100, n_samples = 50)
+    # visualize_trajectory_distribution("25_step", logger, env, fake_env, policy, 1, n = 25, n_samples = 50)
 
     policy = RandomPolicy(env)
 
