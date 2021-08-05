@@ -133,13 +133,16 @@ class MLPDynamicsEnsemble(nn.Module):
                     gpu = None,
 
                     logger = None,
-                    log_freq = 500):
+                    log_freq = 1200,
+                    disable_bars = True):
         super(MLPDynamicsEnsemble, self).__init__()
 
         self.config = config
 
         # Save the logger
         self.logger = logger
+
+        self.disable_bars = disable_bars
 
         # Save config to load in the future
         if logger is not None:
@@ -406,7 +409,7 @@ class MLPDynamicsEnsemble(nn.Module):
             for model_idx in range(self.n_models): # Loop over models
 
                 self.train()
-                with tqdm(total = num_train_batches) as pbar:
+                with tqdm(total = num_train_batches, disable = self.disable_bars) as pbar:
                     pbar.set_description_str("Train epoch {}, Model {}:".format(epoch, model_idx))
                     for batch_idx, batch in enumerate(train_dataloader): # Loop over batches
                         # Run training step for jth model
@@ -420,7 +423,7 @@ class MLPDynamicsEnsemble(nn.Module):
 
 
                 self.eval()
-                with tqdm(total = num_val_batches) as pbar:
+                with tqdm(total = num_val_batches, disable = self.disable_bars) as pbar:
                     # Store running count of validation metrics
                     val_running_counts = None
                     pbar.set_description_str("Validation:".format(epoch))

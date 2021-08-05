@@ -114,13 +114,16 @@ class ProbabilisticGRUDynamicsEnsemble(nn.Module):
                     gpu = None,
 
                     logger = None,
-                    log_freq = 500):
+                    log_freq = 500,
+                    disable_bars = True):
         super(ProbabilisticGRUDynamicsEnsemble, self).__init__()
 
         self.config = config
 
         # Save the logger
         self.logger = logger
+
+        self.disable_bars = disable_bars
 
         # Save config to load in the future
         if logger is not None:
@@ -281,7 +284,7 @@ class ProbabilisticGRUDynamicsEnsemble(nn.Module):
         target_tensor = self.prepare_target(delta, reward)
 
         # Else, just return delta
-        return feed_tensor, target_tensor, mask.unsqueeze(-1).to(self.device)
+        return feed_tensor, target_tensor, mask.to(self.device)
 
 
     def training_step(self, batch, model_idx):
@@ -385,7 +388,7 @@ class ProbabilisticGRUDynamicsEnsemble(nn.Module):
             for model_idx in range(self.n_models): # Loop over models
 
                 self.train()
-                with tqdm(total = num_train_batches) as pbar:
+                with tqdm(total = num_train_batches, disable = self.disable_bars) as pbar:
                     pbar.set_description_str("Train epoch {}, Model {}:".format(epoch, model_idx))
                     for batch_idx, batch in enumerate(train_dataloader): # Loop over batches
                         # Run training step for jth model
@@ -398,7 +401,7 @@ class ProbabilisticGRUDynamicsEnsemble(nn.Module):
                             self.log_metrics(epoch, batch_idx, num_train_batches, log_params)
 
                 self.eval()
-                with tqdm(total = num_val_batches) as pbar:
+                with tqdm(total = num_val_batches, disable = self.disable_bars) as pbar:
                     val_running_counts = None
                     pbar.set_description_str("Validation:".format(epoch))
                     for batch_idx, batch in enumerate(val_dataloader): # Loop over batches
