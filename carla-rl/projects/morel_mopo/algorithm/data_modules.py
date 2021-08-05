@@ -192,7 +192,9 @@ class OfflineCarlaDataset(Dataset):
                     # self.additional_state.append(torch.stack(additional_state))
                     self.actions.append(torch.stack(action))
                     self.delta.append(delta)
-                    self.vehicle_poses.append(vehicle_pose_cur)
+                    self.vehicle_poses.append(torch.FloatTensor([samples[i+4][vehicle_x_key],
+                                                          samples[i+4][vehicle_y_key],
+                                                          samples[i+4][vehicle_theta_key]]))
                     # get waypoints for current timestep
                     waypoints = torch.FloatTensor(samples[i][waypoints_key])
                     self.waypoint_module.store_waypoints(waypoints)
@@ -393,12 +395,12 @@ class RNNOfflineCarlaDataset(Dataset):
     """ Offline dataset """
 
     def __init__(self,
-                    path,
-                    frame_stack=1,
-                    obs_dim = 2,
-                    additional_state_dim = 0,
-                    action_dim = 2,
-                    state_dim_out = 5):
+                path,
+                frame_stack=1,
+                obs_dim = 2,
+                additional_state_dim = 0,
+                action_dim = 2,
+                state_dim_out = 5):
 
         if(frame_stack < 1):
             raise Exception("Frame stack must be greater than or equal to 1")
@@ -466,6 +468,7 @@ class RNNOfflineCarlaDataset(Dataset):
                     action = torch.zeros(size = (self.frame_stack, self.action_dim))
                     delta = torch.zeros(size = (self.frame_stack, self.state_dim_out))
                     mask = torch.zeros(size = (self.frame_stack,))
+                    vehicle_poses = torch.zeros(size = (self.frame_stack,3))
 
                     # at each timestep, collect observations for last <frame_stack> frames
                     if(i + self.frame_stack > traj_length):
@@ -498,6 +501,8 @@ class RNNOfflineCarlaDataset(Dataset):
                                                                 samples[i+j-1][vehicle_y_key],
                                                                 samples[i+j-1][vehicle_theta_key]])
 
+                        vehicle_poses[j, :] = vehicle_pose_prev
+
                         delta[j, :] = self.calc_output_features(vehicle_pose_cur = vehicle_pose_cur,
                                                     vehicle_pose_prev = vehicle_pose_prev,
                                                     steer_cur = samples[i+j][steer_key],
@@ -510,7 +515,7 @@ class RNNOfflineCarlaDataset(Dataset):
                     # self.additional_state.append(torch.stack(additional_state))
                     self.actions.append(action)
                     self.delta.append(delta)
-                    self.vehicle_poses.append(vehicle_pose_cur)
+                    self.vehicle_poses.append(vehicle_poses)
 
                     self.masks.append(mask)
 
@@ -658,6 +663,13 @@ class RNNOfflineCarlaDataModule():
                 self.datasets[i].actions =  (self.datasets[i].actions - self.normalization_stats["action"]["mean"]) / self.normalization_stats["action"]["std"]
                 self.datasets[i].delta = (self.datasets[i].delta - self.normalization_stats["delta"]["mean"]) / self.normalization_stats["delta"]["std"]
 
+        else:
+            print('DATA_MODULE: No normalization: Setting normalization stats to Mean=0, Std=1')
+            self.normalization_stats["obs"] = {"mean" : torch.zeros((1, self.datasets[0].obs_dim)), "std" : torch.ones((1, self.datasets[0].obs_dim))}
+            self.normalization_stats["action"] = {"mean" : torch.zeros((1, self.datasets[0].action_dim)), "std" : torch.ones((1, self.datasets[0].action_dim))}
+            self.normalization_stats["delta"] = {"mean" : torch.zeros((1, self.datasets[0].state_dim_out)), "std" : torch.ones((1, self.datasets[0].state_dim_out))}
+
+
         # concat datasets across all trajectories (used for dynamics training)
         self.concat_dataset = torch.utils.data.ConcatDataset(self.datasets)
 
@@ -709,7 +721,7 @@ class RNNOfflineCarlaDataModule():
                             sampler = sampler)
 
     def val_dataloader(self):
-        return DataLoader(self.val_data,\
+        return DataLoader(self.val_data,
                           batch_size=self.batch_size,
                           shuffle=False,
                           num_workers=self.num_workers)
