@@ -41,12 +41,16 @@ ACTIONS = np.array(
         [1, 1 / 3],
         [1, 2 / 3],
         [1, 1],
-        [0, -1],
+        # [0, -1],
     ],
     dtype=np.float32,
-).reshape(28, 2)
+).reshape(27, 2)
+STEERINGS = np.array([-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1, 0])
+THROTS = np.array([1 / 3, 2 / 3, 1, -1])
 YAWS = np.linspace(-1.0, 1.0, 5)
 SPEEDS = np.linspace(0, 8, 4)
+
+NORMALIZING_ANGLE = np.pi / 4
 
 num_yaws = len(YAWS)
 num_spds = len(SPEEDS)
@@ -85,13 +89,10 @@ class QSolver:
             terminal = (rewards <= MIN_REWARD)[..., None]
             action_rewards = self.calculate_action_rewards(ACTIONS)
             final_reward = rewards[..., None] + action_rewards
-            #final_reward = rewards[..., None]
+            # final_reward = rewards[..., None]
 
             for s, speed, in enumerate(speeds):
                 for y, yaw in enumerate(yaws):
-                    # pred_locs, pred_yaws, pred_spds = self.predict(
-                    #     locs, yaw, speed, actions
-                    # )
                     pred_locs, pred_yaws, pred_spds = self.predict(
                         locs, ref_yaw + yaw, speed, actions
                     )
@@ -102,46 +103,11 @@ class QSolver:
                         pred_locs,
                         pred_spds,
                         pred_yaws - ref_yaw,
-                        # pred_yaws,
                         offset,
                         theta,
                     )
-                    # ego_pos = np.array(
-                    #     [measurement["ego_vehicle_x"], measurement["ego_vehicle_y"]]
-                    # )
-                    # plt.plot(ego_pos[0], ego_pos[1], "x", color="red", label="AV")
-                    # plt.plot(
-                    #     locs[:, 0],
-                    #     locs[:, 1],
-                    #     "o",
-                    #     color="black",
-                    #     alpha=0.5,
-                    #     label="current",
-                    # )
-                    # plt.plot(
-                    #     next_locs[:, 0],
-                    #     next_locs[:, 1],
-                    #     "o",
-                    #     color="green",
-                    #     label="next",
-                    # )
-                    # plt.plot(
-                    #     pred_locs[:, 0], pred_locs[:, 1], "o", color="red", label="next"
-                    # )
-                    # plt.legend()
-                    # plt.savefig("/zfsauton/datasets/ArgoRL/jhoang/logs/world.png")
-                    # plt.clf()
-                    # next_Vs = next_Vs.reshape(16, 16, num_acts)
-                    # plt.pcolormesh(next_Vs[:, :, 0])
-                    # plt.savefig("/zfsauton/datasets/ArgoRL/jhoang/logs/next_Vs_-1.png")
-                    # plt.clf()
-                    # plt.pcolormesh(next_Vs[:, :, 1])
-                    # plt.savefig("/zfsauton/datasets/ArgoRL/jhoang/logs/next_Vs_0.png")
-                    # plt.clf()
-                    # plt.pcolormesh(next_Vs[:, :, 2])
-                    # plt.savefig("/zfsauton/datasets/ArgoRL/jhoang/logs/next_Vs_1.png")
-                    # plt.clf()
-                    # sys.exit(0)
+                    if speed == 8 and yaw == 0.0:
+                        record_pred_locs = pred_locs
 
                     # Bellman backup
                     Q_target = bellman_backup(
@@ -151,20 +117,26 @@ class QSolver:
 
             # max over all actions
             V = Q.max(dim=-1)[0]
-            # max_action = torch.argmax(Q, dim=-1)[8, 8, 3, :]
-            # print(ACTIONS[max_action])
 
         end = time.time()
         # print('total: {}'.format(end - start))
-        return V, Q
+        return V, Q, record_pred_locs
 
     def solve(self, data):
         start = time.time()
         for (
             i,
-            (reward, world_pts, value_path, action_val_path, measurement),
+            (
+                reward,
+                world_pts,
+                value_path,
+                action_val_path,
+                next_preds_path,
+                measurement,
+            ),
         ) in enumerate(data):
             reward = reward.reshape(MAP_SIZE, MAP_SIZE)
+            reward = np.transpose(reward, (1, 0))
             if i == 0:
                 V = reward.reshape(MAP_SIZE, MAP_SIZE, 1, 1).repeat(
                     1, 1, num_spds, num_yaws
@@ -172,13 +144,15 @@ class QSolver:
                 Q = reward.reshape(MAP_SIZE, MAP_SIZE, 1, 1, 1).repeat(
                     1, 1, num_spds, num_yaws, num_acts
                 )
+                next_preds = world_pts
             else:
-                V, Q = self.run_bellman(
+                V, Q, next_preds = self.run_bellman(
                     reward, world_pts, next_world_pts, V, measurement
                 )
 
             np.save(value_path, V)
             np.save(action_val_path, Q)
+            np.save(next_preds_path, next_preds)
             next_world_pts = world_pts
         end = time.time()
         print("total: {}".format(end - start))
@@ -218,7 +192,7 @@ def initialize_grid_interpolator(next_locs, prev_V, speeds, yaws):
     offset = next_locs[0]
     _next_locs = next_locs - offset
     theta = np.arctan2(_next_locs[-1][1], _next_locs[-1][0])
-    _next_locs = rotate_pts(_next_locs, (np.pi / 4) - theta)
+    _next_locs = rotate_pts(_next_locs, NORMALIZING_ANGLE - theta)
 
     min_x, min_y = np.min(_next_locs, axis=0)
     max_x, max_y = np.max(_next_locs, axis=0)
@@ -237,7 +211,7 @@ def initialize_grid_interpolator(next_locs, prev_V, speeds, yaws):
 
 def interpolate(grid_interpolator, pred_locs, pred_spds, pred_yaws, offset, theta):
     _pred_locs = pred_locs - offset
-    _pred_locs = rotate_pts(_pred_locs, (np.pi / 4) - theta)
+    _pred_locs = rotate_pts(_pred_locs, NORMALIZING_ANGLE - theta)
     pred_pts = np.concatenate([_pred_locs, pred_spds, pred_yaws], axis=1)
     next_Vs = grid_interpolator(pred_pts, method="linear")
     return next_Vs

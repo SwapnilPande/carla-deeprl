@@ -5,8 +5,8 @@ import math
 from shapely.geometry import Point, LineString, Polygon
 import projects.reactive_mbrl.geometry.transformation as transform
 
-MAP_SIZE = 64
-MIN_REWARD = -1
+MAP_SIZE = 16
+MIN_REWARD = -3
 TARGET_SPEED = 5
 
 
@@ -69,7 +69,9 @@ def calculate_path_following_reward(world_pts, route):
 
     def distance_to_path_reward(pt):
         d = Point([pt[0], pt[1]]).distance(path)
-        return -d
+        if d <= 1:
+            return 0.0
+        return -d + 1
 
     return np.array([distance_to_path_reward(pt) for pt in world_pts])
 
@@ -87,7 +89,7 @@ def calculate_reward_map(env, route):
 
     positions, labels = calculate_lane_violations_labels(env, world_pts)
     labels = calculate_vehicle_collisions(env, positions, labels).astype(float)
-    # labels += calculate_path_following_reward(world_pts, route)
+    labels += calculate_path_following_reward(world_pts, route)
     labels = np.clip(labels, MIN_REWARD, 0.0)
 
     reward_map = np.zeros((MAP_SIZE, MAP_SIZE))
@@ -104,7 +106,9 @@ def calculate_action_value_map(locs, yaws, speeds, ref_wpt, target_speed=TARGET_
     yaw_losses = []
     speed_losses = []
     for (loc, yaw, speed) in zip(locs, yaws, speeds):
-        loc_loss, yaw_loss, speed_loss = calculate_action_value(loc, yaw[0], speed[0], ref_wpt, target_speed)
+        loc_loss, yaw_loss, speed_loss = calculate_action_value(
+            loc, yaw[0], speed[0], ref_wpt, target_speed
+        )
         rewards.append(loc_loss + yaw_loss + speed_loss)
         loc_losses.append(loc_loss)
         yaw_losses.append(yaw_loss)
@@ -115,6 +119,7 @@ def calculate_action_value_map(locs, yaws, speeds, ref_wpt, target_speed=TARGET_
     speed_losses = np.array(speed_losses)
 
     return loc_losses, yaw_losses, speed_losses, rewards
+
 
 def calculate_action_value(loc, yaw, speed, ref_wpt, target_speed=TARGET_SPEED):
     wpt_loc, wpt_yaw = ref_wpt
@@ -133,7 +138,6 @@ def get_closest_waypoint(loc, route):
             min_dist = d
             min_wpt = (np.array([wpt_x, wpt_y]), wpt_yaw)
     return min_wpt
-
 
 
 def calculate_4d_reward_map(env, route, speed):

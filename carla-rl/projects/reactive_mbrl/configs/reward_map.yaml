@@ -1,5 +1,7 @@
-dataset_path: "/zfsauton/datasets/ArgoRL/jhoang/small_dataset/"
+small_dataset_path: "/zfsauton/datasets/ArgoRL/jhoang/small_dataset/"
+big_dataset_path: "/zfsauton/datasets/ArgoRL/jhoang/big_dataset/"
+val_dataset_path: "/zfsauton/datasets/ArgoRL/jhoang/val/"
 
 num_processes: 1
 
-steering_reward_coeff: 0.2
+steering_reward_coeff: 0.15

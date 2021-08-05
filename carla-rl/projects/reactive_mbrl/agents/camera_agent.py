@@ -2,10 +2,12 @@ import torch
 from torch import nn
 import math
 import torch.optim as optim
+import numpy as np
 
 import torch.nn.functional as F
 import pytorch_lightning as pl
 
+from projects.reactive_mbrl.algorithms.dynamic_programming import STEERINGS, THROTS
 from projects.reactive_mbrl.data.reward_map import MAP_SIZE
 from projects.reactive_mbrl.losses.action_loss import calculate_action_loss
 from projects.reactive_mbrl.losses.segmentation_loss import calculate_segmentation_loss
@@ -25,11 +27,22 @@ class CameraAgent(pl.LightningModule):
         return self.model(wide_rgb, narr_rgb)
 
     def training_step(self, batch, batch_idx):
-        wide_rgbs, wide_segs, narr_rgbs, narr_segs, _, _, action_values, _ = batch
+        (
+            wide_rgbs,
+            wide_segs,
+            narr_rgbs,
+            narr_segs,
+            _,
+            _,
+            action_values,
+            _,
+            measurement,
+        ) = batch
         loss, comet_logs = self.compute_losses(
             preprocess_inputs(
                 wide_rgbs, wide_segs, narr_rgbs, narr_segs, action_values
             ),
+            measurement["cmd_value"],
             prefix="train",
         )
         self.comet_logger.log_metrics(comet_logs)
@@ -47,12 +60,12 @@ class CameraAgent(pl.LightningModule):
         return {"val_loss": loss}
         """
 
-    def compute_losses(self, inputs, prefix="train"):
+    def compute_losses(self, inputs, cmd, prefix="train"):
         wide_rgbs, wide_segs, narr_rgbs, narr_segs, action_values = inputs
         action_logits, pred_wide_seg, pred_narr_seg = self.model(wide_rgbs, narr_rgbs)
-        # 4 is the index of 1-yaw in [-1, -0.5, 0, 0.5 1] which points upward
+        # 2 is the index of 0-yaw in [-1, -0.5, 0, 0.5 1] which points upward
         action_value = action_values[
-            :, int(MAP_SIZE / 2), int(MAP_SIZE / 2), :, 4, :
+            :, int(MAP_SIZE / 2), int(MAP_SIZE / 2), :, 2, :
         ].unsqueeze(1)
         action_loss = calculate_action_loss(action_value, action_logits)
         seg_loss1 = calculate_segmentation_loss(wide_segs, pred_wide_seg)
@@ -72,7 +85,7 @@ class CameraAgent(pl.LightningModule):
     def configure_optimizers(self):
         return optim.Adam(self.parameters(), lr=1e-3)
 
-    def predict(self, wide_rgb, narr_rgb, target_speed=0.5):
+    def predict(self, wide_rgb, narr_rgb, target_speed_idx=3):
         steer_logits, throt_logits, brake_logits = self.model.predict(
             wide_rgb, narr_rgb
         )
@@ -81,10 +94,11 @@ class CameraAgent(pl.LightningModule):
         throt_probs = F.softmax(throt_logits)
         brake_probs = F.softmax(brake_logits)
 
-        import pdb
-
-        pdb.set_trace()
-        brake = interpolate(brake_probs, self.model)
+        _, steer_indices = steer_probs[target_speed_idx].topk(3)
+        steer = STEERINGS[steer_indices].mean()
+        _, throt_indices = throt_probs[target_speed_idx].topk(3)
+        throt = THROTS[throt_indices].mean()
+        return np.array([steer, throt])
 
 
 def preprocess_inputs(wide_rgbs, wide_segs, narr_rgbs, narr_segs, action_values):

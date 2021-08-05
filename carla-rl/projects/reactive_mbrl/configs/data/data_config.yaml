@@ -1,7 +1,8 @@
-train_dataset: "/zfsauton/datasets/ArgoRL/jhoang/small_dataset/"
+train_dataset: "/zfsauton/datasets/ArgoRL/jhoang/big_dataset/"
+small_train_dataset: "/zfsauton/datasets/ArgoRL/jhoang/small_dataset/"
 val_dataset: "/zfsauton/datasets/ArgoRL/jhoang/val/"
 model_dir: "/zfsauton/datasets/ArgoRL/jhoang/models/"
 
-speed: 4.0
-max_path_length: 500
-n_samples: 500
+speed: 5.0
+max_path_length: 5000
+n_samples: 10000

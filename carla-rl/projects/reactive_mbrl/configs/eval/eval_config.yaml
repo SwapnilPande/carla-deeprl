@@ -1,4 +1,4 @@
-model_path: /zfsauton/datasets/ArgoRL/jhoang/models/2bc80046d5834a4bab31fca57ddb7ce7/model.th
+model_path: /zfsauton/datasets/ArgoRL/jhoang/models/4a22bc18083f46fe8c1805d3c8e825cc/model.th
 
 num_scenarios: 25
 

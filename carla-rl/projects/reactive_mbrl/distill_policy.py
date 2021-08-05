@@ -17,7 +17,9 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 @hydra.main(config_path="configs", config_name="config.yaml")
 def main(cfg):
     # dataset = ReactiveDatasetModule([cfg['train_dataset']], val_path=cfg['val_dataset'])
-    dataset = ReactiveDatasetModule([cfg.data["train_dataset"]])
+    dataset = ReactiveDatasetModule(
+        cfg.data["train_dataset"], val_path=cfg.data["val_dataset"]
+    )
     comet_logger = get_logger()
     agent = CameraAgent(cfg, comet_logger)
 
@@ -33,8 +35,8 @@ def main(cfg):
         logger=comet_logger,
         callbacks=callbacks,
         max_epochs=int(cfg.train["num_epochs"]),
-        # val_check_interval=0.25,
-        gpus=1,
+        val_check_interval=0.25,
+        gpus=[0],
     )
     trainer.fit(agent, dataset)
 

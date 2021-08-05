@@ -12,7 +12,6 @@ from projects.reactive_mbrl.create_env import create_env
 
 WIDE_CROP_TOP = 48
 NARROW_CROP_BOTTOM = 80
-NUM_SCENARIOS = 2
 
 
 def load_model(model_path):
@@ -114,12 +113,14 @@ def evaluate(env, cfg):
 
 
 def get_inputs(info):
-    wide_rgb = torch.tensor(
+    wide_rgb_cropped = np.copy(
         info["sensor.camera.rgb/front_wide"][WIDE_CROP_TOP:, :, ::-1]
     )
-    narr_rgb = torch.tensor(
+    wide_rgb = torch.tensor(wide_rgb_cropped)
+    narr_rgb_cropped = np.copy(
         info["sensor.camera.rgb/front_narrow"][:-NARROW_CROP_BOTTOM, :, ::-1]
     )
+    narr_rgb = torch.tensor(narr_rgb_cropped)
 
     wide_rgb = wide_rgb.float().permute(2, 0, 1)
     narr_rgb = narr_rgb.float().permute(2, 0, 1)

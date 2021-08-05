@@ -30,7 +30,7 @@ ACTIONS2 = np.array([[0, 1 / 3], [0, 2 / 3], [0, 1],], dtype=np.float32,).reshap
 
 ACTIONS3 = np.array([[1, 1 / 3], [1, 2 / 3], [1, 1],], dtype=np.float32,).reshape(3, 2)
 
-# num_acts = len(ACTIONS1)
+num_acts = len(ACTIONS1)
 num_yaws = len(YAWS)
 num_spds = len(SPEEDS)
 
@@ -40,7 +40,7 @@ def load_ego_model():
     model_weights = torch.load(
         os.path.join(project_home, "carla-rl/projects/reactive_mbrl/ego_model.th")
     )
-    model = EgoModel(dt=1.0)
+    model = EgoModel(dt=10.0)
     model.load_state_dict(model_weights)
     return model
 
@@ -49,10 +49,17 @@ def load_ego_model():
 def run(config):
     output_path = os.path.join(config.eval["log_dir"], "raw_maps")
     env = create_env(config.env, output_path)
-    env.reset()
+    env.reset(unseen=False, index=0)
     waypoints = env.carla_interface.global_planner._waypoints_queue
     waypoints = np.array(
-        [[w[0].transform.location.x, w[0].transform.location.y, w[0].transform.rotation.yaw] for w in waypoints]
+        [
+            [
+                w[0].transform.location.x,
+                w[0].transform.location.y,
+                w[0].transform.rotation.yaw,
+            ]
+            for w in waypoints
+        ]
     )
     try:
         # Warm start
@@ -61,18 +68,23 @@ def run(config):
         for _ in range(100):
             expert_action = env.get_autopilot_action(target_speed=10.0)
             _, _, _, info = env.step(expert_action)
-        for idx in range(0, 400, 10):
+        for idx in range(0, 1000):
+            _, world_points, _ = reward.calculate_reward_map(env, waypoints)
             expert_action = env.get_autopilot_action(target_speed=10.0)
             _, _, _, info = env.step(expert_action)
-            # ego_actor = env.carla_interface.get_ego_vehicle()._vehicle
-            # ego_loc = ego_actor.get_transform().location
-            # print(f"acter 30 steps {ego_loc.x}, {ego_loc.y}")
-            _, world_points, _ = reward.calculate_reward_map(env, waypoints)
-            # expert_action = env.get_autopilot_action(target_speed=5.0)
-            # env.step(expert_action)
-            # _, next_world_points, _ = reward.calculate_reward_map(env)
-            # plot_world_and_next(env, world_points, next_world_points, output_path)
-            plot_world(env, info, world_points, output_path, idx)
+            if idx % 20 == 0:
+                # ego_actor = env.carla_interface.get_ego_vehicle()._vehicle
+                # ego_loc = ego_actor.get_transform().location
+                # print(f"acter 30 steps {ego_loc.x}, {ego_loc.y}")
+                # _, world_points, _ = reward.calculate_reward_map(env, waypoints)
+                # plot_reward(env, output_path, waypoints, idx)
+                # expert_action = env.get_autopilot_action(target_speed=5.0)
+                # env.step(expert_action)
+                _, next_world_points, _ = reward.calculate_reward_map(env, waypoints)
+                plot_world_and_next(
+                    env, world_points, next_world_points, output_path, idx
+                )
+                # plot_world(env, info, world_points, output_path, idx)
 
         # plot_scene(env, output_path)
         # plot_route(env, waypoints, output_path)
@@ -93,6 +105,7 @@ def load_ego_model():
     model.load_state_dict(model_weights)
     return model
 
+
 def get_closest_waypoint(loc, route):
     min_dist = 10000
     min_wpt = None
@@ -107,7 +120,14 @@ def get_closest_waypoint(loc, route):
 def plot_world(env, info, world_points, output_path, idx):
     route = env.carla_interface.next_waypoints
     route = np.array(
-        [[w.transform.location.x, w.transform.location.y, np.radians(w.transform.rotation.yaw)] for w in route]
+        [
+            [
+                w.transform.location.x,
+                w.transform.location.y,
+                np.radians(w.transform.rotation.yaw),
+            ]
+            for w in route
+        ]
     )
     model = load_ego_model()
 
@@ -138,7 +158,8 @@ def plot_world(env, info, world_points, output_path, idx):
     pred_yaws = pred_yaws.detach().numpy()
     pred_speeds = pred_speeds.detach().numpy()
     loc_loss, yaw_loss, speed_loss, action_value = reward.calculate_action_value_map(
-        pred_locs, pred_yaws, pred_speeds, closest_waypoint)
+        pred_locs, pred_yaws, pred_speeds, closest_waypoint
+    )
     action_value = action_value[:27].reshape(9, 3)
     loc_loss = loc_loss[:27].reshape(9, 3)
     yaw_loss = yaw_loss[:27].reshape(9, 3)
@@ -163,9 +184,9 @@ def plot_world(env, info, world_points, output_path, idx):
     ego_actor = env.carla_interface.get_ego_vehicle()._vehicle
     ego_loc = ego_actor.get_transform().location
     plot_actor(ax, ego_actor, color="red")
-    ax.plot(route[:, 0], route[:, 1], 'o', color='blue')
-    ax.plot(closest_waypoint[0][0], closest_waypoint[0][1], 'o', color='green')
-    ax.plot(pred_locs[:, 0], pred_locs[:, 1], 'o', color='red')
+    ax.plot(route[:, 0], route[:, 1], "o", color="blue")
+    ax.plot(closest_waypoint[0][0], closest_waypoint[0][1], "o", color="green")
+    ax.plot(pred_locs[:, 0], pred_locs[:, 1], "o", color="red")
     ax.set_xlim(ego_loc.x - 20, ego_loc.x + 20)
     ax.set_ylim(ego_loc.y - 20, ego_loc.y + 20)
 
@@ -196,7 +217,6 @@ def plot_world(env, info, world_points, output_path, idx):
     plt.savefig(os.path.join(output_path, f"reward_{idx}.png"))
 
 
-
 def plot_route(env, route, output_path):
     ax = plt.gca()
     ax.plot(route[:, 0], route[:, 1], color="blue")
@@ -208,14 +228,14 @@ def plot_route(env, route, output_path):
     plt.savefig(os.path.join(output_path, "route.png"))
 
 
-def plot_world_and_next(env, world_pts, next_world_pts, output_path):
+def plot_world_and_next(env, world_pts, next_world_pts, output_path, index):
     ax = plt.gca()
     predicted = predict_next_world_pts(env, world_pts, torch.tensor(ACTIONS3))
 
-    offset = next_world_pts[0]
-    world_pts -= offset
-    predicted -= offset
-    next_world_pts -= offset
+    # offset = next_world_pts[0]
+    # world_pts -= offset
+    # predicted -= offset
+    # next_world_pts -= offset
 
     ax.plot(
         world_pts[:, 0], world_pts[:, 1], "o", color="black", label="previous",
@@ -224,6 +244,8 @@ def plot_world_and_next(env, world_pts, next_world_pts, output_path):
         next_world_pts[:, 0], next_world_pts[:, 1], "o", color="green", label="real",
     )
 
+    plot_av(ax, env)
+    plot_path(ax, env)
     ax.plot(
         predicted[:, 0],
         predicted[:, 1],
@@ -232,39 +254,42 @@ def plot_world_and_next(env, world_pts, next_world_pts, output_path):
         label="predicted 1 steering",
     )
 
-    # predicted = predict_next_world_pts(env, world_pts, torch.tensor(ACTIONS1))
-    # ax.plot(
-    #     predicted[:, 0],
-    #     predicted[:, 1],
-    #     "o",
-    #     color="red",
-    #     label="predicted -1 steering",
-    # )
+    predicted = predict_next_world_pts(env, world_pts, torch.tensor(ACTIONS1))
+    ax.plot(
+        predicted[:, 0],
+        predicted[:, 1],
+        "o",
+        color="red",
+        label="predicted -1 steering",
+    )
 
-    # predicted = predict_next_world_pts(env, world_pts, torch.tensor(ACTIONS2))
-    # ax.plot(
-    #     predicted[:, 0],
-    #     predicted[:, 1],
-    #     "o",
-    #     color="red",
-    #     label="predicted 0 steering",
-    # )
+    predicted = predict_next_world_pts(env, world_pts, torch.tensor(ACTIONS2))
+    ax.plot(
+        predicted[:, 0],
+        predicted[:, 1],
+        "o",
+        color="red",
+        label="predicted 0 steering",
+    )
 
     theta = np.arctan2(next_world_pts[-1][1], next_world_pts[-1][0])
     print(f"angle is {np.pi/4 - theta}")
     _next_locs = rotate_pts(next_world_pts, (np.pi / 4) - theta)
-    ax.plot(
-        _next_locs[:, 0], _next_locs[:, 1], "o", color="red", label="predicted rotated",
-    )
+    # ax.plot(
+    #    _next_locs[:, 0], _next_locs[:, 1], "o", color="red", label="predicted rotated",
+    # )
     ax.legend()
-    plt.savefig(os.path.join(output_path, "world.png"))
+    ax.axis("equal")
+    plt.savefig(os.path.join(output_path, f"world_{index}.png"))
+    plt.clf()
 
 
-def plot_reward(env, output_path, waypoints):
+def plot_reward(env, output_path, waypoints, idx):
     ax = plt.gca()
     rewards, _, _ = reward.calculate_reward_map(env, waypoints)
     ax.pcolormesh(rewards)
-    plt.savefig(os.path.join(output_path, "fig.png"))
+    plt.savefig(os.path.join(output_path, f"reward_{idx}.png"))
+    plt.clf()
 
 
 def plot_scene(env, output_path):
