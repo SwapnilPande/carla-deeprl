@@ -9,6 +9,18 @@ import os
 from tqdm import tqdm
 
 
+class NLLLoss(torch.nn.Module):
+    def __init__(self) -> None:
+        super(NLLLoss, self).__init__()
+
+    def forward(self, prediction, target):
+
+        # Get neg_log_prob for all batch dim, time step, state dim
+        neg_log_prob = - prediction.log_prob(target)
+        # Average across state dim
+        mean_neg_log_prob = torch.mean(neg_log_prob)
+
+        return mean_neg_log_prob
 
 
 
@@ -44,9 +56,10 @@ class ProbabilisticDynamicsMLP(nn.Module):
         # Output is the output state dim + reward if True
         self.output_dim = (state_dim_out + int(predict_reward))
         self.state_dim_out = state_dim_out
+        self.predict_reward = predict_reward
 
         self.n_neurons = n_neurons
-        
+
         # layer list
         layer_list = []
 
@@ -55,11 +68,14 @@ class ProbabilisticDynamicsMLP(nn.Module):
         layer_list.append(activation())
 
         # add hidden layers
-        for i in range(n_hidden_layers):
+        for _ in range(n_hidden_layers):
+            # Add Linear layer
             layer_list.append(nn.Linear(n_neurons, n_neurons))
+
+            # Add activation
             layer_list.append(activation())
 
-            # add dropout if needed
+            # add dropout if enabled
             if(drop_prob != 0):
                 layer_list.append(nn.Dropout(p = drop_prob))
 
@@ -69,23 +85,10 @@ class ProbabilisticDynamicsMLP(nn.Module):
         layer_list_mean, layer_list_logsd = [], []
 
         # add last head layer to match the output size
-        layer_list_mean.append(nn.Linear(n_neurons, n_neurons))
-        if(drop_prob != 0):
-            layer_list_mean.append(nn.Dropout(p = drop_prob))
-        layer_list_mean.append(nn.Linear(n_neurons, self.state_dim_out))
+        self.mean_state_head = nn.Linear(n_neurons, self.state_dim_out)
 
-        layer_list_logsd.append(nn.Linear(n_neurons, n_neurons))
-        if(drop_prob != 0):
-            layer_list_logsd.append(nn.Dropout(p = drop_prob))
-        layer_list_logsd.append(nn.Linear(n_neurons, self.state_dim_out))
-
-        #layer_list_logsd.append(torch.nn.Exp())
-
-        # Register state prediction head layers by putting them in a module list
-        self.mean_head = nn.ModuleList(layer_list_mean)
-        self.var_head = nn.ModuleList(layer_list_logsd)
-
-
+        self.std_state_head = nn.Linear(n_neurons, self.state_dim_out)
+        self.std_act = torch.exp
 
         # Build reward head if we're predicting reward
         self.reward_head = None
@@ -106,37 +109,35 @@ class ProbabilisticDynamicsMLP(nn.Module):
             # Register state prediction head layers by putting them in a module list
             self.reward_head = nn.ModuleList(layer_list)
 
-
-
-    # one single prediction in the form of gaussian 
+    # one single prediction in the form of gaussian
     # the output is [[meanhat1, meanhat2...], [varhat1, varhat2...], ([rewardhat1, rewardhat2...])]
-    def forward(self, x, include_reward = False):
+    def forward(self, x):
         for layer in self.model:
             #print("dim of x", x.shape)
             #print("dim of layer", layer)
             x = layer(x)
-        
-        mean_hat = x
-        for layer in self.mean_head:
-            mean_hat = layer(mean_hat)
-        var_hat = x
-        for layer in self.var_head:
-            var_hat = layer(var_hat)
 
-        if include_reward:
-            reward_hat = x
-            for layer in self.reward_head:
-                reward_hat =  layer(reward_hat)
-            return [mean_hat, var_hat, reward_hat]
-        return [mean_hat, torch.exp(torch.tensor(var_hat))]
-        
-                
+        mean = self.mean_state_head(x)
+        std = self.std_state_head(x)
+        std = self.std_act(std)
+
+        reward_out = None
+        if self.reward_head is not None:
+            reward_out = self.reward_head[0](x)
+            for layer in self.reward_head[1:]:
+                reward_out = layer(reward_out)
+            output = torch.cat([output, reward_out], dim = 1)
+
+        return mean, std, reward_out
+
+
 class ProbabilisticMLPDynamicsEnsemble(nn.Module):
     log_dir = "dynamics_ensemble"
     model_log_dir = os.path.join(log_dir, "models")
 
     def __init__(self,
                     config,
+
                     data_module = None,
                     state_dim_in = None,
                     state_dim_out = None,
@@ -144,14 +145,18 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
                     frame_stack = None,
                     norm_stats = None,
                     gpu = None,
+
                     logger = None,
-                    log_freq = 100):
+                    log_freq = 1200,
+                    disable_bars = True):
         super(ProbabilisticMLPDynamicsEnsemble, self).__init__()
 
         self.config = config
 
         # Save the logger
         self.logger = logger
+
+        self.disable_bars = disable_bars
 
         # Save config to load in the future
         if logger is not None:
@@ -216,13 +221,11 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
         self.lr = config.lr
         # Build the loss function using loss args
         # changed
-        #self.loss = config.loss(**config.loss_args)
-
-        # Validation loss
-        self.mse_loss = torch.nn.MSELoss()
+        self.loss = NLLLoss()
 
         # Save optimizer object
         self.optimizer_type = config.optimizer_type
+        self.optimizer_args = config.optimizer_args
 
         # Setup GPU
         self.gpu = self.config.gpu
@@ -247,79 +250,73 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
                 activation = self.network_cfg.activation
             ))
             self.models[-1].to(self.device)
-        
 
-
-
-
-    # def create_log_directories(self):
-    #     # Construct the dynamics_ensemble log dir
-    #     # Base log dir
-    #     self.log_dir = os.path.join(self.logger.log_dir, "dynamics_ensmemble")
-    #     os.mkdir(self.log_dir)
-
-    #     # Log dir for models
-    #     self.model_log_dir = os.path.join(self.log_dir, "models")
-    #     os.mkdir(self.model_log_dir)
-
-
-    # changed
-    def forward(self, x, model_idx=None):
-
-        #if model_idx: same as previous one
-        if model_idx != None:
-            # 2D array: [[mean1, mean2, ...], [var1, var2, ...]]
-            return self.models[model_idx](x)
-        #return all of them [pred1, ....]
+    def forward(self, x, model_idx=None, return_dist = False):
+        # Create a list of the models to iterate over
+        if model_idx is None:
+            model_indices = list(range(self.n_models))
         else:
-            # 3D array: [prediction_model1, prediction_model2, ...]
-            return [self.models[i](x) for i in range(len(self.models))]
+            model_indices = [model_idx]
 
 
+        state_predictions = []
+        reward_predictions = []
+        # predict for all models
+        for model_i in model_indices:
+            # Get output from model
+            mean, std, reward = self.models[model_i](x)
 
+            # Build diagonal gaussian model
+            dist = torch.distributions.normal.Normal(
+                            loc = mean,
+                            scale = std
+                        )
 
-    def prepare_batch(self, state_in, actions, delta, reward):
-        # Input should be obs and actions concatenated, and flattened
+            # If not return distribtuon, then sample from the distribution
+            if(not return_dist):
+                output = dist.sample()
+            # Return (dist, reward)
+            else:
+                output = dist
+
+            state_predictions.append(output)
+            reward_predictions.append(reward)
+
+        return state_predictions, reward_predictions
+
+    def prepare_feed(self, state_in, actions):
+        # Convert to cuda first
+        state_in = state_in.to(self.device)
+        actions = actions.to(self.device)
 
         # state_in is [batch_size, frame_stack, state_dim]
         # action is [batch_size, frame_stack, action_dim]
         # feed tensor is [batch_size, frame_stack * (state_dim + action_dim)]
-
-        # Convert to cuda first
-        state_in = state_in.to(self.device)
-        actions = actions.to(self.device)
-        delta = delta.to(self.device)
-        reward = reward.to(self.device)
-
         feed_tensor = torch.reshape(
-                            torch.cat([state_in, actions], dim = 2),
+                            torch.cat([state_in, actions], dim = -1),
                                 (-1, self.frame_stack * (self.state_dim_in + self.action_dim)
                             )
                       )
-        # print('state in', state_in.shape)
-        # print('act',actions.shape)
-        # print('feed tensor should be (-1, B x f(s + a)', feed_tensor.shape)
-        # print('delta', delta.shape)
-        # Concatenate delta and reward if we are predicting reward
+
+        return feed_tensor
+
+    def prepare_target(self, delta, reward):
+        delta = delta.to(self.device)
+        reward = reward.to(self.device)
+
         if(self.network_cfg.predict_reward):
-            return feed_tensor, torch.cat([delta,reward], dim = 1)
+            return torch.cat([delta,reward], dim = -1)
+
+        return delta
+
+    def prepare_batch(self, state_in, actions, delta, reward):
+        # Input should be obs and actions concatenated, and flattened
+        feed_tensor = self.prepare_feed(state_in, actions)
+
+        target_tensor = self.prepare_target(delta, reward)
+
         # Else, just return delta
-        return feed_tensor, delta
-
-
-    #changed: define a loss function:
-    '''
-    @param yhat[0]: list of predicted mean
-    @param yhat[1]: list of predicted var
-    @param target[0]: list of target mean
-    @param tagret[1]: list of target var
-    '''
-    def loss(self, yhat, target):
-        mean = yhat[0]
-        var = yhat[1]
-        dist = torch.distributions.normal.Normal(mean, var)
-        return torch.mean(- dist.log_prob(target))
-
+        return feed_tensor, target_tensor
 
     def training_step(self, batch, model_idx):
         # Zero Optimizer gradients
@@ -339,12 +336,8 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
         feed, target = self.prepare_batch(obs, actions, delta, rewards)
 
         # Make prediction with selected model
-        y_hat = self.forward(feed, model_idx = model_idx)
-        
-
-        # Compute loss
-        #print("yhat", y_hat[0].shape)
-        #print('target', target.shape)
+        y_hat, reward = self.forward(feed, model_idx = model_idx, return_dist=True)
+        y_hat = y_hat[0]
 
         loss = self.loss(y_hat, target)
         #print(loss.shape)
@@ -368,13 +361,13 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
         feed, target = self.prepare_batch(obs, actions, delta, rewards)
 
         # Predictions by each model
-        y_hat = self.forward(feed, model_idx = model_idx)
+
+        y_hat, reward = self.forward(feed, model_idx = model_idx, return_dist=True)
+        y_hat = y_hat[0]
 
         # Compute loss
-        
+
         loss = self.loss(y_hat, target)
-
-
         #chaged: loss function
         #mse_loss = self.mse_loss(y_hat, target)
 
