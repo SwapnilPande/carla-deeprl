@@ -1,4 +1,4 @@
-#TODO: Integrate sensor wrappers into main env code
+# TODO: Integrate sensor wrappers into main env code
 
 from __future__ import print_function
 
@@ -18,10 +18,12 @@ import queue
 import numpy as np
 from environment import env_util
 
-class SensorManager():
-    '''
+
+class SensorManager:
+    """
     Sensor Manager will always be associated with a parent actor(mostly vehicle)
-    '''
+    """
+
     def __init__(self, config, parent_actor):
         self.config = config
 
@@ -31,19 +33,23 @@ class SensorManager():
         self.sensor_configs = list(self.config.obs_config.sensors.values())
 
         # This is similar to normal dictionary but with efficient memory management during garbage collection
-        #self.sensors = weakref.WeakValueDictionary()
+        # self.sensors = weakref.WeakValueDictionary()
         self.sensors = {}
 
     def spawn(self):
         # Change this to dict format? Decide on config file format
-        for idx, (sensor_name, sensor_config) in enumerate(zip(self.sensor_names, self.sensor_configs)):
-            if sensor_name=="collision_sensor":
+        for idx, (sensor_name, sensor_config) in enumerate(
+            zip(self.sensor_names, self.sensor_configs)
+        ):
+            if sensor_name == "collision_sensor":
                 sensor = CollisionSensor(self.parent_actor)
-            elif sensor_name=="lane_invasion_sensor":
+            elif sensor_name == "lane_invasion_sensor":
                 sensor = LaneInvasionSensor(self.parent_actor)
-            elif 'camera' in sensor_name:
-                sensor_config.update({'name':sensor_name})
-                sensor = CameraSensor(self.parent_actor, sensor_config, self.config.verbose)
+            elif "camera" in sensor_name:
+                sensor_config.update({"name": sensor_name})
+                sensor = CameraSensor(
+                    self.parent_actor, sensor_config, self.config.verbose
+                )
             else:
                 raise Exception("Sensor {} not supported".format(sensor_name))
 
@@ -53,39 +59,44 @@ class SensorManager():
     def get_sensor_readings(self, world_frame=None):
         sensor_readings = {}
         for idx, k in enumerate(self.sensor_names):
-            if k=="collision_sensor":
-                sensor_readings[k] = {'num_collisions': self.sensors[k].num_collisions,\
-                                        'collision_actor_id': self.sensors[k].actor_id,\
-                                        'collision_actor_type': self.sensors[k].actor_type}
-            elif k=="lane_invasion_sensor":
-                sensor_readings[k] = {'num_lane_intersections': self.sensors[k].num_laneintersections,\
-                                        'out_of_road': self.sensors[k].out_of_road}
-            elif 'camera' in k:
+            if k == "collision_sensor":
+                sensor_readings[k] = {
+                    "num_collisions": self.sensors[k].num_collisions,
+                    "collision_actor_id": self.sensors[k].actor_id,
+                    "collision_actor_type": self.sensors[k].actor_type,
+                }
+            elif k == "lane_invasion_sensor":
+                sensor_readings[k] = {
+                    "num_lane_intersections": self.sensors[k].num_laneintersections,
+                    "out_of_road": self.sensors[k].out_of_road,
+                }
+            elif "camera" in k:
                 if world_frame is None:
                     print("No world frame found! Skipping reading from camera sensor!!")
                 else:
                     camera_image = self.sensors[k]._read_data(world_frame)
-                    sensor_readings[k] = {'image': camera_image}
+                    sensor_readings[k] = {"image": camera_image}
             else:
                 print("Uninitialized sensor!")
 
         return sensor_readings
 
+
 # ==============================================================================
 # -- Global functions ----------------------------------------------------------
 # ==============================================================================
 
+
 def find_weather_presets():
-    rgx = re.compile('.+?(?:(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|$)')
-    name = lambda x: ' '.join(m.group(0) for m in rgx.finditer(x))
-    presets = [x for x in dir(carla.WeatherParameters) if re.match('[A-Z].+', x)]
+    rgx = re.compile(".+?(?:(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|$)")
+    name = lambda x: " ".join(m.group(0) for m in rgx.finditer(x))
+    presets = [x for x in dir(carla.WeatherParameters) if re.match("[A-Z].+", x)]
     return [(getattr(carla.WeatherParameters, x), name(x)) for x in presets]
 
 
 def get_actor_display_name(actor, truncate=250):
-    name = ' '.join(actor.type_id.replace('_', '.').title().split('.')[1:])
-    return (name[:truncate-1] + u'\u2026') if len(name) > truncate else name
-
+    name = " ".join(actor.type_id.replace("_", ".").title().split(".")[1:])
+    return (name[: truncate - 1] + u"\u2026") if len(name) > truncate else name
 
 
 # ==============================================================================
@@ -102,12 +113,14 @@ class CollisionSensor(object):
         self._history = []
         self._parent = parent_actor
         world = self._parent.get_world()
-        bp = world.get_blueprint_library().find('sensor.other.collision')
+        bp = world.get_blueprint_library().find("sensor.other.collision")
         self.sensor = world.spawn_actor(bp, carla.Transform(), attach_to=self._parent)
         # We need to pass the lambda a weak reference to self to avoid circular
         # reference.
         weak_self = weakref.ref(self)
-        self.sensor.listen(lambda event: CollisionSensor._on_collision(weak_self, event))
+        self.sensor.listen(
+            lambda event: CollisionSensor._on_collision(weak_self, event)
+        )
 
     def get_collision_history(self):
         history = collections.defaultdict(int)
@@ -122,16 +135,16 @@ class CollisionSensor(object):
             return
         # actor_type = get_actor_display_name(event.other_actor)
         actor_type = event.other_actor.type_id
-        if 'road' not in actor_type:
+        if "road" not in actor_type:
             self.actor_id = event.other_actor.id
             self.actor_type = actor_type
             self.num_collisions += 1
         # print("actor type:{}".format(actor_type))
-        #print('Collision with %r, id = %d' % (actor_type, event.other_actor.id))
-        #impulse = event.normal_impulse
-        #intensity = math.sqrt(impulse.x**2 + impulse.y**2 + impulse.z**2)
-        #self._history.append((event.frame_number, intensity))
-        #if len(self._history) > 4000:
+        # print('Collision with %r, id = %d' % (actor_type, event.other_actor.id))
+        # impulse = event.normal_impulse
+        # intensity = math.sqrt(impulse.x**2 + impulse.y**2 + impulse.z**2)
+        # self._history.append((event.frame_number, intensity))
+        # if len(self._history) > 4000:
         #    self._history.pop(0)
 
 
@@ -147,12 +160,14 @@ class LaneInvasionSensor(object):
         self.num_laneintersections = 0
         self.out_of_road = False
         world = self._parent.get_world()
-        bp = world.get_blueprint_library().find('sensor.other.lane_invasion')
+        bp = world.get_blueprint_library().find("sensor.other.lane_invasion")
         self.sensor = world.spawn_actor(bp, carla.Transform(), attach_to=self._parent)
         # We need to pass the lambda a weak reference to self to avoid circular
         # reference.
         weak_self = weakref.ref(self)
-        self.sensor.listen(lambda event: LaneInvasionSensor._on_invasion(weak_self, event))
+        self.sensor.listen(
+            lambda event: LaneInvasionSensor._on_invasion(weak_self, event)
+        )
 
     @staticmethod
     def _on_invasion(weak_self, event):
@@ -160,9 +175,12 @@ class LaneInvasionSensor(object):
         if not self:
             return
         # TODO : Handle case of lane invasion for dashed vs solid lane markings
-        
+
         lane_changes = set(x.lane_change for x in event.crossed_lane_markings)
-        if carla.libcarla.LaneChange.NONE in lane_changes or carla.libcarla.LaneChange.Right in lane_changes:
+        if (
+            carla.libcarla.LaneChange.NONE in lane_changes
+            or carla.libcarla.LaneChange.Right in lane_changes
+        ):
             self.num_laneintersections += 1
 
         lane_types = set(x.type for x in event.crossed_lane_markings)
@@ -170,6 +188,7 @@ class LaneInvasionSensor(object):
             self.out_of_road = True
         # text = ['%r' % str(x).split()[-1] for x in set(event.crossed_lane_markings)]
         # self._hud.notification('Crossed line %s' % ' and '.join(text))
+
 
 # ==============================================================================
 # -- GnssSensor --------------------------------------------------------
@@ -183,8 +202,10 @@ class GnssSensor(object):
         self.lat = 0.0
         self.lon = 0.0
         world = self._parent.get_world()
-        bp = world.get_blueprint_library().find('sensor.other.gnss')
-        self.sensor = world.spawn_actor(bp, carla.Transform(carla.Location(x=1.0, z=2.8)), attach_to=self._parent)
+        bp = world.get_blueprint_library().find("sensor.other.gnss")
+        self.sensor = world.spawn_actor(
+            bp, carla.Transform(carla.Location(x=1.0, z=2.8)), attach_to=self._parent
+        )
         # We need to pass the lambda a weak reference to self to avoid circular
         # reference.
         weak_self = weakref.ref(self)
@@ -205,29 +226,42 @@ class GnssSensor(object):
 
 
 class CameraSensor(object):
-    def __init__(self, parent_actor,config=None, verbose = False):
-        '''
+    def __init__(self, parent_actor, config=None, verbose=False):
+        """
         Assumption:
             Format of config['name'] should be 'sensor.camera.rgb(or sem_seg)/front(or top)'
-        '''
+        """
         self.sensor = None
         self._parent = parent_actor
-        self.transform = carla.Transform(carla.Location(x=config['x'], z=config['z']), \
-                                            carla.Rotation(pitch=config['pitch']))
+        self.transform = carla.Transform(
+            carla.Location(x=config["x"], z=config["z"]),
+            carla.Rotation(pitch=config["pitch"]),
+        )
 
         self.verbose = verbose
         self.config = config
         self.camera_queue = queue.Queue()
-        self.name = config['name']
+        self.name = config["name"]
         world = self._parent.get_world()
         blueprint_library = world.get_blueprint_library()
-        sensor_bp = blueprint_library.find(config['name'].split('/')[0])
-        sensor_bp.set_attribute('image_size_x', config['sensor_x_res'])
-        sensor_bp.set_attribute('image_size_y', config['sensor_y_res'])
-        sensor_bp.set_attribute('sensor_tick', config['sensor_tick'])
-        sensor_bp.set_attribute('fov', config['fov'])
+        sensor_bp = blueprint_library.find(config["name"].split("/")[0])
+        sensor_bp.set_attribute("image_size_x", config["sensor_x_res"])
+        sensor_bp.set_attribute("image_size_y", config["sensor_y_res"])
+        sensor_bp.set_attribute("sensor_tick", config["sensor_tick"])
+        sensor_bp.set_attribute("fov", config["fov"])
 
-        self.sensor = world.spawn_actor(sensor_bp, self.transform, attach_to=self._parent)
+        fov = float(config["fov"])
+        view_width = int(config["sensor_x_res"])
+        view_height = int(config["sensor_y_res"])
+        calibration = np.identity(3)
+        calibration[0, 2] = view_width / 2.0
+        calibration[1, 2] = view_height / 2.0
+        calibration[0, 0] = calibration[1, 1] = view_width / (2.0 * np.tan(fov * np.pi / 360.0))
+        self.calibration = calibration
+
+        self.sensor = world.spawn_actor(
+            sensor_bp, self.transform, attach_to=self._parent
+        )
 
         self.sensor.listen(self.camera_queue.put)
 
@@ -235,10 +269,10 @@ class CameraSensor(object):
     def _read_data(self, world_frame, timeout=240.0):
         cam_image = self._retrieve_data(world_frame, timeout)
         cam_image_p = self._preprocess_image(cam_image)
-        if 'semantic' in self.name:
-            cam_image_p = cam_image_p[:,:,0]
+        if "semantic" in self.name:
+            cam_image_p = cam_image_p[:, :, 0]
             cam_image_p = env_util.reduce_classes(cam_image_p, False)
-            cam_image_p = env_util.convert_to_one_hot(cam_image_p, num_classes=self.config['num_classes'])
+            # cam_image_p = env_util.convert_to_one_hot(cam_image_p, num_classes=self.config['num_classes'])
         return cam_image_p
 
     def _retrieve_data(self, world_frame, timeout):
@@ -248,7 +282,11 @@ class CameraSensor(object):
                 return data
             else:
                 if self.verbose:
-                    print("difference in frames, world_frame={0}, data_frame={1}".format(world_frame, data.frame))
+                    print(
+                        "difference in frames, world_frame={0}, data_frame={1}".format(
+                            world_frame, data.frame
+                        )
+                    )
 
     def _preprocess_image(self, image):
         array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))

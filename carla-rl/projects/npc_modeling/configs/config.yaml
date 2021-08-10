@@ -1,0 +1,3 @@
+defaults:
+  - env: no_crash_dense_t1
+  - data: data_config

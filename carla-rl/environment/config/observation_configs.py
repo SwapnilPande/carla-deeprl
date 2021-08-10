@@ -2,6 +2,7 @@ from environment.config.base_config import BaseConfig
 import numpy as np
 from gym.spaces import Box
 
+
 class BaseObservationConfig(BaseConfig):
     def __init__(self):
         # Name of observation type
@@ -42,29 +43,32 @@ class BaseObservationConfig(BaseConfig):
 class LowDimObservationConfig(BaseObservationConfig):
     def __init__(self):
         self.input_type = "wp_obs_info_speed_steer_ldist_goal_light"
-        self.observation_space = Box(low=np.array([[-4.0, 0.0, 0.0, 0.0, -0.5, -1.0, 0.0, 0.0]]),
-                            high=np.array([[4.0, 1.0, 1.0, 1.0, 0.5, 1.0, 1.0, 1.0]]),
-                            dtype=np.float32)
+        self.observation_space = Box(
+            low=np.array([[-4.0, 0.0, 0.0, 0.0, -0.5, -1.0, 0.0, 0.0]]),
+            high=np.array([[4.0, 1.0, 1.0, 1.0, 0.5, 1.0, 1.0, 1.0]]),
+            dtype=np.float32,
+        )
 
-
-        self.sensors = {"lane_invasion_sensor":None, \
-                        "collision_sensor": None, \
-                        "sensor.camera.semantic_segmentation/top": {'x':3.0,
-                                                                    'z':10.0,
-                                                                    'pitch':270.0,
-                                                                    'sensor_x_res': '128',
-                                                                    'sensor_y_res':'128',
-                                                                    'fov':'90',
-                                                                    'sensor_tick': '0.0',
-                                                                    'num_classes':5},
-                        "sensor.camera.rgb/front": {'x':2.0,
-                                                    'z':1.4,
-                                                    'pitch':0.0,
-                                                    'sensor_x_res':'112',
-                                                    'sensor_y_res':'112',
-                                                    'fov':'90',
-                                                    'sensor_tick': '0.0'}
-                        }
+        self.sensors = {
+            "lane_invasion_sensor": None,
+            "collision_sensor": None,  # "sensor.camera.semantic_segmentation/top": {'x':3.0,
+            #                                             'z':10.0,
+            #                                             'pitch':270.0,
+            #                                             'sensor_x_res': '128',
+            #                                             'sensor_y_res':'128',
+            #                                             'fov':'90',
+            #                                             'sensor_tick': '0.0',
+            #                                             'num_classes':5},
+            "sensor.camera.rgb/front": {
+                "x": 2.0,
+                "z": 1.4,
+                "pitch": 0.0,
+                "sensor_x_res": "112",
+                "sensor_y_res": "112",
+                "fov": "90",
+                "sensor_tick": "0.0",
+            },
+        }
         self.observation_sensors = []
 
         self.single_channel_image = False
@@ -79,19 +83,18 @@ class LowDimObservationConfig(BaseObservationConfig):
         self.traffic_light_proximity_threshold = 15
         self.obstacle_dist_norm = 60
         self.disable_lane_invasion_sensor = False
+
 
 class LowDimObservationNoCameraConfig(BaseObservationConfig):
     def __init__(self):
         self.input_type = "wp_obs_info_speed_steer_ldist_goal_light"
-        self.observation_space = Box(low=np.array([[-4.0, 0.0, 0.0, 0.0, -0.5, -1.0, 0.0, 0.0]]),
-                            high=np.array([[4.0, 1.0, 1.0, 1.0, 0.5, 1.0, 1.0, 1.0]]),
-                            dtype=np.float32)
+        self.observation_space = Box(
+            low=np.array([[-4.0, 0.0, 0.0, 0.0, -0.5, -1.0, 0.0, 0.0]]),
+            high=np.array([[4.0, 1.0, 1.0, 1.0, 0.5, 1.0, 1.0, 1.0]]),
+            dtype=np.float32,
+        )
 
-
-        self.sensors = {
-                            "lane_invasion_sensor":None,
-                            "collision_sensor": None
-                    }
+        self.sensors = {"lane_invasion_sensor": None, "collision_sensor": None}
         self.observation_sensors = []
 
         self.single_channel_image = False
@@ -107,18 +110,17 @@ class LowDimObservationNoCameraConfig(BaseObservationConfig):
         self.obstacle_dist_norm = 60
         self.disable_lane_invasion_sensor = False
 
+
 class VehicleDynamicsNoCameraConfig(BaseObservationConfig):
     def __init__(self):
         self.input_type = "wp_obs_info_speed_steer"
-        self.observation_space = Box(low=np.array([[-4.0, 0.0, -0.5, -1.0]]),
-                            high=np.array([[4.0, 1.0, 0.5, 1.0]]),
-                            dtype=np.float32)
+        self.observation_space = Box(
+            low=np.array([[-4.0, 0.0, -0.5, -1.0]]),
+            high=np.array([[4.0, 1.0, 0.5, 1.0]]),
+            dtype=np.float32,
+        )
 
-
-        self.sensors = {
-                            "lane_invasion_sensor":None,
-                            "collision_sensor": None
-                    }
+        self.sensors = {"lane_invasion_sensor": None, "collision_sensor": None}
         self.observation_sensors = []
 
         self.single_channel_image = False
@@ -138,30 +140,36 @@ class VehicleDynamicsNoCameraConfig(BaseObservationConfig):
 class PerspectiveRGBObservationConfig(BaseObservationConfig):
     def __init__(self):
         self.input_type = "wp_obs_info_speed_steer_ldist_goal_light"
-        self.observation_space = Box(low=np.array([[-4.0, 0.0, 0.0, 0.0, -0.5, -1.0, 0.0, 0.0]]),
-                            high=np.array([[4.0, 1.0, 1.0, 1.0, 0.5, 1.0, 1.0, 1.0]]),
-                            dtype=np.float32)
+        self.observation_space = Box(
+            low=np.array([[-4.0, 0.0, 0.0, 0.0, -0.5, -1.0, 0.0, 0.0]]),
+            high=np.array([[4.0, 1.0, 1.0, 1.0, 0.5, 1.0, 1.0, 1.0]]),
+            dtype=np.float32,
+        )
 
-
-        self.sensors = {"lane_invasion_sensor":None, \
-                        "collision_sensor": None, \
-                        "sensor.camera.semantic_segmentation/top": {'x':3.0,
-                                                                    'z':10.0,
-                                                                    'pitch':270.0,
-                                                                    'sensor_x_res': '128',
-                                                                    'sensor_y_res':'128',
-                                                                    'fov':'90',
-                                                                    'sensor_tick': '0.0',
-                                                                    'num_classes':5},
-                        "sensor.camera.rgb/front": {'x':2.0,
-                                                    'z':1.4,
-                                                    'pitch':0.0,
-                                                    'sensor_x_res':'112',
-                                                    'sensor_y_res':'112',
-                                                    'fov':'90',
-                                                    'sensor_tick': '0.0'}
-                        }
-        self.observation_sensors = ['sensor.camera.rgb/front']
+        self.sensors = {
+            "lane_invasion_sensor": None,
+            "collision_sensor": None,
+            "sensor.camera.semantic_segmentation/top": {
+                "x": 3.0,
+                "z": 10.0,
+                "pitch": 270.0,
+                "sensor_x_res": "128",
+                "sensor_y_res": "128",
+                "fov": "90",
+                "sensor_tick": "0.0",
+                "num_classes": 5,
+            },
+            "sensor.camera.rgb/front": {
+                "x": 2.0,
+                "z": 1.4,
+                "pitch": 0.0,
+                "sensor_x_res": "112",
+                "sensor_y_res": "112",
+                "fov": "90",
+                "sensor_tick": "0.0",
+            },
+        }
+        self.observation_sensors = ["sensor.camera.rgb/front"]
 
         self.single_channel_image = False
         self.noise_dim = 1

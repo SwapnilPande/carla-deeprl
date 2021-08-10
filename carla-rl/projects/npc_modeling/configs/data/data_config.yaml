@@ -1,0 +1,8 @@
+train_dataset: "/zfsauton/datasets/ArgoRL/jhoang/npc_modeling/big_dataset"
+small_train_dataset: "/zfsauton/datasets/ArgoRL/jhoang/npc_modeling/small_dataset/"
+val_dataset: "/zfsauton/datasets/ArgoRL/jhoang/npc_modeling/val/"
+model_dir: "/zfsauton/datasets/ArgoRL/jhoang/npc_modeling/models/"
+
+speed: 5.0
+max_path_length: 5000
+n_samples: 1000
