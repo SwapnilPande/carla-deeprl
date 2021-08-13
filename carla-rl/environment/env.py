@@ -931,7 +931,7 @@ class CarlaEnv(gym.Env):
         self.total_reward = 0 # Episode level total reward
         self.unseen = unseen
 
-        carla_obs = self.carla_interface.reset(unseen = self.unseen)
+        carla_obs = self.carla_interface.reset(unseen = self.unseen, index=index)
 
         ################################################
         # Episode information(again)

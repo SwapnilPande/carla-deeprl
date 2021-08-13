@@ -30,24 +30,49 @@ class ConvAgent(pl.LightningModule):
         action = self.action_mlp(features)
         return action
 
+    def reset(self):
+        pass
+
     def predict(self, image, mlp_features):
-        image = preprocess_rgb(image).cuda()[None]
+        image = preprocess_rgb(image, image_size=(64,64)).cuda()[None]
         mlp_features = torch.FloatTensor(mlp_features).cuda().reshape(1,-1)
         out = self.forward(image, mlp_features)
         action = out.detach().cpu().numpy()
         return np.clip(action, -1, 1)
 
     def training_step(self, batch, batch_idx):
-        (image, mlp_features), action, reward, (next_image, next_mlp_features), terminal = batch
-        pred_action = self.forward(image, mlp_features)
-        loss = F.mse_loss(pred_action, action)
+        (image, mlp_features), action = batch
+
+        batch_size = image.shape[0]
+        H = image.shape[1]
+
+        image = image.reshape(batch_size,H,3,64,64)
+        mlp_features = mlp_features.reshape(batch_size,H,8)
+        action = action.reshape(batch_size,H,2)
+
+        loss = 0.0
+        for t in range(H):
+            pred_action = self.forward(image[:,t], mlp_features[:,t])
+            loss += F.mse_loss(pred_action, action[:,t])
+
         self.log('train/loss', loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        (image, mlp_features), action, reward, (next_image, next_mlp_features), terminal = batch
-        pred_action = self.forward(image, mlp_features)
-        loss = F.mse_loss(pred_action, action)
+        (image, mlp_features), action = batch
+
+        batch_size = image.shape[0]
+        H = image.shape[1]
+
+        image = image.reshape(batch_size,H,3,64,64)
+        mlp_features = mlp_features.reshape(batch_size,H,8)
+        action = action.reshape(batch_size,H,2)
+
+        loss = 0.0
+        for t in range(H):
+            pred_action = self.forward(image[:,t], mlp_features[:,t])
+            loss += F.mse_loss(pred_action, action[:,t])
+
         self.log('val/loss', loss)
         return loss
 
@@ -131,7 +156,7 @@ class SpatialBasis:
     after being processed by the vision network.
     """
 
-    def __init__(self, height=16, width=16, channels=64):
+    def __init__(self, height=28, width=28, channels=64):
         h, w, d = height, width, channels
 
         p_h = torch.mul(torch.arange(1, h+1).unsqueeze(1).float(), torch.ones(1, w).float()) * (np.pi / h)
@@ -174,110 +199,6 @@ def apply_alpha(A, V):
     V = V.reshape(b, h * w, d)
 
     return torch.matmul(A, V)
-
-
-class AttentionAgent(pl.LightningModule):
-    def __init__(self, c_v=48, c_k=16, c_s=16, attention_type='bottom_up'):
-        super().__init__()
-        self.c_v = c_v
-        self.c_k = c_k
-        assert c_v + c_k == 64, 'Invalid c_v, c_k values'
-
-        self.c_s = c_s
-
-        self.conv = nn.Sequential(*list(resnet18(pretrained=True).children())[:-5])
-        self.spatial_basis = SpatialBasis(height=16, width=16, channels=self.c_s)
-
-        self.mlp = nn.Sequential(
-            nn.Linear(2048 + 8, 512),
-            nn.ReLU(),
-            nn.Linear(512, 2)
-        )
-
-        self.attention_type = attention_type
-        assert attention_type in (
-            'bottom_up',        # query generated from image
-            'fixed_learned',    # fixed query, learnable
-            'fixed_random',     # fixed random query, not learned
-            'random'            # every query is random
-        ), 'Invalid attention_type, got {}'.format(attention_type)
-
-        if attention_type == 'fixed_random':
-            self.query = torch.normal(0,1,(1,32,self.c_k+self.c_s),requires_grad=False)
-        elif attention_type == 'fixed_learned':
-            self.query = nn.Parameter(torch.normal(0,1,(1,32,self.c_k+self.c_s),requires_grad=True))
-        elif attention_type == 'bottom_up':
-            self.query_network = nn.Sequential(
-                *list(resnet18(pretrained=True).children())[:-2],
-                nn.Flatten(),
-                nn.Linear(2048, 32 * (self.c_k+self.c_s))
-            )
-
-    def forward(self, image, mlp_features, return_map=False):
-        batch_size = image.shape[0]
-        x = self.conv(image).permute(0,2,3,1) # move channels to the end
-        k, v = x[...,:self.c_k], x[...,self.c_k:] # split into key-value along channel
-        k, v = self.spatial_basis(k), self.spatial_basis(v)
-
-        if self.attention_type in ('fixed_learned', 'fixed_random'):
-            q = self.query.clone().to(self.device)
-            q = q.repeat(batch_size, 1, 1)
-        elif self.attention_type == 'random':
-            q = torch.normal(0,1,(batch_size,32,self.c_k+self.c_s)).to(self.device)
-        elif self.attention_type == 'bottom_up':
-            q = self.query_network(image)
-            q = q.reshape(batch_size, 32, self.c_k + self.c_s)
-        else:
-            raise NotImplementedError
-
-        A = torch.matmul(k, q.transpose(2,1).unsqueeze(1))
-        A = spatial_softmax(A)
-        if return_map:
-            attention_map = A.clone().detach()
-        a = apply_alpha(A, v)
-        a = a.reshape(-1, 2048)
-        mlp_features = mlp_features.reshape(-1,8)
-        out = torch.cat([a, mlp_features], dim=1)
-
-        if return_map:
-            return self.mlp(out), attention_map
-        else:
-            return self.mlp(out)
-
-    def predict(self, image, mlp_features, return_map=False):
-        image = preprocess_rgb(image).cuda()[None]
-        mlp_features = torch.FloatTensor(mlp_features).cuda().reshape(1,-1)
-        if return_map:
-            out, attention_map = self.forward(image, mlp_features, return_map=return_map)
-            action = out.detach().cpu().numpy()
-            action = np.clip(action, -1, 1)
-            return action, attention_map.detach().cpu().numpy()
-        else:
-            out = self.forward(image, mlp_features)
-            action = out.detach().cpu().numpy()
-            action = np.clip(action, -1, 1)
-            return action
-
-    def training_step(self, batch, batch_idx):
-        (image, mlp_features), action, reward, terminal = batch
-        image = image.reshape(-1,3,64,64)
-        mlp_features = mlp_features.reshape(-1,8)
-        pred_action = self.forward(image, mlp_features)
-        loss = F.mse_loss(pred_action, action)
-        self.log('train/loss', loss)
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        (image, mlp_features), action, reward, terminal = batch
-        image = image.reshape(-1,3,64,64)
-        mlp_features = mlp_features.reshape(-1,8)
-        pred_action = self.forward(image, mlp_features)
-        loss = F.mse_loss(pred_action, action)
-        self.log('val/loss', loss)
-        return loss
-
-    def configure_optimizers(self):
-        return optim.Adam(self.parameters(), lr=1e-3)
 
 
 class ConvLSTMCell(nn.Module):
@@ -403,6 +324,7 @@ class ConvLSTMCell(nn.Module):
         return ch, cc   
 
     def reset(self):
+        del self.prev_hidden
         self.prev_hidden = None
 
     def init_hidden(self, batch_size, hidden, height, width, device):
@@ -427,7 +349,7 @@ class ConvLSTMCell(nn.Module):
 
 
 class RecurrentAttentionAgent(pl.LightningModule):
-    def __init__(self, c_v=48, c_k=16, c_s=16, H=26, conv_type='convlstm', attention_type='bottom_up'):
+    def __init__(self, c_v=48, c_k=16, c_s=16, H=20, conv_type='convlstm', attention_type='bottom_up'):
         super().__init__()
         self.c_v = c_v
         self.c_k = c_k
@@ -438,15 +360,16 @@ class RecurrentAttentionAgent(pl.LightningModule):
         self.conv = nn.Sequential(*list(resnet18(pretrained=True).children())[:-5])
         self.spatial_basis = SpatialBasis(height=16, width=16, channels=self.c_s)
         self.answer_processor = nn.Sequential(
-            nn.Linear(2048 + 8, 256),
+            nn.Linear(2048, 256),
             nn.ReLU(),
-            nn.Linear(256, 256)
+            nn.Linear(256, 128)
         )
         self.action_predictor = nn.Sequential(
-            nn.Linear(256, 256),
+            nn.Linear(128, 128),
             nn.ReLU(),
-            nn.Linear(256, 2)
+            nn.Linear(128, 2)
         )
+        self.measurement_mlp = nn.Linear(8, 2048)
 
         self.conv_type = conv_type
         assert conv_type in (
@@ -456,6 +379,7 @@ class RecurrentAttentionAgent(pl.LightningModule):
 
         if conv_type == 'convlstm':
             self.conv_lstm = ConvLSTMCell(input_channels=64, hidden_channels=64, kernel_size=3)
+            self.convh = None
         elif conv_type == 'conv':
             pass
         else:
@@ -477,17 +401,22 @@ class RecurrentAttentionAgent(pl.LightningModule):
             self.query = nn.Parameter(torch.normal(0,1,(1,32,self.c_k+self.c_s),requires_grad=True))
         elif attention_type == 'bottom_up':
             self.query_network = nn.Sequential(
-                *list(resnet18(pretrained=True).children())[:-2],
+                *list(resnet18(pretrained=True).children())[:-5],
+                nn.Conv2d(64, 8, kernel_size=3, stride=1, padding=1, bias=False),
                 nn.Flatten(),
-                nn.Linear(2048, 32 * (self.c_k+self.c_s))
+                nn.Linear(2048, 512),
+                nn.ReLU(),
+                nn.Linear(512, 32 * (self.c_k+self.c_s))
             )
         elif attention_type == 'lstm':
             self.query_network = nn.Sequential(
-                nn.Linear(256, 256),
+                nn.Linear(128, 128),
                 nn.ReLU(),
-                nn.Linear(256, 32 * (self.c_k+self.c_s))
+                nn.Linear(128, 32 * (self.c_k+self.c_s))
             )
-            self.lstm = nn.LSTMCell(256,256)
+            self.lstm = nn.LSTMCell(128,128)
+            self.prev_out = None
+            self.h = None
         elif attention_type == 'transformer':
             pass
         elif attention_type == 'random':
@@ -500,11 +429,17 @@ class RecurrentAttentionAgent(pl.LightningModule):
 
         if self.conv_type == 'convlstm':
             self.conv_lstm.reset()
-            self.convh = None
+            if self.convh is not None:
+                del self.convh
+                self.convh = None
 
         if self.attention_type == 'lstm':
-            self.prev_out = None
-            self.h = None
+            if self.prev_out is not None:
+                del self.prev_out
+                self.prev_out = None
+            if self.h is not None:
+                del self.h
+                self.h = None
 
     def forward(self, image, mlp_features, return_map=False):
         batch_size = image.shape[0]
@@ -526,7 +461,7 @@ class RecurrentAttentionAgent(pl.LightningModule):
             q = q.reshape(batch_size, 32, self.c_k + self.c_s)
         elif self.attention_type == 'lstm':
             if self.prev_out is None:
-                self.prev_out = torch.zeros((batch_size,256)).to(self.device)
+                self.prev_out = torch.zeros((batch_size,128)).to(self.device)
             q = self.query_network(self.prev_out)
             q = q.reshape(batch_size, 32, self.c_k + self.c_s)
         else:
@@ -539,7 +474,9 @@ class RecurrentAttentionAgent(pl.LightningModule):
         a = apply_alpha(A, v)
         a = a.reshape(-1, 2048)
         mlp_features = mlp_features.reshape(-1,8)
-        out = torch.cat([a, mlp_features], dim=1)
+        mlp_features = self.measurement_mlp(mlp_features)
+        # out = torch.cat([a, mlp_features], dim=1)
+        out = a + mlp_features
         out = self.answer_processor(out)
 
         if self.attention_type == 'lstm':
@@ -555,7 +492,7 @@ class RecurrentAttentionAgent(pl.LightningModule):
             return self.action_predictor(out)
 
     def predict(self, image, mlp_features, return_map=False):
-        image = preprocess_rgb(image).cuda()[None]
+        image = preprocess_rgb(image, image_size=(64,64)).cuda()[None]
         mlp_features = torch.FloatTensor(mlp_features).cuda().reshape(1,-1)
         if return_map:
             out, attention_map = self.forward(image, mlp_features, return_map=return_map)
@@ -609,4 +546,4 @@ class RecurrentAttentionAgent(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        return optim.Adam(self.parameters(), lr=1e-3)
+        return optim.Adam(self.parameters(), lr=3e-5)

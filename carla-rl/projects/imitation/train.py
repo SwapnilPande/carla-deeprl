@@ -24,7 +24,7 @@ from environment.config.config import DefaultMainConfig
 from environment.config.observation_configs import *
 from environment.config.scenario_configs import *
 from environment.config.action_configs import *
-from models import ConvAgent, PerceiverAgent, AttentionAgent, RecurrentAttentionAgent
+from models import ConvAgent, PerceiverAgent, RecurrentAttentionAgent
 
 
 class EvaluationCallback(Callback):
@@ -60,10 +60,13 @@ class EvaluationCallback(Callback):
             obs = self.env.reset(unseen=True, index=index)
             model.reset()
             for _ in range(self.eval_length):
-                image_obs = self.env.render(camera='sensor.camera.rgb/top')
-                action = model.predict(image_obs, obs)[0]
+                image_obs = self.env.render(camera='sensor.camera.rgb/front')
+
+                with torch.no_grad():
+                    action = model.predict(image_obs, obs)[0]
+
                 obs, reward, done, info = self.env.step(action)
-                frames.append(self.env.render(camera='sensor.camera.rgb/top'))
+                frames.append(image_obs)
                 total_reward += reward
                 if done:
                     break
@@ -93,7 +96,7 @@ def main(cfg):
     # seed_everything(cfg.seed)
 
     # Loading agent and environment
-    agent = RecurrentAttentionAgent(**cfg.agent) # hydra.utils.instantiate(cfg.algo.agent)
+    agent = ConvAgent()# RecurrentAttentionAgent(**cfg.agent) # hydra.utils.instantiate(cfg.algo.agent)
 
     # Setting up logger and checkpoint/eval callbacks
     logger = TensorBoardLogger(save_dir=os.getcwd(), name='', version='')
@@ -106,14 +109,16 @@ def main(cfg):
         config = DefaultMainConfig()
 
         obs_config = LowDimObservationConfig()
-        obs_config.sensors['sensor.camera.rgb/top'] = {
-            'x':0.0,
-            'z':18.0,
-            'pitch':270,
-            'sensor_x_res':'64',
-            'sensor_y_res':'64',
-            'fov':'90', \
-            'sensor_tick': '0.0'}
+        # obs_config.sensors['sensor.camera.rgb/top'] = {
+        #     'x':0.0,
+        #     'z':18.0,
+        #     'pitch':270,
+        #     'sensor_x_res':'64',
+        #     'sensor_y_res':'64',
+        #     'fov':'90', \
+        #     'sensor_tick': '0.0'}
+
+        del obs_config.sensors['sensor.camera.semantic_segmentation/top']
 
         scenario_config = NoCrashDenseTown01Config() # LeaderboardConfig()
         scenario_config.city_name = 'Town02'

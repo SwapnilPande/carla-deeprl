@@ -51,7 +51,7 @@ class OfflineCarlaDataset(Dataset):
             if traj_length <= H:
                 continue
 
-            for i in range(H-1, traj_length):
+            for i in range(H-1, traj_length, H):
                 # TODO: this is definitely the slow way
                 image_paths = [samples[t]['image_path'] for t in range(i-H+1, i+1)]
                 mlp_features = [samples[t]['obs'] for t in range(i-H+1, i+1)]
@@ -59,7 +59,7 @@ class OfflineCarlaDataset(Dataset):
                 obs = image_paths, mlp_features
                 # reward = samples[i]['reward']
                 # terminal = samples[i]['done']
-                action = [samples[t]['action'] for t in range(i-H+1,i+1)]
+                action = [samples[t]['action'] for t in range(i-H+1, i+1)]
 
                 self.obs.append(obs)
                 self.actions.append(action)
@@ -71,13 +71,15 @@ class OfflineCarlaDataset(Dataset):
     def __getitem__(self, idx):
         image_paths, mlp_features = self.obs[idx]
 
-        mlp_features = torch.FloatTensor(mlp_features)
+        mlp_features = torch.FloatTensor(mlp_features).reshape(self.H,8)
         action = torch.FloatTensor(self.actions[idx])
         # reward = torch.FloatTensor([self.rewards[idx]])
         # terminal = torch.Tensor([self.terminals[idx]])
 
+        mlp_features[:,[1,2,7]] = 0.  # hide privileged information
+
         if self.use_images:
-            image = torch.cat([preprocess_rgb(cv2.imread(path))[None] for path in image_paths], dim=0)
+            image = torch.cat([preprocess_rgb(cv2.imread(path), image_size=(64,64))[None] for path in image_paths], dim=0)
             return (image, mlp_features), action
         else:
             return mlp_features.flatten(), action
