@@ -14,9 +14,9 @@ data_module:
       - '/zfsauton/datasets/ArgoRL/brianyan/carla_dataset/town01/expert/'
       - '/zfsauton/datasets/ArgoRL/brianyan/carla_dataset/town01/noisy/'
       - '/zfsauton/datasets/ArgoRL/brianyan/carla_dataset/town02/expert/'
-      - '/zfsauton/datasets/ArgoRL/brianyan/carla_dataset/town02/noisy/'
+      # - '/zfsauton/datasets/ArgoRL/brianyan/carla_dataset/town02/noisy/'
     val_dataset_idx:
-      - 3
+      - 2
     max_train_trajectories: -1
     max_val_trajectories: 15
 

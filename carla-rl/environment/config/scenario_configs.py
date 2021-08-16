@@ -104,13 +104,13 @@ class NoCrashConfig(BaseScenarioConfig):
         self.dist_for_success = 10.0
         self.max_steps = 10000
         self.max_offlane_steps = 20
-        self.max_static_steps = 1000
+        self.max_static_steps = 500
         # TODO: Check how this interacts with reward
         self.disable_collision = False
         # Disable episode termination due to vehicle being static
-        self.disable_static = True
+        self.disable_static = False
         # Disable episode termination due to traffic light
-        self.disable_traffic_light = True
+        self.disable_traffic_light = False
         self.zero_speed_threshold = 0.05
         self.num_episodes = 25
         self.updated_scenarios = False

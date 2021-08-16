@@ -41,7 +41,7 @@ class EvaluationCallback(Callback):
         self.experiment = None
 
     @rank_zero_only
-    def on_epoch_end(self, trainer, pl_module):
+    def on_validation_epoch_end(self, trainer, pl_module):
         self.trainer = trainer
         epoch = trainer.current_epoch
         if epoch % self.eval_freq == 0:
@@ -123,8 +123,8 @@ def main(cfg):
         scenario_config.city_name = 'Town02'
         scenario_config.num_pedestrians = 50
         scenario_config.sample_npc = True
-        scenario_config.num_npc_lower_threshold = 50
-        scenario_config.num_npc_upper_threshold = 150
+        scenario_config.num_npc_lower_threshold = 75
+        scenario_config.num_npc_upper_threshold = 76
 
         action_config = MergedSpeedScaledTanhConfig()
         action_config.frame_skip = 5

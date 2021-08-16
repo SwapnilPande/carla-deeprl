@@ -76,7 +76,7 @@ class OfflineCarlaDataset(Dataset):
         # reward = torch.FloatTensor([self.rewards[idx]])
         # terminal = torch.Tensor([self.terminals[idx]])
 
-        mlp_features[:,[1,2,7]] = 0.  # hide privileged information
+        # mlp_features[:,[1,2,7]] = 0.  # hide privileged information
 
         if self.use_images:
             image = torch.cat([preprocess_rgb(cv2.imread(path), image_size=(64,64))[None] for path in image_paths], dim=0)
@@ -110,8 +110,8 @@ class OfflineCarlaDataModule(pl.LightningDataModule):
         self.val_data = None
 
     def setup(self, stage):
-        train_datasets = [d for i,d in enumerate(self.paths) if i in self.val_dataset_idx]
-        val_datasets = [d for i,d in enumerate(self.paths) if i not in self.val_dataset_idx]
+        train_datasets = [d for i,d in enumerate(self.paths) if i not in self.val_dataset_idx]
+        val_datasets = [d for i,d in enumerate(self.paths) if i in self.val_dataset_idx]
 
         train_datasets = [OfflineCarlaDataset(use_images=self.use_images, path=path, H=self.H, max_trajectories=self.max_train_trajectories) for path in train_datasets]
         val_datasets = [OfflineCarlaDataset(use_images=self.use_images, path=path, H=self.H, max_trajectories=self.max_val_trajectories) for path in val_datasets]

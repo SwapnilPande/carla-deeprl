@@ -73,9 +73,9 @@ class ActorManager910():
         # Parameters for ego vehicle
         self.ego_vehicle = self.spawn_ego_vehicle(source_transform)
         self.args_longitudinal_dict = {
-            'K_P': 0.1,
-            'K_D': 0.0005,
-            'K_I': 0.4,
+            'K_P': 1.4,
+            'K_D': 0.1,
+            'K_I': 0.0,
             'dt': 5/20.}
         self.args_lateral_dict = {
             'K_P': 0.88,
@@ -128,7 +128,7 @@ class ActorManager910():
 
         # Agent uses proximity_threshold to detect traffic lights.
         # Hence we use traffic_light_proximity_threshold while creating an Agent.
-        vehicle_agent = BasicAgent(self.vehicle_actor, self.config.obs_config.traffic_light_proximity_threshold)
+        vehicle_agent = BasicAgent(self.vehicle_actor, self.config.obs_config.traffic_light_proximity_threshold-5)
         return vehicle_agent
 
     def get_ego_vehicle_transform(self):

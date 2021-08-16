@@ -256,6 +256,7 @@ def main(args):
     scenario_config.sample_npc = True
     scenario_config.num_npc_lower_threshold = 50
     scenario_config.num_npc_upper_threshold = 150
+    scenario_config.use_scenarios = False
 
     action_config = MergedSpeedScaledTanhConfig()
     action_config.frame_skip = 5

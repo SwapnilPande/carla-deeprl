@@ -307,8 +307,10 @@ class GlobalPlanner():
                                         vehicle_transform,
                                         self.second_last_waypoint,
                                         self.last_waypoint)
+                next_waypoints = [self.second_last_waypoint, self.last_waypoint]
             else:
                 self.dist_to_trajectory = 0
+                next_waypoints = [self.last_waypoint]
 
         # Below is an approximation of dist_to_goal which was used earlier.
         dist_to_goal_approx = len(self._waypoints_queue) *self._hop_resolution
