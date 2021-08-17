@@ -72,16 +72,18 @@ class ActorManager910():
 
         # Parameters for ego vehicle
         self.ego_vehicle = self.spawn_ego_vehicle(source_transform)
+        
+        dt = self.config.action_config.frame_skip / self.config.server_fps
         self.args_longitudinal_dict = {
-            'K_P': 0.1,
-            'K_D': 0.0005,
-            'K_I': 0.4,
-            'dt': 1/10.0}
+            'K_P': 1.4,
+            'K_D': 0.1,
+            'K_I': 0.0,
+            'dt': dt}
         self.args_lateral_dict = {
             'K_P': 0.88,
             'K_D': 0.02,
             'K_I': 0.5,
-            'dt': 1/10.0}
+            'dt': dt}
         self.controller = controller.PIDLongitudinalController(K_P=self.args_longitudinal_dict['K_P'], K_D=self.args_longitudinal_dict['K_D'], K_I=self.args_longitudinal_dict['K_I'], dt=self.args_longitudinal_dict['dt'])
         self.lateral_controller = controller.PIDLateralController(self.vehicle_actor, K_P=self.args_lateral_dict['K_P'], K_D=self.args_lateral_dict['K_D'], K_I=self.args_lateral_dict['K_I'], dt=self.args_lateral_dict['dt'])
         self.target_speed = self.config.action_config.target_speed
@@ -128,7 +130,7 @@ class ActorManager910():
 
         # Agent uses proximity_threshold to detect traffic lights.
         # Hence we use traffic_light_proximity_threshold while creating an Agent.
-        vehicle_agent = BasicAgent(self.vehicle_actor, self.config.obs_config.traffic_light_proximity_threshold)
+        vehicle_agent = BasicAgent(self.vehicle_actor, self.config.obs_config.traffic_light_proximity_threshold-5)
         return vehicle_agent
 
     def get_ego_vehicle_transform(self):

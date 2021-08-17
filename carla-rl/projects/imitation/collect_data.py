@@ -89,7 +89,7 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
         # positions = []
         # labels = []
 
-        # base_transform = ego_actor.get_transform()
+        base_transform = ego_actor.get_transform()
         # base_waypoint = env.carla_interface.map.get_waypoint(base_transform.location, project_to_road=True)
 
         # pixel_x, pixel_y = np.meshgrid(np.arange(64), np.arange(64))
@@ -133,20 +133,21 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
         # labels = np.array(labels)
 
         # # check for vehicle collisions
-        # actors = [actor for actor in env.carla_interface.actor_fleet.actor_list 
-        #     if 'vehicle' in actor.type_id 
-        #     and actor.get_transform().location.distance(base_transform.location) < 30
-        #     and actor != ego_actor]
+        actor_list = env.carla_interface.actor_fleet.actor_list 
+        actors = [actor for actor in actor_list
+            if 'vehicle' in actor.type_id 
+            and actor.get_transform().location.distance(base_transform.location) < 50
+            and actor != ego_actor]
 
         # if len(actors) > 0:
-        #     bounding_boxes = [[(actor.bounding_box.extent.x, actor.bounding_box.extent.y),
-        #                     (actor.bounding_box.extent.x, -actor.bounding_box.extent.y),
-        #                     (-actor.bounding_box.extent.x, -actor.bounding_box.extent.y),
-        #                     (-actor.bounding_box.extent.x, actor.bounding_box.extent.y)] for actor in actors]
-        #     vehicles = [(actor.get_transform().location.x, actor.get_transform().location.y) for actor in actors]
+        # bounding_boxes = [[(actor.bounding_box.extent.x, actor.bounding_box.extent.y),
+        #                 (actor.bounding_box.extent.x, -actor.bounding_box.extent.y),
+        #                 (-actor.bounding_box.extent.x, -actor.bounding_box.extent.y),
+        #                 (-actor.bounding_box.extent.x, actor.bounding_box.extent.y)] for actor in actors]
+        vehicles = [(actor.get_transform().location.x, actor.get_transform().location.y) for actor in actors]
 
-        #     bounding_boxes = np.array(bounding_boxes)
-        #     vehicles = np.array(vehicles)
+        # bounding_boxes = np.array(bounding_boxes)
+        vehicles = np.array(vehicles)
         #     num_vehicles = len(vehicles)
 
         #     for i in range(len(actors)):
@@ -182,6 +183,8 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
             'action': action.tolist(),
             'reward': reward,
             'done': done.item(),
+
+            'vehicles': vehicles.tolist()
 
             # 'actor_tf': transform_to_list(ego_actor.get_transform()),
             # 'camera_tf': transform_to_list(camera_actor.get_transform()),
@@ -233,18 +236,19 @@ def main(args):
         'x':0.0,
         'z':18.0,
         'pitch':270,
-        'sensor_x_res':'64',
-        'sensor_y_res':'64',
-        'fov':'90', \
+        'sensor_x_res':'128',
+        'sensor_y_res':'128',
+        'fov':'120', \
         'sensor_tick': '0.0'}
-    # obs_config.sensors['sensor.camera.rgb/map'] = {
-    #     'x':0.0,
-    #     'z':18.0,
-    #     'pitch':270,
-    #     'sensor_x_res':'64',
-    #     'sensor_y_res':'64',
-    #     'fov':'90', \
-    #     'sensor_tick': '0.0'}
+    obs_config.sensors['sensor.camera.semantic_segmentation/top'] = {
+        'x':0.0,
+        'z':18.0,
+        'pitch':270.0,
+        'sensor_x_res': '128',
+        'sensor_y_res':'128',
+        'fov':'120',
+        'sensor_tick': '0.0',
+        'num_classes':5}
 
     scenario_config = NoCrashDenseTown01Config() # LeaderboardConfig()
     scenario_config.city_name = args.town
@@ -252,11 +256,15 @@ def main(args):
     scenario_config.sample_npc = True
     scenario_config.num_npc_lower_threshold = 50
     scenario_config.num_npc_upper_threshold = 150
+    scenario_config.use_scenarios = False
 
     action_config = MergedSpeedScaledTanhConfig()
     action_config.frame_skip = 5
 
-    config.populate_config(observation_config=obs_config, scenario_config=scenario_config)
+    config.populate_config(
+        observation_config=obs_config, 
+        action_config=action_config, 
+        scenario_config=scenario_config)
     config.server_fps = 20
     config.carla_gpu = args.gpu
 

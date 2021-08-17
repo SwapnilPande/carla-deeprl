@@ -1,0 +1,38 @@
+exp_name: ???
+checkpoint_freq: 1
+
+gpu: 0 # assuming single GPU
+seed: 0
+server_port: 2000
+
+use_images: true
+
+data_module:
+    batch_size: 64
+    num_workers: 4
+    dataset_paths: 
+      - '/zfsauton/datasets/ArgoRL/brianyan/carla_dataset/town01/expert/'
+      - '/zfsauton/datasets/ArgoRL/brianyan/carla_dataset/town01/noisy/'
+      - '/zfsauton/datasets/ArgoRL/brianyan/carla_dataset/town02/expert/'
+      # - '/zfsauton/datasets/ArgoRL/brianyan/carla_dataset/town02/noisy/'
+    val_dataset_idx:
+      - 2
+    max_train_trajectories: -1
+    max_val_trajectories: 15
+
+agent:
+    embedding_size: 128
+
+eval_freq: 1
+eval_length: 1000
+num_eval_episodes: 1
+
+num_epochs: 100
+
+trainer:
+    precision: 16
+    gpus: ${gpu}
+
+hydra:
+    run:
+        dir: /home/scratch/brianyan/outputs/${exp_name}/${now:%Y-%m-%d_%H-%M-%S}

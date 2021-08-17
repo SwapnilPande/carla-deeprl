@@ -36,7 +36,7 @@ class OfflineCarlaDataset(Dataset):
         for trajectory_path in trajectory_paths:
             samples = []
             json_paths = sorted(glob.glob('{}/measurements/*.json'.format(trajectory_path)))
-            image_paths = sorted(glob.glob('{}/segmentation/*.png'.format(trajectory_path)))
+            image_paths = sorted(glob.glob('{}/topdown/*.png'.format(trajectory_path)))
             traj_length = min(len(json_paths), len(image_paths))
 
             for i in range(traj_length):
@@ -92,8 +92,8 @@ class OfflineCarlaDataset(Dataset):
         terminal = torch.Tensor([self.terminals[idx]])
 
         if self.use_images:
-            image = torch.cat([preprocess_topdown(cv2.imread(path)) for path in image_paths], dim=0)
-            next_image = torch.cat([preprocess_topdown(cv2.imread(path)) for path in next_image_paths], dim=0)
+            image = torch.cat([preprocess_rgb(cv2.imread(path)) for path in image_paths], dim=0)
+            next_image = torch.cat([preprocess_rgb(cv2.imread(path)) for path in next_image_paths], dim=0)
             return (image, mlp_features), action, reward, (next_image, next_mlp_features), terminal
         else:
             return mlp_features.flatten(), action, reward, next_mlp_features.flatten(), terminal

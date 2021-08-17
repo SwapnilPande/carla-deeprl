@@ -4,7 +4,6 @@ import time
 
 import numpy as np
 import cv2
-from projects.transformer.models.bert import VisualSymbolicBert
 import torch
 import torch.nn.functional as F
 import torchvision.transforms.functional as TF
@@ -19,14 +18,13 @@ from pytorch_lightning.utilities.seed import seed_everything
 from omegaconf import DictConfig, OmegaConf
 import hydra
 
-from data_modules import BERTDataModule
-from models.bert import VisualSymbolicBert
+from data_modules import OfflineCarlaDataModule
 from environment import CarlaEnv
 from environment.config.config import DefaultMainConfig
 from environment.config.observation_configs import *
 from environment.config.scenario_configs import *
 from environment.config.action_configs import *
-# from models import ConvAgent, PerceiverAgent, RecurrentAttentionAgent
+from models import ConvAgent, PerceiverAgent, RecurrentAttentionAgent
 
 
 class EvaluationCallback(Callback):
@@ -60,8 +58,9 @@ class EvaluationCallback(Callback):
         for index in range(self.num_eval_episodes):
             total_reward = 0.
             obs = self.env.reset(unseen=True, index=index)
+            model.reset()
             for _ in range(self.eval_length):
-                image_obs = self.env.render(camera='sensor.camera.rgb/top')
+                image_obs = self.env.render(camera='sensor.camera.rgb/front')
 
                 with torch.no_grad():
                     action = model.predict(image_obs, obs)[0]
@@ -97,7 +96,7 @@ def main(cfg):
     # seed_everything(cfg.seed)
 
     # Loading agent and environment
-    agent = VisualSymbolicBert(**cfg.agent)
+    agent = ConvAgent() # RecurrentAttentionAgent(**cfg.agent) # hydra.utils.instantiate(cfg.algo.agent)
 
     # Setting up logger and checkpoint/eval callbacks
     logger = TensorBoardLogger(save_dir=os.getcwd(), name='', version='')
@@ -110,14 +109,16 @@ def main(cfg):
         config = DefaultMainConfig()
 
         obs_config = LowDimObservationConfig()
-        obs_config.sensors['sensor.camera.rgb/top'] = {
-            'x':0.0,
-            'z':18.0,
-            'pitch':270,
-            'sensor_x_res':'128',
-            'sensor_y_res':'128',
-            'fov':'120', \
-            'sensor_tick': '0.0'}
+        # obs_config.sensors['sensor.camera.rgb/top'] = {
+        #     'x':0.0,
+        #     'z':18.0,
+        #     'pitch':270,
+        #     'sensor_x_res':'64',
+        #     'sensor_y_res':'64',
+        #     'fov':'90', \
+        #     'sensor_tick': '0.0'}
+
+        del obs_config.sensors['sensor.camera.semantic_segmentation/top']
 
         scenario_config = NoCrashDenseTown01Config() # LeaderboardConfig()
         scenario_config.city_name = 'Town02'
@@ -140,7 +141,7 @@ def main(cfg):
 
     cfg.trainer.gpus = str(cfg.trainer.gpus) # str denotes gpu id, not quantity
 
-    offline_data_module = BERTDataModule(cfg.data_module) # OfflineCarlaDataModule(cfg.data_module)
+    offline_data_module = OfflineCarlaDataModule(cfg.data_module)
     offline_data_module.setup(None)
 
     try:

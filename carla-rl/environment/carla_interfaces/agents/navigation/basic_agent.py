@@ -28,7 +28,7 @@ class BasicAgent(Agent):
 
         :param vehicle: actor to apply to local planner logic onto
         """
-        super(BasicAgent, self).__init__(vehicle)
+        super(BasicAgent, self).__init__(vehicle, proximity_threshold=proximity_threshold)
 
         # self._proximity_threshold = 10.0  # meters
         self._proximity_threshold = proximity_threshold  # meters
@@ -113,13 +113,20 @@ class BasicAgent(Agent):
             return True
 
         # check for the state of the traffic lights
-        light_state, traffic_light = self._is_light_red(lights_list)
-        if light_state:
-            # if debug:
-            #     print('=== RED LIGHT AHEAD [{}])'.format(traffic_light.id))
+        # light_state, traffic_light = self._is_light_red(lights_list)
+        # if light_state:
+        #     # if debug:
+        #     #     print('=== RED LIGHT AHEAD [{}])'.format(traffic_light.id))
 
-            self._state = AgentState.BLOCKED_RED_LIGHT
-            return True
+        #     self._state = AgentState.BLOCKED_RED_LIGHT
+        #     return True
+
+        traffic_actor, dist, traffic_light_orientation = self.find_nearest_traffic_light(lights_list)
+        if traffic_actor is not None:
+            if traffic_actor.state == carla.TrafficLightState.Red:
+                if dist < self._proximity_threshold:
+                    self._state = AgentState.BLOCKED_RED_LIGHT
+                    return True
         return False
 
     def run_step(self, debug=False):

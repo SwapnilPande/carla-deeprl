@@ -84,14 +84,11 @@ def collect_trajectory(env, save_dir, speed=.5, max_path_length=5000):
             'next_obs': next_obs.tolist(),
             'action': action.tolist(),
             'reward': reward,
-            'done': done.item(),
-
-            'actor_tf': transform_to_list(ego_actor.get_transform()),
-            'camera_tf': transform_to_list(camera_actor.get_transform()),
+            'done': done.item()
         }
         experience.update(info)
 
-        save_env_state(rgb, segmentation, topdown, reward_map, experience, save_path, step)
+        save_env_state(rgb, segmentation, topdown, experience, save_path, step)
 
         if done:
             break
@@ -146,7 +143,7 @@ def main(args):
     action_config = MergedSpeedScaledTanhConfig()
     action_config.frame_skip = 5
 
-    config.populate_config(observation_config=obs_config, scenario_config=scenario_config)
+    config.populate_config(observation_config=obs_config, action_config=action_config, scenario_config=scenario_config)
     config.server_fps = 20
     config.carla_gpu = args.gpu
 
@@ -164,7 +161,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--n_samples', type=int, default=100000)
+    parser.add_argument('--n_samples', type=int, default=300000)
     parser.add_argument('--speed', type=float, default=1.)
     parser.add_argument('--town', type=str, default='Town01')
     parser.add_argument('--path', type=str)
