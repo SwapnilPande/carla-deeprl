@@ -72,16 +72,18 @@ class ActorManager910():
 
         # Parameters for ego vehicle
         self.ego_vehicle = self.spawn_ego_vehicle(source_transform)
+        
+        dt = self.config.action_config.frame_skip / self.config.server_fps
         self.args_longitudinal_dict = {
             'K_P': 1.4,
             'K_D': 0.1,
             'K_I': 0.0,
-            'dt': 5/20.}
+            'dt': dt}
         self.args_lateral_dict = {
             'K_P': 0.88,
             'K_D': 0.02,
             'K_I': 0.5,
-            'dt': 5/20.}
+            'dt': dt}
         self.controller = controller.PIDLongitudinalController(K_P=self.args_longitudinal_dict['K_P'], K_D=self.args_longitudinal_dict['K_D'], K_I=self.args_longitudinal_dict['K_I'], dt=self.args_longitudinal_dict['dt'])
         self.lateral_controller = controller.PIDLateralController(self.vehicle_actor, K_P=self.args_lateral_dict['K_P'], K_D=self.args_lateral_dict['K_D'], K_I=self.args_lateral_dict['K_I'], dt=self.args_lateral_dict['dt'])
         self.target_speed = self.config.action_config.target_speed
