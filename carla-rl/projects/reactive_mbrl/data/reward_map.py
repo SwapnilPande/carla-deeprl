@@ -5,9 +5,11 @@ import math
 from shapely.geometry import Point, LineString, Polygon
 import projects.reactive_mbrl.geometry.transformation as transform
 
-MAP_SIZE = 16
+MAP_SIZE = 64
 MIN_REWARD = -3
 TARGET_SPEED = 5
+
+MAX_LOSS = 5
 
 
 def initialize_empty_map(n):
@@ -47,7 +49,7 @@ def calculate_world_grid_points(env):
         [pixel_x.flatten(), pixel_y.flatten(), np.ones(MAP_SIZE * MAP_SIZE)], axis=-1
     )
     world_pts = np.linalg.inv(calibration).dot(pixel_xy.T).T[:, :2]
-    world_pts *= 5
+    world_pts *= 10
 
     world_pts = transform.transform_points(
         base_transform, transform.points_to_homogeneous(world_pts)
@@ -69,9 +71,10 @@ def calculate_path_following_reward(world_pts, route):
 
     def distance_to_path_reward(pt):
         d = Point([pt[0], pt[1]]).distance(path)
-        if d <= 1:
-            return 0.0
-        return -d + 1
+        return d
+        # if d <= 1:
+        #     return 0.0
+        # return -d + 1
 
     return np.array([distance_to_path_reward(pt) for pt in world_pts])
 
@@ -88,9 +91,10 @@ def calculate_reward_map(env, route):
     world_pts, pixel_xy = calculate_world_grid_points(env)
 
     positions, labels = calculate_lane_violations_labels(env, world_pts)
-    labels = calculate_vehicle_collisions(env, positions, labels).astype(float)
+    labels = labels.astype(float)
+    labels += calculate_vehicle_collisions(env, positions, labels).astype(float)
     labels += calculate_path_following_reward(world_pts, route)
-    labels = np.clip(labels, MIN_REWARD, 0.0)
+    labels = np.clip(labels, 0.0, MAX_LOSS)
 
     reward_map = np.zeros((MAP_SIZE, MAP_SIZE))
     reward_map[pixel_xy[:, 0].astype(int), pixel_xy[:, 1].astype(int)] = labels
@@ -99,34 +103,149 @@ def calculate_reward_map(env, route):
     return reward_map, world_pts, pixel_xy
 
 
-def calculate_action_value_map(locs, yaws, speeds, ref_wpt, target_speed=TARGET_SPEED):
-
+def calculate_action_value_map(
+    locs, yaws, speeds, ref_wpt, env, target_speed=TARGET_SPEED
+):
     rewards = []
     loc_losses = []
     yaw_losses = []
     speed_losses = []
+    lane_losses = []
+    collision_losses = []
     for (loc, yaw, speed) in zip(locs, yaws, speeds):
-        loc_loss, yaw_loss, speed_loss = calculate_action_value(
-            loc, yaw[0], speed[0], ref_wpt, target_speed
-        )
-        rewards.append(loc_loss + yaw_loss + speed_loss)
+        (
+            loc_loss,
+            yaw_loss,
+            speed_loss,
+            lane_loss,
+            collision_loss,
+        ) = calculate_action_value(loc, yaw[0], speed[0], ref_wpt, target_speed, env)
+        # rewards.append(loc_loss + yaw_loss + speed_loss)
+        # rewards.append(loc_loss + speed_loss + lane_loss + collision_loss)
+        rewards.append(loc_loss + speed_loss + lane_loss)
         loc_losses.append(loc_loss)
         yaw_losses.append(yaw_loss)
         speed_losses.append(speed_loss)
+        lane_losses.append(lane_loss)
+        collision_losses.append(collision_loss)
     rewards = np.array(rewards)
     loc_losses = np.array(loc_losses)
     yaw_losses = np.array(yaw_losses)
     speed_losses = np.array(speed_losses)
+    lane_losses = np.array(lane_losses)
+    collision_losses = np.array(collision_losses)
 
-    return loc_losses, yaw_losses, speed_losses, rewards
+    return loc_losses, yaw_losses, speed_losses, lane_losses, collision_losses, rewards
 
 
-def calculate_action_value(loc, yaw, speed, ref_wpt, target_speed=TARGET_SPEED):
+def normalizeAngle(angle):
+    """
+    :param angle: (float)
+    :return: (float) Angle in radian in [-pi, pi]
+    """
+    while angle > np.pi:
+        angle -= 2.0 * np.pi
+
+    while angle < -np.pi:
+        angle += 2.0 * np.pi
+
+    return angle
+
+
+def calculate_action_value(loc, yaw, speed, ref_wpt, target_speed, env):
     wpt_loc, wpt_yaw = ref_wpt
     loc_loss = np.linalg.norm(wpt_loc - loc)
-    yaw_loss = np.abs(wpt_yaw - yaw)
+
+    yaw_loss = angle_deviation(wpt_yaw, yaw)
     speed_loss = np.abs(target_speed - speed)
-    return loc_loss, yaw_loss, speed_loss
+
+    lane_violation_loss = calculate_lane_violation_loss(yaw, env)
+    collision_loss = calculate_collision_loss(env)
+
+    return loc_loss, yaw_loss, speed_loss, lane_violation_loss, collision_loss
+
+
+def calculate_collision_loss(env):
+    ego_actor = env.carla_interface.get_ego_vehicle()._vehicle
+    vehicles = get_actor_polygons(env)
+    if len(vehicles) <= 0:
+        return 0.0
+
+    av_box = get_local_points(ego_actor.bounding_box.extent)
+    actor_global = transform.transform_points(ego_actor.get_transform(), av_box)
+    points = [
+        Point(actor_global[i, 0], actor_global[i, 1]) for i in range(len(actor_global))
+    ]
+
+    for box in vehicles:
+        poly = Polygon(box)
+        for point in points:
+            if point.within(poly):
+                return 3.0
+    return 0.0
+
+
+def get_actor_polygons(env):
+    ego_actor = env.carla_interface.get_ego_vehicle()._vehicle
+    base_transform = ego_actor.get_transform()
+    actors = [
+        actor
+        for actor in env.carla_interface.actor_fleet.actor_list
+        if "vehicle" in actor.type_id
+        and actor.get_transform().location.distance(base_transform.location) < 20
+        and actor != ego_actor
+    ]
+
+    if len(actors) <= 0:
+        return []
+
+    bounding_boxes = []
+    for actor in actors:
+        bounding_box = get_local_points(actor.bounding_box.extent)
+        bounding_boxes.append(
+            transform.transform_points(actor.get_transform(), bounding_box)[:, :2]
+        )
+
+    return bounding_boxes
+
+
+def calculate_lane_violation_loss(yaw, env):
+    ego_actor = env.carla_interface.get_ego_vehicle()._vehicle
+    bounding_box = get_local_points(ego_actor.bounding_box.extent)
+    actor_global = transform.transform_points(ego_actor.get_transform(), bounding_box)
+    for pt in actor_global:
+        x_loc, y_loc = pt[0], pt[1]
+        location = carla.Location(
+            x=x_loc, y=y_loc, z=ego_actor.get_transform().location.z
+        )
+        waypoint = env.carla_interface.map.get_waypoint(location, project_to_road=False)
+        if not waypoint:
+            return 3
+        if lane_invasion(waypoint, yaw, env) or out_of_road(waypoint, env):
+            return 3
+    return 0
+
+
+def lane_invasion(waypoint, yaw, env):
+    waypoint_yaw = waypoint.transform.rotation.yaw
+    waypoint_angle = (((yaw - waypoint_yaw) + 180) % 360) - 180
+
+    return np.abs(waypoint_angle) > 150
+
+
+def out_of_road(waypoint, env):
+    return waypoint is None or waypoint.lane_type != carla.LaneType.Driving
+
+
+def get_local_points(extent):
+    return np.array(
+        [
+            [-extent.x, extent.y, 0, 1],
+            [extent.x, extent.y, 0, 1],
+            [extent.x, -extent.y, 0, 1],
+            [-extent.x, -extent.y, 0, 1],
+        ]
+    )
 
 
 def get_closest_waypoint(loc, route):
@@ -149,6 +268,10 @@ def calculate_4d_reward_map(env, route, speed):
     import pdb
 
     pdb.set_trace()
+
+
+def angle_deviation(ang1, ang2):
+    return min(abs(ang1 - ang2), abs(ang1 + ang2))
 
 
 def calculate_vehicle_collisions(env, positions, labels):
@@ -181,10 +304,10 @@ def calculate_vehicle_collisions(env, positions, labels):
 
     for i in range(len(actors)):
         poly = Polygon([(vehicles[i, j, 0], vehicles[i, j, 1]) for j in range(4)])
-        in_poly = np.array([point.within(poly) for point in points])
+        in_poly = np.array([point.within(poly) or point.distance(poly) < 1.0 for point in points])
         mask = np.logical_or(mask, in_poly)
 
-    labels[mask] = MIN_REWARD
+    labels[mask] = MAX_LOSS
     return labels
 
 
@@ -204,7 +327,7 @@ def calculate_lane_violations_labels(env, world_pts):
 
         # check if off-road
         if waypoint is None or waypoint.lane_type != carla.LaneType.Driving:
-            labels.append(MIN_REWARD)
+            labels.append(MAX_LOSS)
             continue
 
         # check if lane violation
@@ -214,7 +337,7 @@ def calculate_lane_violations_labels(env, world_pts):
             waypoint_angle = (((base_yaw - yaw) + 180) % 360) - 180
 
             if np.abs(waypoint_angle) > 150:
-                labels.append(MIN_REWARD)
+                labels.append(MAX_LOSS)
                 continue
 
         labels.append(0)

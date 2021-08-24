@@ -47,7 +47,7 @@ class EgoModelRails(nn.Module):
 
 
 class EgoModel(pl.LightningModule):
-    def __init__(self, dt=1.0 / 10):
+    def __init__(self, dt=0.1):
         super().__init__()
 
         self.dt = dt
@@ -74,15 +74,18 @@ class EgoModel(pl.LightningModule):
         beta = torch.atan(
             self.rear_wb / (self.front_wb + self.rear_wb) * torch.tan(wheel)
         )
+        
+        next_spds = spds + accel * self.dt
+        next_spds = torch.clamp(next_spds, 0, 100)
 
         next_locs = (
             locs
-            + spds
+            + next_spds
             * torch.cat([torch.cos(yaws + beta), torch.sin(yaws + beta)], -1)
             * self.dt
         )
         next_yaws = yaws + spds / self.rear_wb * torch.sin(beta) * self.dt
-        next_spds = spds + accel * self.dt
+        # next_spds = spds + accel * self.dt
 
         return next_locs, next_yaws, F.relu(next_spds)
 

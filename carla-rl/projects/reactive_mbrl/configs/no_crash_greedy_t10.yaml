@@ -1,0 +1,6 @@
+defaults:
+  - env: no_crash_dense_t10
+  - eval: greedy_t10
+  - data: data_config
+  - model: model_config
+  - train: training_config

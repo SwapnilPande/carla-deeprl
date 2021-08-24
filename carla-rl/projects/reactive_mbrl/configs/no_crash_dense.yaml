@@ -1,0 +1,6 @@
+defaults:
+  - env: no_crash_dense_t1
+  - eval: eval_config
+  - data: data_config
+  - model: model_config
+  - train: training_config

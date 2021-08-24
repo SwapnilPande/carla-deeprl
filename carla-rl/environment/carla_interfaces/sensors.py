@@ -39,6 +39,8 @@ class SensorManager():
         for idx, (sensor_name, sensor_config) in enumerate(zip(self.sensor_names, self.sensor_configs)):
             if sensor_name=="collision_sensor":
                 sensor = CollisionSensor(self.parent_actor)
+            elif sensor_name=="obstacle_detector":
+                sensor = ObstacleDetector(self.parent_actor)
             elif sensor_name=="lane_invasion_sensor":
                 sensor = LaneInvasionSensor(self.parent_actor)
             elif 'camera' in sensor_name:
@@ -62,6 +64,9 @@ class SensorManager():
             elif k=="lane_invasion_sensor":
                 sensor_readings[k] = {'num_lane_intersections': self.sensors[k].num_laneintersections,\
                                         'out_of_road': self.sensors[k].out_of_road}
+            elif k == "obstacle_detector":
+                sensor_readings[k] = {'other_actor': self.sensors[k].other_actor,\
+                                      'distance': self.sensors[k].distance}
             elif 'camera' in k:
                 if world_frame is None:
                     print("No world frame found! Skipping reading from camera sensor!!")
@@ -96,6 +101,26 @@ def get_actor_display_name(actor, truncate=250):
 # -- CollisionSensor -----------------------------------------------------------
 # ==============================================================================
 
+class ObstacleDetector(object):
+    def __init__(self, parent_actor, config=None):
+        self.sensor = None
+        self.other_actor = None
+        self.distance = -1
+        world = self._parent.get_world()
+        bp = world.get_blueprint_library().find('sensor.other.obstacle')
+        self.sensor = world.spawn_actor(bp, carla.Transform(), attach_to=self._parent)
+        # We need to pass the lambda a weak reference to self to avoid circular
+        # reference.
+        weak_self = weakref.ref(self)
+        self.sensor.listen(lambda event: CollisionSensor._on_collision(weak_self, event))
+
+    @staticmethod
+    def _on_event(weak_self, event):
+        self = weak_self()
+        if not self:
+            return
+        self.other_actor = event.other_actor
+        self.distance = event.distance
 
 class CollisionSensor(object):
     def __init__(self, parent_actor, config=None):

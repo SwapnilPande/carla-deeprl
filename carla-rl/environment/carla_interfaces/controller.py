@@ -8,7 +8,7 @@ class PIDLongitudinalController():
     PIDLongitudinalController implements longitudinal control using a PID.
     """
 
-    def __init__(self, K_P=1.0, K_D=0.0, K_I=0.0, dt=0.03):
+    def __init__(self, K_P=2.0, K_D=0.0, K_I=1.0, dt=0.1):
         """
         :param vehicle: actor to apply to local planner logic onto
         :param K_P: Proportional term
@@ -41,7 +41,7 @@ class PIDLongitudinalController():
             _ie = 0.0
 
         if enable_brake:
-            throttle_min_clip = -1.0
+            throttle_min_clip = -2.0
         else:
             throttle_min_clip = 0.0
 

@@ -149,15 +149,30 @@ class NoCrashDenseTown01Config(NoCrashConfig):
     def __init__(self):
         super().__init__()
         self.scenarios = "no_crash_empty"
-        self.num_npc = 100
+        self.num_npc = 150
         self.city_name = "Town01"
 
 class NoCrashDenseTown02Config(NoCrashConfig):
     def __init__(self):
         super().__init__()
         self.scenarios = "no_crash_empty"
-        self.num_npc = 70
+        self.num_npc = 100
         self.city_name = "Town02"
+
+class NoCrashDenseTown03Config(NoCrashConfig):
+    def __init__(self):
+        super().__init__()
+        self.scenarios = "no_crash_empty"
+        self.num_npc = 300
+        self.city_name = "Town03"
+
+class NoCrashDenseTown10Config(NoCrashConfig):
+    def __init__(self):
+        super().__init__()
+        self.scenarios = "no_crash_empty"
+        self.num_npc = 300
+        self.city_name = "Town10"
+
 
 class LeaderboardConfig(BaseScenarioConfig):
     def __init__(self):

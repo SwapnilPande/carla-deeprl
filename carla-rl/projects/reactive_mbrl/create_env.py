@@ -37,61 +37,65 @@ def populate_cameras_configs(cfg):
         "sensor_tick": "0.0",
     }
 
-    cfg["sensor.camera.rgb/front_wide"] = {
-        "x": x,
-        "y": y,
-        "z": CAMERA_Z,
-        "roll": 0.0,
-        "pitch": 0.0,
-        "yaw": 0.0,
-        "fov": "60",
-        "sensor_x_res": "480",
-        "sensor_y_res": "240",
-        "sensor_tick": "0.0",
-    }
+    # cfg["obstacle_detector"] = {
+    #     "distance": 5,
+    # }
+
+    # cfg["sensor.camera.rgb/front_wide"] = {
+    #     "x": x,
+    #     "y": y,
+    #     "z": CAMERA_Z,
+    #     "roll": 0.0,
+    #     "pitch": 0.0,
+    #     "yaw": 0.0,
+    #     "fov": "60",
+    #     "sensor_x_res": "480",
+    #     "sensor_y_res": "240",
+    #     "sensor_tick": "0.0",
+    # }
     
-    cfg["sensor.camera.semantic_segmentation/front_wide"] = {
-        "x": x,
-        "y": y,
-        "z": CAMERA_Z,
-        "roll": 0.0,
-        "pitch": 0.0,
-        "yaw": 0.0,
-        "fov": "60",
-        "sensor_x_res": "480",
-        "sensor_y_res": "240",
-        "sensor_tick": "0.0",
-        "num_classes": 23,
-        "seg_channels": [4, 6, 7, 10, 18],
-    }
+    # cfg["sensor.camera.semantic_segmentation/front_wide"] = {
+    #     "x": x,
+    #     "y": y,
+    #     "z": CAMERA_Z,
+    #     "roll": 0.0,
+    #     "pitch": 0.0,
+    #     "yaw": 0.0,
+    #     "fov": "60",
+    #     "sensor_x_res": "480",
+    #     "sensor_y_res": "240",
+    #     "sensor_tick": "0.0",
+    #     "num_classes": 23,
+    #     "seg_channels": [4, 6, 7, 10, 18],
+    # }
     
-    cfg["sensor.camera.rgb/front_narrow"] = {
-        "x": x,
-        "y": y,
-        "z": CAMERA_Z,
-        "roll": 0.0,
-        "pitch": 0.0,
-        "yaw": 0.0,
-        "fov": "50",
-        "sensor_x_res": "384",
-        "sensor_y_res": "240",
-        "sensor_tick": "0.0",
-    }
+    # cfg["sensor.camera.rgb/front_narrow"] = {
+    #     "x": x,
+    #     "y": y,
+    #     "z": CAMERA_Z,
+    #     "roll": 0.0,
+    #     "pitch": 0.0,
+    #     "yaw": 0.0,
+    #     "fov": "50",
+    #     "sensor_x_res": "384",
+    #     "sensor_y_res": "240",
+    #     "sensor_tick": "0.0",
+    # }
     
-    cfg["sensor.camera.semantic_segmentation/front_narrow"] = {
-        "x": x,
-        "y": y,
-        "z": CAMERA_Z,
-        "roll": 0.0,
-        "pitch": 0.0,
-        "yaw": 0.0,
-        "fov": "50",
-        "sensor_x_res": "384",
-        "sensor_y_res": "240",
-        "sensor_tick": "0.0",
-        "num_classes": 23,
-        "seg_channels": [4, 6, 7, 10, 18],
-    }
+    # cfg["sensor.camera.semantic_segmentation/front_narrow"] = {
+    #     "x": x,
+    #     "y": y,
+    #     "z": CAMERA_Z,
+    #     "roll": 0.0,
+    #     "pitch": 0.0,
+    #     "yaw": 0.0,
+    #     "fov": "50",
+    #     "sensor_x_res": "384",
+    #     "sensor_y_res": "240",
+    #     "sensor_tick": "0.0",
+    #     "num_classes": 23,
+    #     "seg_channels": [4, 6, 7, 10, 18],
+    # }
 
     return cfg
 

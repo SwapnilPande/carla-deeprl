@@ -2,8 +2,11 @@ model_path: /zfsauton/datasets/ArgoRL/jhoang/models/4a22bc18083f46fe8c1805d3c8e8
 
 num_scenarios: 25
 
-use_pid: true
+use_pid: false
 log_dir: /zfsauton/datasets/ArgoRL/jhoang/logs/
-output_dir: /zfsauton/datasets/ArgoRL/jhoang/greedy/
+output_dir: /zfsauton/datasets/ArgoRL/jhoang/greedy_t3/
 greedy_dir: /zfsauton/datasets/ArgoRL/jhoang/greedy/ 
 pid_dir: /zfsauton/datasets/ArgoRL/jhoang/pid/ 
+
+
+
