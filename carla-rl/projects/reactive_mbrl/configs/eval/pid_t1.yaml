@@ -4,7 +4,7 @@ num_scenarios: 25
 
 use_pid: true
 log_dir: /zfsauton/datasets/ArgoRL/jhoang/logs/
-output_dir: /zfsauton/datasets/ArgoRL/jhoang/pid_t1/
-greedy_dir: /zfsauton/datasets/ArgoRL/jhoang/greedy/ 
-pid_dir: /zfsauton/datasets/ArgoRL/jhoang/pid/ 
+output_dir: /zfsauton/datasets/ArgoRL/brianyan/pid_t1/
+greedy_dir: /zfsauton/datasets/ArgoRL/brianyan/greedy/ 
+pid_dir: /zfsauton/datasets/ArgoRL/brianyan/pid/ 
 

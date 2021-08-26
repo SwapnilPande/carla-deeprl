@@ -7,11 +7,11 @@ from projects.reactive_mbrl.create_env import create_env
 
 @hydra.main(config_path="configs", config_name="config.yaml")
 def main(config):
-    #output_path = config.data["train_dataset"]
-    output_path = config.data["val_dataset"]
+    output_path = config.data["train_dataset"]
+    # output_path = config.data["val_dataset"]
     n_samples = int(config.data["n_samples"])
     speed = float(config.data["speed"])
-    env = create_env(config.env, output_path)
+    env = create_env(config.environment, output_path)
     collector = DataCollector(env, output_path)
     try:
         total_samples = 0

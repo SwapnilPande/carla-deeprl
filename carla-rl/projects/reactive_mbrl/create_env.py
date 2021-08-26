@@ -15,27 +15,38 @@ CAMERA_Z = 2.4
 
 def populate_cameras_configs(cfg):
     # for i, yaw in enumerate(CAMERA_YAWS):
-    x = CAMERA_X * math.cos(0 * math.pi / 180)
-    y = CAMERA_X * math.sin(0 * math.pi / 180)
+    # x = CAMERA_X * math.cos(0 * math.pi / 180)
+    # y = CAMERA_X * math.sin(0 * math.pi / 180)
+
+    cfg["sensor.camera.rgb/front"] = {
+        "x": 2.0,
+        "z": 1.4,
+        "pitch": 0.0,
+        "sensor_x_res": "128",
+        "sensor_y_res": "128",
+        "fov": "120",
+        "sensor_tick": "0.0",
+    }
+
     cfg["sensor.camera.rgb/top"] = {
         "x": 13.0,
         "z": 18.0,
         "pitch": 270,
-        "sensor_x_res": "256",
-        "sensor_y_res": "256",
-        "fov": "90",
+        "sensor_x_res": "128",
+        "sensor_y_res": "128",
+        "fov": "120",
         "sensor_tick": "0.0",
     }
     
-    cfg["sensor.camera.rgb/map"] = {
-        "x": 13.0,
-        "z": 18.0,
-        "pitch": 270,
-        "sensor_x_res": "16",
-        "sensor_y_res": "16",
-        "fov": "90",
-        "sensor_tick": "0.0",
-    }
+    # cfg["sensor.camera.rgb/map"] = {
+    #     "x": 13.0,
+    #     "z": 18.0,
+    #     "pitch": 270,
+    #     "sensor_x_res": "16",
+    #     "sensor_y_res": "16",
+    #     "fov": "90",
+    #     "sensor_tick": "0.0",
+    # }
 
     # cfg["obstacle_detector"] = {
     #     "distance": 5,

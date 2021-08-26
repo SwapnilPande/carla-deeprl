@@ -11,16 +11,18 @@ import matplotlib.pyplot as plt
 
 class PIDAgent:
 
-    def __init__(self, npc_predictor, output_path):
+    def __init__(self, npc_predictor, output_path=None):
         self.npc_predictor = npc_predictor
-        self.output_path = output_path
+        # self.output_path = output_path
         self.index = 0
 
-    def reset(self, scenario_name, waypoints):
+    def reset(self, waypoints):
         self.index = 0
-        self.scenario_path = os.path.join(self.output_path, scenario_name)
+        # self.scenario_path = os.path.join(self.output_path, scenario_name)
         self.previous_action = None
-        os.makedirs(self.scenario_path)
+
+        # if not os.path.isdir(self.scenario_path):
+        #     os.makedirs(self.scenario_path)
 
     def predict(self, env, info, current_speed, target_speed):
         self.index += 1
