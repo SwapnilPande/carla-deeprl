@@ -154,12 +154,7 @@ def extract_loc(actor):
 
 def calculate_desired_target_speed(steer, current_target_speed, distance):
     target_speed = update_based_on_distance(current_target_speed, distance)
-    return update_based_on_steer(steer, target_speed)
-
-def update_based_on_steer(steer, target_speed):
-    ratio = 1 - abs(steer)
-    return target_speed * ratio
-
+    return target_speed
 
 def update_based_on_distance(current_target_speed, distance):
 

@@ -68,7 +68,7 @@ class GreedyDPAgent:
 
         ego_polygon, predicted_obs = self.predict_obstacles(env)
         d = self.calculate_distance_to_obstacle(env, ego_polygon, predicted_obs)
-        desired_target_speed = calculate_desired_target_speed(steer, target_speed, d)
+        desired_target_speed = calculate_desired_target_speed(target_speed, d)
         throt = throt_controller.pid_control(desired_target_speed, current_speed, enable_brake=True)
  
         if d <= 3.0 and current_speed > 0:
