@@ -34,7 +34,7 @@ class PIDAgent:
 
         ego_polygon, predicted_obs = self.predict_obstacles(env)
         d = self.calculate_distance_to_obstacle(env, ego_polygon, predicted_obs)
-        desired_target_speed = calculate_desired_target_speed(steer, target_speed, d)
+        desired_target_speed = calculate_desired_target_speed(target_speed, d)
         throt = throt_controller.pid_control(desired_target_speed, current_speed, enable_brake=True)
         
         if d <= 3.0 and current_speed > 0:
@@ -152,7 +152,7 @@ def create_bbox(extent):
 def extract_loc(actor):
     return (actor.get_transform().location.x, actor.get_transform().location.y)
 
-def calculate_desired_target_speed(steer, current_target_speed, distance):
+def calculate_desired_target_speed(current_target_speed, distance):
     target_speed = update_based_on_distance(current_target_speed, distance)
     return target_speed
 
