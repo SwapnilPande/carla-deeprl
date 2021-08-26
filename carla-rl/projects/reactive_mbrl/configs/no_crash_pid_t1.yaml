@@ -1,5 +1,5 @@
 defaults:
-  - env: no_crash_dense_t1
+  - environment: no_crash_dense_t1
   - eval: pid_t1
   - data: data_config
   - model: model_config
