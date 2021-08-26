@@ -76,7 +76,7 @@ def evaluate(env, cfg):
             agent = PIDAgent(npc_predictor, output_dir)
         else:
             agent = GreedyDPAgent(npc_predictor, output_dir)
-        scenario_name = f"scenario_{index}_{cfg.env.family}{cfg.env.town}"
+        scenario_name = f"scenario_{index}_{cfg.environment.family}{cfg.environment.town}"
         agent.reset(scenario_name, waypoints)
         total_reward = 0.0
 
@@ -115,10 +115,10 @@ def evaluate(env, cfg):
     comet_logger.experiment.log_curve(
         x=range(num_scenarios),
         y=reward_list,
-        name=f"rewards_{cfg.env.family}{cfg.env.town}",
+        name=f"rewards_{cfg.environment.family}{cfg.environment.town}",
     )
     comet_logger.experiment.log_metrics(
-        termination_counts, prefix=f"{cfg.env.family}{cfg.env.town}",
+        termination_counts, prefix=f"{cfg.environment.family}{cfg.environment.town}",
     )
 
 
@@ -137,7 +137,7 @@ def save_video(frames, fname, fps=15):
 # @hydra.main(config_path="configs", config_name="config.yaml")
 def evaluate_agent(cfg):
     output_dir = os.path.dirname(cfg.eval["greedy_dir"])
-    env = create_env(cfg.env, output_dir)
+    env = create_env(cfg.environment, output_dir)
     try:
         evaluate(env, cfg)
     except:
