@@ -11,6 +11,7 @@ waypoints and avoiding other vehicles.
 The agent also responds to traffic lights. """
 
 from enum import Enum
+import numpy as np
 import math
 import carla
 from environment.carla_interfaces.agents.tools.misc import is_within_distance_ahead, is_within_distance_ahead_v2, compute_magnitude_angle
@@ -403,3 +404,33 @@ class Agent(object):
         control.hand_brake = False
 
         return control
+
+
+def _numpy(carla_vector, normalize=False):
+    result = np.float32([carla_vector.x, carla_vector.y])
+
+    if normalize:
+        return result / (np.linalg.norm(result) + 1e-4)
+
+    return result
+
+
+def _location(x, y, z):
+    return carla.Location(x=float(x), y=float(y), z=float(z))
+
+
+def _orientation(yaw):
+    return np.float32([np.cos(np.radians(yaw)), np.sin(np.radians(yaw))])
+
+
+def get_collision(p1, v1, p2, v2):
+    A = np.stack([v1, -v2], 1)
+    b = p2 - p1
+
+    if abs(np.linalg.det(A)) < 1e-3:
+        return False, None
+
+    x = np.linalg.solve(A, b)
+    collides = all(x >= 0) and all(x <= 1)
+
+    return collides, p1 + x[0] * v1
