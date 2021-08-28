@@ -7,6 +7,7 @@ import math
 import matplotlib
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
+import carla
 
 
 class PIDAgent:
@@ -34,12 +35,14 @@ class PIDAgent:
         steer = steer_controller.pid_control(waypoint)
         steer = np.clip(steer, -1, 1)
 
-        ego_polygon, predicted_obs = self.predict_obstacles(env)
+        ego_polygon, predicted_obs, (light, light_dist) = self.predict_obstacles(env)
         d = self.calculate_distance_to_obstacle(env, ego_polygon, predicted_obs)
         desired_target_speed = calculate_desired_target_speed(target_speed, d)
         throt = throt_controller.pid_control(desired_target_speed, current_speed, enable_brake=True)
+
+        should_stop_for_light = light is not None and light.state == carla.TrafficLightState.Red and light_dist <= 5.0
         
-        if d <= 3.0 and current_speed > 0:
+        if (d <= 3.0 or should_stop_for_light) and current_speed > 0:
             throt = -1.0
 
         action = np.array([steer, throt])
@@ -88,6 +91,9 @@ class PIDAgent:
         plt.close()
 
     def predict_obstacles(self, env):
+        lights = env.carla_interface.world.get_actors().filter('*traffic_light*')
+        light, light_dist, _ = env.carla_interface.actor_fleet.ego_vehicle.find_nearest_traffic_light(lights)
+
         ego_actor = env.carla_interface.get_ego_vehicle()._vehicle
         base_transform = ego_actor.get_transform()
         ego_yaw = base_transform.rotation.yaw
@@ -102,7 +108,7 @@ class PIDAgent:
         ]
 
         if len(actors) <= 0:
-            return ego_polygon, []
+            return ego_polygon, [], (light, light_dist)
 
         vehicles = self.npc_predictor.predict(actors, ego_actor)
 
@@ -117,7 +123,8 @@ class PIDAgent:
         
         current_vehicles = bounding_boxes + current_vehicles[:, None, :]
         vehicles.extend(current_vehicles)
-        return ego_polygon, vehicles
+
+        return ego_polygon, vehicles, (light, light_dist)
 
 
     def calculate_distance_to_obstacle(self, env, ego_polygon, vehicles):

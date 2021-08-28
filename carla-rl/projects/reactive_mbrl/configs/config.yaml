@@ -1,5 +1,5 @@
 defaults:
-  - environment: no_crash_empty_t1
+  - environment: no_scenario
   - eval: eval_config
   - data: data_config
   - model: model_config

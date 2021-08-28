@@ -73,11 +73,11 @@ def evaluate(env, cfg):
         model = load_ego_model()
         npc_predictor = Kinematic(model, waypoints)
         if use_pid:
-            agent = PIDAgent(npc_predictor, output_dir)
+            agent = PIDAgent(npc_predictor)
         else:
             agent = GreedyDPAgent(npc_predictor, output_dir)
         scenario_name = f"scenario_{index}_{cfg.environment.family}{cfg.environment.town}"
-        agent.reset(scenario_name, waypoints)
+        agent.reset(waypoints)
         total_reward = 0.0
 
         print("Warming up")

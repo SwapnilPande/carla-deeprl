@@ -141,9 +141,27 @@ def create_env_config(cfg):
     return config
 
 def create_scenario_config(cfg):
-    class_name = f"{cfg.family}{cfg.town}Config"
+    class_name = "NoCrashDenseTown01Config"
+    # class_name = f"{cfg.family}{cfg.town}Config"
     class_ = getattr(environment.config.scenario_configs, class_name)
-    return class_()
+    scenario_config = class_()
+    scenario_config.town = cfg.town
+    scenario_config.use_scenarios = cfg.use_scenarios
+    scenario_config.sample_npc = False
+    scenario_config.num_npc = {
+        'Town01': 120,
+        'Town02': 100,
+        'Town03': 120,
+        'Town04': 200,
+        'Town05': 120,
+        'Town06': 150,
+        'Town07': 110,
+        'Town08': 180,
+        'Town09': 300,
+        'Town10': 120,
+    }[cfg.town]
+    # scenario_config.num_npc = 0
+    return scenario_config
 
 
 def create_env(run_config, log_dir):

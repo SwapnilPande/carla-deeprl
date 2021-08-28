@@ -34,23 +34,30 @@ class DataCollector:
         self.path = path
         self.waypointer = None
 
-    def collect_trajectory(self, speed, max_path_length=5000, warm_start=100):
+    def collect_trajectory(self, speed, max_path_length=5000, warm_start=100, num_retries=5):
         print(f"Collecting a new trajectory.")
         self.setup_output_dir()
-        obs = self.env.reset()
-        route = self.get_route()
 
-        waypoints = self.env.carla_interface.global_planner._waypoints_queue
-        waypoints = np.array(
-            [
+        for _ in range(num_retries):
+            # retry route until sufficiently long
+            obs = self.env.reset()
+            route = self.get_route()
+
+            waypoints = self.env.carla_interface.global_planner._waypoints_queue
+            waypoints = np.array(
                 [
-                    w[0].transform.location.x,
-                    w[0].transform.location.y,
-                    w[0].transform.rotation.yaw,
+                    [
+                        w[0].transform.location.x,
+                        w[0].transform.location.y,
+                        w[0].transform.rotation.yaw,
+                    ]
+                    for w in waypoints
                 ]
-                for w in waypoints
-            ]
-        )
+            )
+
+            if len(waypoints) >= 5:
+                break
+
         model = load_ego_model()
         npc_predictor = Kinematic(model, waypoints)
         agent = PIDAgent(npc_predictor)
