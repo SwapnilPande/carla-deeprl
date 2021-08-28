@@ -18,13 +18,13 @@ from pytorch_lightning.utilities.seed import seed_everything
 from omegaconf import DictConfig, OmegaConf
 import hydra
 
-from common.data_modules import OfflineCarlaDataModule, OnlineCarlaDataModule
+from data_modules import OfflineCarlaDataModule
 from environment import CarlaEnv
 from environment.config.config import DefaultMainConfig
 from environment.config.observation_configs import *
 from environment.config.scenario_configs import *
 from environment.config.action_configs import *
-from models import ConvAgent, PerceiverAgent
+from models import ConvAgent, PerceiverAgent, RecurrentAttentionAgent
 
 
 class EvaluationCallback(Callback):
@@ -39,7 +39,7 @@ class EvaluationCallback(Callback):
         self.experiment = None
 
     @rank_zero_only
-    def on_epoch_end(self, trainer, pl_module):
+    def on_validation_epoch_end(self, trainer, pl_module):
         self.trainer = trainer
         epoch = trainer.current_epoch
         if epoch % self.eval_freq == 0:
@@ -58,11 +58,15 @@ class EvaluationCallback(Callback):
         for index in range(self.num_eval_episodes):
             total_reward = 0.
             obs = self.env.reset(unseen=True, index=index)
+            model.reset()
             for _ in range(self.eval_length):
-                image_obs = self.env.render(camera='sensor.camera.rgb/top')
-                action = model.predict(image_obs, obs)[0]
+                image_obs = self.env.render(camera='sensor.camera.rgb/front')
+
+                with torch.no_grad():
+                    action = model.predict(image_obs, obs)[0]
+
                 obs, reward, done, info = self.env.step(action)
-                frames.append(self.env.render(camera='sensor.camera.rgb/top'))
+                frames.append(image_obs)
                 total_reward += reward
                 if done:
                     break
@@ -92,35 +96,7 @@ def main(cfg):
     # seed_everything(cfg.seed)
 
     # Loading agent and environment
-    agent = PerceiverAgent() # hydra.utils.instantiate(cfg.algo.agent)
-
-    config = DefaultMainConfig()
-
-    obs_config = LowDimObservationConfig()
-    obs_config.sensors['sensor.camera.rgb/top'] = {
-        'x':0.0,
-        'z':18.0,
-        'pitch':270,
-        'sensor_x_res':'64',
-        'sensor_y_res':'64',
-        'fov':'90', \
-        'sensor_tick': '0.0'}
-
-    scenario_config = NoCrashDenseTown01Config() # LeaderboardConfig()
-    scenario_config.city_name = 'Town01'
-    scenario_config.num_pedestrians = 50
-    scenario_config.sample_npc = True
-    scenario_config.num_npc_lower_threshold = 50
-    scenario_config.num_npc_upper_threshold = 150
-
-    action_config = MergedSpeedScaledTanhConfig()
-    action_config.frame_skip = 5
-
-    config.populate_config(observation_config=obs_config, scenario_config=scenario_config)
-    config.server_fps = 20
-    config.carla_gpu = cfg.gpu
-
-    env = CarlaEnv(config=config, log_dir=os.getcwd() + '/')
+    agent = ConvAgent() # RecurrentAttentionAgent(**cfg.agent) # hydra.utils.instantiate(cfg.algo.agent)
 
     # Setting up logger and checkpoint/eval callbacks
     logger = TensorBoardLogger(save_dir=os.getcwd(), name='', version='')
@@ -129,8 +105,39 @@ def main(cfg):
     checkpoint_callback = ModelCheckpoint(period=cfg.checkpoint_freq, save_top_k=-1)
     callbacks.append(checkpoint_callback)
 
-    evaluation_callback = EvaluationCallback(env=env, eval_freq=cfg.eval_freq, eval_length=cfg.eval_length, num_eval_episodes=cfg.num_eval_episodes)
-    callbacks.append(evaluation_callback)
+    if cfg.num_eval_episodes > 0:
+        config = DefaultMainConfig()
+
+        obs_config = LowDimObservationConfig()
+        # obs_config.sensors['sensor.camera.rgb/top'] = {
+        #     'x':0.0,
+        #     'z':18.0,
+        #     'pitch':270,
+        #     'sensor_x_res':'64',
+        #     'sensor_y_res':'64',
+        #     'fov':'90', \
+        #     'sensor_tick': '0.0'}
+
+        del obs_config.sensors['sensor.camera.semantic_segmentation/top']
+
+        scenario_config = NoCrashDenseTown01Config() # LeaderboardConfig()
+        scenario_config.city_name = 'Town02'
+        scenario_config.num_pedestrians = 50
+        scenario_config.sample_npc = True
+        scenario_config.num_npc_lower_threshold = 75
+        scenario_config.num_npc_upper_threshold = 76
+
+        action_config = MergedSpeedScaledTanhConfig()
+        action_config.frame_skip = 5
+
+        config.populate_config(observation_config=obs_config, action_config=action_config, scenario_config=scenario_config)
+        config.server_fps = 20
+        config.carla_gpu = cfg.gpu
+
+        env = CarlaEnv(config=config, log_dir=os.getcwd() + '/')
+
+        evaluation_callback = EvaluationCallback(env=env, eval_freq=cfg.eval_freq, eval_length=cfg.eval_length, num_eval_episodes=cfg.num_eval_episodes)
+        callbacks.append(evaluation_callback)
 
     cfg.trainer.gpus = str(cfg.trainer.gpus) # str denotes gpu id, not quantity
 
@@ -141,7 +148,7 @@ def main(cfg):
         trainer = pl.Trainer(**cfg.trainer, 
             logger=logger,
             callbacks=callbacks,
-            max_epochs=cfg.offline_epochs)
+            max_epochs=cfg.num_epochs)
         trainer.fit(agent, offline_data_module)
     finally:
         env.close()

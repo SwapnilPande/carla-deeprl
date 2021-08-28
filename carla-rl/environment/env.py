@@ -45,7 +45,7 @@ from environment.carla_interfaces.carla_interface import (
 from environment import env_util as util
 from environment.config.config import DefaultMainConfig
 from environment.config.observation_configs import *
-from environment.config.scenario_configs import LeaderboardConfig
+from environment.config.scenario_configs import LeaderboardConfig, NoCrashDenseTown01Config
 
 
 try:
@@ -1148,7 +1148,7 @@ class CarlaEnv(gym.Env):
         self.total_reward = 0  # Episode level total reward
         self.unseen = unseen
 
-        carla_obs = self.carla_interface.reset(unseen=self.unseen)
+        carla_obs = self.carla_interface.reset(unseen = self.unseen, index=index)
 
         ################################################
         # Episode information(again)
@@ -1234,10 +1234,11 @@ class CarlaEnv(gym.Env):
         if hazard_detected:
             return np.array([0, -1])
         else:
-            waypoint = self.carla_interface.next_waypoints[0]
-            steer = self.carla_interface.actor_fleet.lateral_controller.pid_control(
-                waypoint
-            )
+            if len(self.carla_interface.next_waypoints) > 0:
+                waypoint = self.carla_interface.next_waypoints[0]
+                steer = self.carla_interface.actor_fleet.lateral_controller.pid_control(waypoint)
+            else:
+                steer = 0
             steer = np.clip(steer, -1, 1)
             return np.array([steer, target_speed])
 
@@ -1692,15 +1693,14 @@ class CarlaEvalEnv(CarlaEnv):
 if __name__ == "__main__":
     config = DefaultMainConfig()
     obs_config = LowDimObservationConfig()
-    scenarios_config = LeaderboardConfig()
-    config.populate_config(
-        observation_config=obs_config, scenario_config=scenarios_config
-    )
+    scenarios_config = NoCrashDenseTown01Config()
+    scenarios_config.max_static_steps = 20
+    config.populate_config(observation_config=obs_config, scenario_config=scenarios_config)
     env = CarlaEnv(config=config)
     env.reset()
     for i in range(10000):
 
-        obs, reward, done, info = env.step(np.array([0, 0.5]))
+        obs, reward, done, info = env.step(np.array([0,-1]))
 
         print(reward, done)
 

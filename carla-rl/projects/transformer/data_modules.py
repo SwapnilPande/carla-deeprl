@@ -12,7 +12,7 @@ from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 import pytorch_lightning as pl
 
 from environment import CarlaEnv
-from utils import preprocess_rgb, preprocess_topdown
+from common.utils import preprocess_rgb, preprocess_topdown
 
 
 class TransformerDataset(Dataset):
@@ -50,11 +50,6 @@ class TransformerDataset(Dataset):
 
                 for i in range(traj_length-K+1):
                     obs = [samples[i+t]['obs'] for t in range(K)]
-                    # reward = [samples[i+t]['reward'] for t in range(K)]
-
-                    # for t in range(K-2,-1,-1):
-                    #     reward[t] += reward[t+1]
-
                     action = [samples[i+t]['action'] for t in range(K)]
 
                     self.obs.append(obs)
@@ -246,3 +241,95 @@ class TokenizedDataModule(pl.LightningDataModule):
 
     def val_dataloader(self):
         return DataLoader(self.val_data, batch_size=self.batch_size, shuffle=False, num_workers=4)
+
+
+class BERTDataset(Dataset):
+
+    def __init__(self, path, max_trajectories=-1):
+        super().__init__()
+
+        trajectory_paths = glob.glob('{}/*'.format(path))
+        if len(trajectory_paths) == 0:
+            print('No trajectories found in {}'.format(path))
+        if max_trajectories > 0:
+            trajectory_paths = trajectory_paths[:max_trajectories]
+
+        self.path = path
+
+        self.obs, self.actions = [], []
+
+        for trajectory_path in trajectory_paths:
+            samples = []
+            image_paths = sorted(glob.glob('{}/topdown/*.png'.format(trajectory_path)))
+            json_paths = sorted(glob.glob('{}/measurements/*.json'.format(trajectory_path)))
+            traj_length = min(len(json_paths), len(image_paths))
+
+            for i in range(traj_length):
+                with open(json_paths[i]) as f:
+                    sample = json.load(f)
+                samples.append(sample)
+
+            if traj_length <= 100: # TODO: magic number
+                continue
+
+            for i in range(traj_length):
+                obs = image_paths[i], {
+                    'route': [samples[i]['obs'][0][0], samples[i]['obs'][0][5]],
+                    'ego': [samples[i]['obs'][0][3], samples[i]['obs'][0][4]],
+                    'obstacle': [samples[i]['obs'][0][1], samples[i]['obs'][0][2]],
+                    'light': [samples[i]['obs'][0][7]]
+                }
+                action = samples[i]['action']
+
+                self.obs.append(obs)
+                self.actions.append(action)
+
+        print('Number of samples: {}'.format(len(self)))
+
+    def __getitem__(self, idx):
+        image_path, symbols = self.obs[idx]
+        actions = self.actions[idx]
+
+        image = preprocess_rgb(cv2.imread(image_path), image_size=(128,128))
+        symbols = {k: torch.FloatTensor(symbols[k]) for k in symbols}
+        actions = torch.FloatTensor(actions)
+
+        return (image, symbols), actions
+
+    def __len__(self):
+        return len(self.obs)
+
+
+class BERTDataModule(pl.LightningDataModule):
+
+    def __init__(self, cfg):
+        super().__init__()
+        self.paths = cfg.dataset_paths
+        self.batch_size = cfg.batch_size
+        self.num_workers = cfg.num_workers
+        self.val_dataset_idx = cfg.val_dataset_idx
+        self.max_train_trajectories = cfg.max_train_trajectories
+        self.max_val_trajectories = cfg.max_val_trajectories
+
+        self.train_data = None
+        self.val_data = None
+
+    def setup(self, stage):
+        train_datasets = [d for i,d in enumerate(self.paths) if i not in self.val_dataset_idx]
+        val_datasets = [d for i,d in enumerate(self.paths) if i in self.val_dataset_idx]
+
+        train_datasets = [BERTDataset(path=path, max_trajectories=self.max_train_trajectories) for path in train_datasets]
+        train_size = sum([len(dataset) for dataset in train_datasets])
+        print('Train size: {}'.format(train_size))
+        val_datasets = [BERTDataset(path=path, max_trajectories=self.max_val_trajectories) for path in val_datasets]
+        val_size = sum([len(dataset) for dataset in val_datasets])
+        print('Val size: {}'.format(val_size))
+
+        self.train_data = torch.utils.data.ConcatDataset(train_datasets)
+        self.val_data = torch.utils.data.ConcatDataset(val_datasets)
+
+    def train_dataloader(self):
+        return DataLoader(self.train_data, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
+
+    def val_dataloader(self):
+        return DataLoader(self.val_data, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
