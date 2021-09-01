@@ -136,7 +136,7 @@ def create_env_config(cfg):
     action_config.frame_skip = 5
 
     config.populate_config(
-        observation_config=obs_config, scenario_config=scenario_config
+        observation_config=obs_config, action_config=action_config, scenario_config=scenario_config
     )
     return config
 

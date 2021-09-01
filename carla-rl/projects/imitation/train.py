@@ -60,10 +60,11 @@ class EvaluationCallback(Callback):
             obs = self.env.reset(unseen=True, index=index)
             model.reset()
             for _ in range(self.eval_length):
-                image_obs = self.env.render(camera='sensor.camera.rgb/front')
+                image_obs = self.env.render(camera='sensor.camera.rgb/top')
 
                 with torch.no_grad():
                     action = model.predict(image_obs, obs)[0]
+                    # print(action)
 
                 obs, reward, done, info = self.env.step(action)
                 frames.append(image_obs)
@@ -96,7 +97,12 @@ def main(cfg):
     # seed_everything(cfg.seed)
 
     # Loading agent and environment
-    agent = ConvAgent() # RecurrentAttentionAgent(**cfg.agent) # hydra.utils.instantiate(cfg.algo.agent)
+    if cfg.agent_type == 'conv':
+        agent = ConvAgent() # RecurrentAttentionAgent(**cfg.agent) # hydra.utils.instantiate(cfg.algo.agent)
+    elif cfg.agent_type == 'attention':
+        agent = RecurrentAttentionAgent(**cfg.agent)
+    else:
+        raise NotImplementedError
 
     # Setting up logger and checkpoint/eval callbacks
     logger = TensorBoardLogger(save_dir=os.getcwd(), name='', version='')
@@ -109,23 +115,32 @@ def main(cfg):
         config = DefaultMainConfig()
 
         obs_config = LowDimObservationConfig()
-        # obs_config.sensors['sensor.camera.rgb/top'] = {
-        #     'x':0.0,
-        #     'z':18.0,
-        #     'pitch':270,
-        #     'sensor_x_res':'64',
-        #     'sensor_y_res':'64',
-        #     'fov':'90', \
-        #     'sensor_tick': '0.0'}
-
-        del obs_config.sensors['sensor.camera.semantic_segmentation/top']
+        obs_config.sensors["sensor.camera.rgb/top"] = {
+            "x": 13.0,
+            "z": 18.0,
+            "pitch": 270,
+            "sensor_x_res": "128",
+            "sensor_y_res": "128",
+            "fov": "120",
+            "sensor_tick": "0.0",
+        }
 
         scenario_config = NoCrashDenseTown01Config() # LeaderboardConfig()
         scenario_config.city_name = 'Town02'
-        scenario_config.num_pedestrians = 50
-        scenario_config.sample_npc = True
-        scenario_config.num_npc_lower_threshold = 75
-        scenario_config.num_npc_upper_threshold = 76
+        # scenario_config.num_pedestrians = 50
+        scenario_config.sample_npc = False
+        scenario_config.num_npc = {
+            'Town01': 120,
+            'Town02': 100,
+            'Town03': 120,
+            'Town04': 200,
+            'Town05': 120,
+            'Town06': 150,
+            'Town07': 110,
+            'Town08': 180,
+            'Town09': 300,
+            'Town10': 120,
+        }[scenario_config.city_name]
 
         action_config = MergedSpeedScaledTanhConfig()
         action_config.frame_skip = 5
@@ -138,6 +153,8 @@ def main(cfg):
 
         evaluation_callback = EvaluationCallback(env=env, eval_freq=cfg.eval_freq, eval_length=cfg.eval_length, num_eval_episodes=cfg.num_eval_episodes)
         callbacks.append(evaluation_callback)
+    else:
+        env = None
 
     cfg.trainer.gpus = str(cfg.trainer.gpus) # str denotes gpu id, not quantity
 
@@ -151,7 +168,8 @@ def main(cfg):
             max_epochs=cfg.num_epochs)
         trainer.fit(agent, offline_data_module)
     finally:
-        env.close()
+        if env is not None:
+            env.close()
 
     print('Done')
 

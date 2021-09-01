@@ -1,6 +1,47 @@
 defaults:
-  - environment: no_scenario
+  - environment: no_crash_dense_t1
   - eval: eval_config
   - data: data_config
   - model: model_config
   - train: training_config
+
+exp_name: ???
+checkpoint_freq: 1
+
+gpu: 0 # assuming single GPU
+seed: 0
+server_port: 2000
+
+use_images: true
+
+data_module:
+    batch_size: 16
+    num_workers: 4
+    dataset_paths: 
+      - '/zfsauton/datasets/ArgoRL/brianyan/carla_dataset_v2/'
+      - '/zfsauton/datasets/ArgoRL/brianyan/carla_dataset_v2/'
+    use_images: ${use_images}
+    val_dataset_idx:
+      - 1
+    max_train_trajectories: -1
+    max_val_trajectories: 15
+    horizon_length: 20
+
+agent_type: attention
+agent:
+    conv_type: convlstm
+    attention_type: lstm
+
+eval_freq: 1
+eval_length: 2000
+num_eval_episodes: 5
+
+num_epochs: 100
+
+trainer:
+    precision: 16
+    gpus: ${gpu}
+
+hydra:
+    run:
+        dir: /home/scratch/brianyan/outputs/${exp_name}/${now:%Y-%m-%d_%H-%M-%S}

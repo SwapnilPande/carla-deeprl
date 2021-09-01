@@ -18,7 +18,8 @@ class ConvAgent(pl.LightningModule):
         self.action_mlp = nn.Sequential(
             nn.Linear(2048,256),
             nn.ReLU(),
-            nn.Linear(256,2)
+            nn.Linear(256,2),
+            nn.Tanh()
         )
 
     def forward(self, image, mlp_features):
@@ -27,6 +28,7 @@ class ConvAgent(pl.LightningModule):
         mlp_features = mlp_features.reshape(-1,8)
         mlp_features = self.measurement_mlp(mlp_features)
         features = image + mlp_features
+        # features = mlp_features
         action = self.action_mlp(features)
         return action
 
@@ -38,7 +40,7 @@ class ConvAgent(pl.LightningModule):
         mlp_features = torch.FloatTensor(mlp_features).cuda().reshape(1,-1)
         out = self.forward(image, mlp_features)
         action = out.detach().cpu().numpy()
-        return np.clip(action, -1, 1)
+        return action
 
     def training_step(self, batch, batch_idx):
         (image, mlp_features), action = batch
@@ -367,7 +369,8 @@ class RecurrentAttentionAgent(pl.LightningModule):
         self.action_predictor = nn.Sequential(
             nn.Linear(128, 128),
             nn.ReLU(),
-            nn.Linear(128, 2)
+            nn.Linear(128, 2),
+            nn.Tanh()
         )
         self.measurement_mlp = nn.Linear(8, 2048)
 
@@ -497,12 +500,12 @@ class RecurrentAttentionAgent(pl.LightningModule):
         if return_map:
             out, attention_map = self.forward(image, mlp_features, return_map=return_map)
             action = out.detach().cpu().numpy()
-            action = np.clip(action, -1, 1)
+            # action = np.clip(action, -1, 1)
             return action, attention_map.detach().cpu().numpy()
         else:
             out = self.forward(image, mlp_features)
             action = out.detach().cpu().numpy()
-            action = np.clip(action, -1, 1)
+            # action = np.clip(action, -1, 1)
             return action
 
     def training_step(self, batch, batch_idx):
@@ -546,4 +549,4 @@ class RecurrentAttentionAgent(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        return optim.Adam(self.parameters(), lr=3e-5)
+        return optim.Adam(self.parameters(), lr=1e-3)

@@ -183,8 +183,8 @@ class Carla910Interface():
         self.global_planner.set_global_plan(self.dense_waypoints)
 
         # If waypoint is behind vehicle, rotate the vehicle
-        if abs(self.global_planner.get_next_orientation_new(self.source_transform)[0]) > .5:
-            self.reset(unseen=unseen, index=index)
+        # if abs(self.global_planner.get_next_orientation_new(self.source_transform)[0]) > .5:
+        #     self.reset(unseen=unseen, index=index)
 
         # Tick for 15 frames to handle car initialization in air
         for _ in range(15):

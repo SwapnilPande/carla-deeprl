@@ -1,4 +1,4 @@
-train_dataset: "/zfsauton/datasets/ArgoRL/brianyan/carla_dataset/"
+train_dataset: "/zfsauton/datasets/ArgoRL/brianyan/carla_dataset_v2/"
 # small_train_dataset: "/zfsauton/datasets/ArgoRL/jhoang/small_dataset/"
 val_dataset: "/zfsauton/datasets/ArgoRL/brianyan/carla_dataset_val_v3/"
 model_dir: "/zfsauton/datasets/ArgoRL/jhoang/models/"

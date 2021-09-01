@@ -39,7 +39,7 @@ class OfflineCarlaDataset(Dataset):
         for trajectory_path in trajectory_paths:
             samples = []
             json_paths = sorted(glob.glob('{}/measurements/*.json'.format(trajectory_path)))
-            image_paths = sorted(glob.glob('{}/rgb/*.png'.format(trajectory_path)))
+            image_paths = sorted(glob.glob('{}/topdown/*.png'.format(trajectory_path)))
             traj_length = min(len(json_paths), len(image_paths))
 
             for i in range(traj_length):
@@ -72,7 +72,7 @@ class OfflineCarlaDataset(Dataset):
         image_paths, mlp_features = self.obs[idx]
 
         mlp_features = torch.FloatTensor(mlp_features).reshape(self.H,8)
-        action = torch.FloatTensor(self.actions[idx])
+        action = torch.FloatTensor(self.actions[idx]).clamp(-1,1)
         # reward = torch.FloatTensor([self.rewards[idx]])
         # terminal = torch.Tensor([self.terminals[idx]])
 

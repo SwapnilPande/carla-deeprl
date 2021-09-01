@@ -41,7 +41,7 @@ class PIDLongitudinalController():
             _ie = 0.0
 
         if enable_brake:
-            throttle_min_clip = -2.0
+            throttle_min_clip = -1.0
         else:
             throttle_min_clip = 0.0
 

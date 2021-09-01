@@ -71,6 +71,7 @@ class DataCollector:
             # expert_action = self.env.get_autopilot_action(speed)
             expert_action = agent.predict(self.env, info, info['speed'], 8)
             next_obs, reward, done, info = self.env.step(expert_action)
+            print(expert_action)
 
             # reward_map, world_pts, _ = calculate_reward_map(self.env, route)
             experience = create_experience(

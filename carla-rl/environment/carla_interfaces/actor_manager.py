@@ -75,26 +75,15 @@ class ActorManager910():
         
         dt = self.config.action_config.frame_skip / self.config.server_fps
         self.args_longitudinal_dict = {
-<<<<<<< HEAD
-            'K_P': 0.1,
-            'K_D': 0.0005,
-            'K_I': 0.4,
-            'dt': 1/10.}
-=======
             'K_P': 1.4,
             'K_D': 0.1,
             'K_I': 0.0,
             'dt': dt}
->>>>>>> e8ccec2bc754e16891593ead7331a94255dbd4c3
         self.args_lateral_dict = {
             'K_P': 0.88,
             'K_D': 0.02,
             'K_I': 0.5,
-<<<<<<< HEAD
-            'dt': 1/10.}
-=======
             'dt': dt}
->>>>>>> e8ccec2bc754e16891593ead7331a94255dbd4c3
         self.controller = controller.PIDLongitudinalController(K_P=self.args_longitudinal_dict['K_P'], K_D=self.args_longitudinal_dict['K_D'], K_I=self.args_longitudinal_dict['K_I'], dt=self.args_longitudinal_dict['dt'])
         self.lateral_controller = controller.PIDLateralController(self.vehicle_actor, K_P=self.args_lateral_dict['K_P'], K_D=self.args_lateral_dict['K_D'], K_I=self.args_lateral_dict['K_I'], dt=self.args_lateral_dict['dt'])
         self.target_speed = self.config.action_config.target_speed
