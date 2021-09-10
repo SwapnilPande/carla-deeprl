@@ -64,7 +64,7 @@ class Carla910Interface():
 
         # Enable rendering
         # TODO render according to config settings
-        settings.no_rendering_mode = False
+        settings.no_rendering_mode = not self.config.render_server
 
         self.world.apply_settings(settings)
 
@@ -333,6 +333,8 @@ class Carla910Interface_Leaderboard:
         # print(self.world_annotations)
         CarlaDataProvider.set_client(self.client)
         CarlaDataProvider.set_traffic_manager_port(4050)
+
+
 
 
     def _set_world_and_map(self, town_name):

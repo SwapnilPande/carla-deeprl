@@ -256,10 +256,10 @@ class DefaultMainConfig(BaseMainConfig):
         self.server_port = -1
         self.server_retries = 5
         self.sync_mode = True
-        self.client_timeout_seconds = 30
+        self.client_timeout_seconds = 45
 
 
-        self.render_server = True
+        self.render_server = False
         # X Rendering Resolution
         self.render_res_x = 800
         # Y Rendering Resolution

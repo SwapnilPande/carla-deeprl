@@ -63,15 +63,12 @@ class CarlaServer():
         if self.server_process:
             print("Launched server at port:", self.server_port)
 
-            sleep_time = 25
+            sleep_time = 30
             print('Waiting {}s for server to finish setting up'.format(sleep_time))
             for _ in tqdm(range(sleep_time)):
                 time.sleep(1)
 
             return True
-
-
-
 
         return False
 
@@ -81,12 +78,19 @@ class CarlaServer():
 
         Will attempt to start the CARLA server for number of retries specified in config.
         """
+
         server_started = False
         server_start_retries = 0
 
         while ((not server_started) and server_start_retries < self.config.server_retries):
             server_started = self._attempt_server_launch()
             server_start_retries += 1
+
+            if(not server_started):
+                sleep_time = 25
+                print('Waiting {}s before attempting to restart server'.format(sleep_time))
+                for _ in tqdm(range(sleep_time)):
+                    time.sleep(1)
 
         # Max retry attempts exceeded
         if(not server_started):
