@@ -42,7 +42,12 @@ class FakeEnv(BaseFakeEnv):
 
     def make_prediction(self, past_state, past_action):
         # Get predictions across all models
-        return torch.stack(self.dynamics.predict(past_state.normalized, past_action.normalized)).squeeze(dim = 1)
+        try:
+            states, rewards = self.dynamics.predict(past_state.normalized, past_action.normalized)
+        except:
+            import ipdb; ipdb.set_trace()
+        states = torch.stack(states).squeeze(dim = 1)
+        return states
 
 
 

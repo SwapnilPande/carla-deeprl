@@ -3,6 +3,7 @@ import numpy as np
 from numpy.lib.arraysetops import isin
 from tqdm import tqdm
 import scipy.spatial
+from collections import deque
 
 import torch
 from torch.utils.data import Dataset, DataLoader, IterableDataset
@@ -12,7 +13,62 @@ from gym.spaces import Box, Discrete, Tuple
 # compute reward
 from projects.morel_mopo.algorithm.reward import compute_reward
 from projects.morel_mopo.algorithm.fake_envs import fake_env_utils as feutils
+from projects.morel_mopo.algorithm.fake_envs import fake_env_scenarios as fescenarios
 
+class PIDLateralController():
+    """
+    PIDLateralController implements lateral control using a PID.
+    """
+
+    def __init__(self, K_P=1.0, K_D=0.0, K_I=0.0, dt=0.03):
+        """
+        :param K_P: Proportional term
+        :param K_D: Differential term
+        :param K_I: Integral term
+        :param dt: time differential in seconds
+        """
+        self._K_P = K_P
+        self._K_D = K_D
+        self._K_I = K_I
+        self._dt = dt
+        self._e_buffer = deque(maxlen=10)
+
+    def pid_control(self, vehicle_pose, waypoint):
+        """
+        Estimate the steering angle of the vehicle based on the PID equations
+
+        :param waypoint: target waypoint
+        :param vehicle_transform: current transform of the vehicle
+        :return: steering control in the range [-1, 1]
+        """
+        v_begin = vehicle_pose[0:2]
+        theta = vehicle_pose[2]
+
+        v_end = v_begin + np.array([np.cos(np.radians(theta)),
+                                         np.sin(np.radians(theta))])
+
+        v_vec = np.array([v_end[0] - v_begin[0], v_end[1] - v_begin[1], 0.0])
+        w_vec = np.array([waypoint[0] -
+                          v_begin[0],
+                          waypoint[1] -
+                          v_begin[1], 0.0])
+        _dot = np.arccos(np.clip(np.dot(w_vec, v_vec) /
+                                 (np.linalg.norm(w_vec) * np.linalg.norm(v_vec)), -1.0, 1.0))
+
+        _cross = np.cross(v_vec, w_vec)
+        if _cross[2] < 0:
+            _dot *= -1.0
+
+        self._e_buffer.append(_dot)
+        if len(self._e_buffer) >= 2:
+            _de = (self._e_buffer[-1] - self._e_buffer[-2]) / self._dt
+            _ie = sum(self._e_buffer) * self._dt
+        else:
+            _de = 0.0
+            _ie = 0.0
+
+        return np.clip((self._K_P * _dot) + (self._K_D * _de /
+                                             self._dt) + (self._K_I * _ie * self._dt), -1.0, 1.0)
 
 
 class BaseFakeEnv(gym.Env):
@@ -58,14 +114,15 @@ class BaseFakeEnv(gym.Env):
         ################################################
         # Dataset comes from dynamics
         ################################################
-        self.offline_data_module = self.dynamics.data_module
-        if(self.offline_data_module is None):
-            print("FAKE_ENV: Data module does not have associated dataset. Reset must be called with an initial state input.")
-
         # Get norm stats and frame_stack from dynamics
         # This will be the same as the norm stats from the original dataset, on which the dynamics model was trained
         self.norm_stats = self.dynamics.normalization_stats
         self.frame_stack = self.dynamics.frame_stack
+
+        # self.offline_data_module = fescenarios.StraightWithStaticObstacle(self.frame_stack, self.norm_stats)#self.dynamics.data_module
+        self.offline_data_module = self.dynamics.data_module
+        if(self.offline_data_module is None):
+            print("FAKE_ENV: Data module does not have associated dataset. Reset must be called with an initial state input.")
 
         ################################################
         # State variables for the fake env
@@ -84,9 +141,23 @@ class BaseFakeEnv(gym.Env):
             self.logger.log_scalar("mopo/uncertainty_coeff", self.uncertainty_coeff)
             self.logger.log_scalar("mopo/rollout_length", self.timeout_steps)
 
+
+        # ONLY FOR EXPERT AUTOPILOT
+        self.args_lateral_dict = {
+            'K_P': 0.88,
+            'K_D': 0.02,
+            'K_I': 0.5,
+            'dt': 1/10.0}
+        self.lateral_controller = PIDLateralController(K_P=self.args_lateral_dict['K_P'], K_D=self.args_lateral_dict['K_D'], K_I=self.args_lateral_dict['K_I'], dt=self.args_lateral_dict['dt'])
+
+        # Cumulative steps across all training runs
+        self.cum_step = 0
+        self.prev_termination_log = 0
+
+
     # sample from dataset
     def sample(self):
-        return self.offline_data_module.sample_with_waypoints()
+        return self.offline_data_module.sample_with_waypoints(self.timeout_steps)
 
     ''' Resets environment. If no input is passed in, sample from dataset '''
     def reset(self, inp=None):
@@ -97,12 +168,13 @@ class BaseFakeEnv(gym.Env):
         if inp is None:
             if(self.offline_data_module is None):
                 raise Exception("FAKE_ENV: Cannot sample from dataset since dynamics model does not have associated dataset.")
-            ((obs, action, _, _, _, vehicle_pose), waypoints) = self.sample()
+            ((obs, action, _, _, _, vehicle_pose), waypoints, npc_poses) = self.sample()
             self.state.normalized = obs[:,:2]
             self.past_action.normalized = action
+            self.npc_poses = torch.stack(npc_poses)
 
         else:
-            (obs, action, vehicle_pose, waypoints) = inp
+            (obs, action, vehicle_pose, waypoints, npc_poses) = inp
 
             # Convert numpy arrays, or lists, to torch tensors
             if(not isinstance(obs, torch.Tensor)):
@@ -120,19 +192,26 @@ class BaseFakeEnv(gym.Env):
             if(not isinstance(waypoints, torch.Tensor)):
                 waypoints = torch.FloatTensor(waypoints)
 
+            # Convert numpy arrays, or lists, to torch tensors
+            if(not isinstance(waypoints, torch.Tensor)):
+                waypoints = torch.FloatTensor(waypoints)
+
             # state only includes speed, steer
             self.state.unnormalized =  obs[:,:2]
             self.past_action.unnormalized = action
+            self.npc_poses = npc_poses
 
         self.waypoints = feutils.filter_waypoints(waypoints).to(self.device)
 
+        self.npc_poses = self.npc_poses.to(self.device)
 
-        if(len(self.waypoints == 2)):
+
+        if(len(self.waypoints) == 2):
             self.second_last_waypoint = self.waypoints[0]
         else:
             self.second_last_waypoint = None
 
-        if(len(self.waypoints == 1)):
+        if(len(self.waypoints) == 1):
             self.last_waypoint = self.waypoints[0]
         else:
             self.last_waypoint = None
@@ -148,7 +227,17 @@ class BaseFakeEnv(gym.Env):
 
         #TODO Return policy features, not dynamics features
         policy_obs, _, _ = self.get_policy_obs(self.state.unnormalized[0])
+
+
         return policy_obs.cpu().numpy()
+
+    def get_current_state(self):
+        return (self.state.unnormalized,
+                self.past_action.unnormalized,
+                self.vehicle_pose,
+                self.waypoints,
+                self.npc_poses)
+
 
     def calc_disc(self, predictions):
         # Compute the pairwise distances between all predictions
@@ -195,7 +284,25 @@ class BaseFakeEnv(gym.Env):
         dist_to_trajectory = torch.Tensor([dist_to_trajectory]).to(self.device)
         angle              = torch.Tensor([angle]).to(self.device)
 
-        return torch.cat([angle, state[1:2] / 10, state[0:1], dist_to_trajectory], dim=0).float().to(self.device), dist_to_trajectory, angle
+
+        if(self.config.obs_config.input_type == "wp_obs_info_speed_steer"):
+            return torch.cat([angle, state[1:2] / 10, state[0:1], dist_to_trajectory], dim=0).float().to(self.device), dist_to_trajectory, angle
+
+
+
+        elif(self.config.obs_config.input_type == "wp_obstacle_speed_steer"):
+            #TODO Check config here
+            obstacle_dist = 1
+            obstacle_vel = 1
+            cur_npc_poses = self.npc_poses[self.steps_elapsed]
+            for i in range(cur_npc_poses.shape[0]):
+                d_bool, norm_target = feutils.is_within_distance_ahead(cur_npc_poses[i], self.vehicle_pose, self.config.obs_config.vehicle_proximity_threshold)
+
+                if(d_bool):
+                    obstacle_dist = norm_target/self.config.obs_config.vehicle_proximity_threshold
+                    obstacle_vel = cur_npc_poses[i][3] / 20
+
+            return torch.cat([angle, state[1:2] / 10, state[0:1], dist_to_trajectory, torch.tensor([obstacle_dist]).to(self.device), torch.tensor([obstacle_vel]).to(self.device)], dim=0).float().to(self.device), dist_to_trajectory, angle
 
     '''
     Takes one step according to action
@@ -232,6 +339,7 @@ class BaseFakeEnv(gym.Env):
             # predicted change in x, y, th
             delta_vehicle_poses = self.deltas.unnormalized[:,:3]
 
+
             # change in steer, speed
             delta_state        = self.deltas.unnormalized[self.model_idx,3:5]
 
@@ -266,12 +374,18 @@ class BaseFakeEnv(gym.Env):
 
             policy_obs, dist_to_trajectory, angle = self.get_policy_obs(self.state.unnormalized[0])
 
-            # check if at goal
-            done = (len(self.waypoints) == 0 or torch.abs(dist_to_trajectory) > 5)
-
             ################## calc reward with penalty for uncertainty ##############################
+            collision = False
+            collision_threshold = 1.5
+            cur_npc_poses = self.npc_poses[self.steps_elapsed]
+            for i in range(cur_npc_poses.shape[0]):
+                # Get magnitude of vector
+                distance = torch.linalg.norm(cur_npc_poses[i][0:2] - self.vehicle_pose[0:2])
 
-            reward_out = compute_reward(self.state.unnormalized[0], dist_to_trajectory, self.config)
+                # If too close to a car, set collision to true
+                collision = (distance < collision_threshold) | collision
+
+            reward_out = compute_reward(self.state.unnormalized[0], dist_to_trajectory, collision, self.config)
 
             uncertain =  self.usad(self.deltas.normalized.detach().cpu().numpy())
             reward_out[0] = reward_out[0] - uncertain * self.uncertainty_coeff
@@ -296,9 +410,46 @@ class BaseFakeEnv(gym.Env):
 
             info = {
                         "delta" : self.deltas.normalized[self.model_idx].cpu().numpy(),
-                        "uncertain" : self.config.uncertainty_coeff * uncertain,
+                        "uncertain" : self.uncertainty_coeff * uncertain,
                         "predictions": vehicle_poses.cpu().numpy()
                     }
 
-            res = policy_obs.cpu().numpy(), float(reward_out.item()), timeout or done, info
+            # Check done condition
+            done = (len(self.waypoints) == 0 or
+                    torch.abs(dist_to_trajectory) > 2.5 or
+                    collision or
+                    self.steps_elapsed >= len(self.npc_poses) or
+                    timeout)
+
+            res = policy_obs.cpu().numpy(), float(reward_out.item()), done, info
+
+
+            #Logging
+            if(done and self.logger is not None):
+                self.logger.log_scalar('rollout/obstacle_collision', int(collision), self.cum_step)
+
+            self.cum_step += 1
+
             return res
+
+    def get_autopilot_action(self, target_speed=0.5):
+        waypoint = self.waypoints[0]
+
+        steer = self.lateral_controller.pid_control(self.vehicle_pose.cpu().numpy(), waypoint)
+        steer = np.clip(steer, -1, 1)
+
+
+        obstacle_dist = 1.0
+        obstacle_vel = 1.0
+        cur_npc_poses = self.npc_poses[self.steps_elapsed]
+        for i in range(cur_npc_poses.shape[0]):
+            d_bool, norm_target = feutils.is_within_distance_ahead(cur_npc_poses[i], self.vehicle_pose, self.config.obs_config.vehicle_proximity_threshold)
+
+            if(d_bool):
+                obstacle_dist = norm_target/self.config.obs_config.vehicle_proximity_threshold
+                obstacle_vel = cur_npc_poses[i][3] / 20
+
+        if(obstacle_dist < 0.3):
+            target_speed = -1.0
+
+        return np.array([steer, target_speed])

@@ -46,6 +46,21 @@ class WaypointModule():
     def get_waypoints(self, idx):
         return self.waypoints[idx]
 
+class NPCModule():
+    ''' init waypoints '''
+    def __init__(self):
+        self.pose_sequence = []
+
+    def store_poses(self, poses):
+        self.pose_sequence.append(poses)
+
+    def get_poses(self, idx, rollout_len):
+        # Return poses if idx is valid
+        if(idx < len(self.pose_sequence)):
+            return self.pose_sequence[idx : idx + rollout_len]
+
+        return
+
 
 
 # def construct_obs(self,)
@@ -77,6 +92,7 @@ class OfflineCarlaDataset(Dataset):
         # Save data shape
         self.frame_stack = frame_stack
         self.obs_dim = obs_dim
+
         self.additional_state_dim = additional_state_dim
         self.action_dim = action_dim
         self.state_dim_out = state_dim_out
@@ -90,6 +106,7 @@ class OfflineCarlaDataset(Dataset):
         self.red_light = []
 
         self.waypoint_module = WaypointModule()
+        self.npc_module = NPCModule()
 
         # Keys to accesss values in the dataset
         steer_key = "steer_angle"
@@ -101,6 +118,7 @@ class OfflineCarlaDataset(Dataset):
         reward_key = "reward"
         done_key = "done"
         action_key = "action"
+        npc_pose_key = "npc_poses"
 
         print("Loading data from: {}".format(path))
         # Don't calculate gradients for descriptive statistics
@@ -150,6 +168,7 @@ class OfflineCarlaDataset(Dataset):
 
 
 
+
                     # vehicle pose at timestep t
                     vehicle_pose_cur = torch.FloatTensor([samples[i][vehicle_x_key],
                                                           samples[i][vehicle_y_key],
@@ -192,12 +211,18 @@ class OfflineCarlaDataset(Dataset):
                     # self.additional_state.append(torch.stack(additional_state))
                     self.actions.append(torch.stack(action))
                     self.delta.append(delta)
-                    self.vehicle_poses.append(torch.FloatTensor([samples[i+4][vehicle_x_key],
-                                                          samples[i+4][vehicle_y_key],
-                                                          samples[i+4][vehicle_theta_key]]))
+                    self.vehicle_poses.append(vehicle_pose_prev)
+
                     # get waypoints for current timestep
                     waypoints = torch.FloatTensor(samples[i][waypoints_key])
                     self.waypoint_module.store_waypoints(waypoints)
+
+                    # get npc poses for current timestep
+                    if(npc_pose_key in samples[i]):
+                        npc_poses = torch.FloatTensor(samples[i][npc_pose_key])
+                    else:
+                        npc_poses = torch.zeros(size = (0,4))
+                    self.npc_module.store_poses(npc_poses)
 
                     # rewards, terminal at each timestep
                     self.rewards.append(torch.FloatTensor([samples[i][reward_key]]))
@@ -238,8 +263,8 @@ class OfflineCarlaDataset(Dataset):
         return len(self.rewards)
 
     ''' randomly sample from dataset '''
-    def sample_with_waypoints(self, idx):
-        return self[idx], self.waypoint_module.get_waypoints(idx)
+    def sample_with_waypoints(self, idx, rollout_len):
+        return self[idx], self.waypoint_module.get_waypoints(idx), self.npc_module.get_poses(idx, rollout_len)
 
 
 class OfflineCarlaDataModule():
@@ -340,7 +365,7 @@ class OfflineCarlaDataModule():
         self.train_data, self.val_data = torch.utils.data.random_split(self.concat_dataset, (train_size, val_size))
 
     ''' This is used in FakeEnv for dynamics evaluation (with waypoints, batch size = 1) '''
-    def sample_with_waypoints(self):
+    def sample_with_waypoints(self, rollout_len):
         # selects a trajectory path
         path_idx = np.random.randint(self.num_paths)
         dataset = self.datasets[path_idx]
@@ -348,7 +373,7 @@ class OfflineCarlaDataModule():
         # selects a timestep along trajectory to sample from
         num_timesteps = len(dataset)
         idx = np.random.randint(num_timesteps)
-        return dataset.sample_with_waypoints(idx)
+        return dataset.sample_with_waypoints(idx, rollout_len)
 
 
     ''' This is used for dynamics training (no waypoint input needed, batch size set)'''

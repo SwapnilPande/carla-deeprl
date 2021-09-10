@@ -96,5 +96,5 @@ class DefaultFakeEnvConfig(BaseFakeEnvConfig):
     def __init__(self):
         super().__init__()
 
-        self.uncertainty_coeff = 20
+        self.uncertainty_coeff = 1
         self.timeout_steps = 50

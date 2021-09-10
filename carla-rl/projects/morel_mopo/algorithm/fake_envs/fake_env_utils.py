@@ -77,7 +77,8 @@ class NormalizedTensor:
         return self.std * array + self.mean
 
 
-
+    def __str__(self):
+        return str(self._unnormalized_array)
 
 
 def distance_vehicle(waypoint, vehicle_pose, device):
@@ -118,9 +119,11 @@ def get_dot_product_and_angle(vehicle_pose, waypoint, device):
     angle = torch.acos(torch.clip(dot /
                                 (torch.linalg.norm(w_vec) * torch.linalg.norm(v_vec)), -1.0, 1.0))
 
-
-    assert(torch.isclose(torch.cos(angle), torch.clip(torch.dot(w_vec, v_vec) / \
-        (torch.linalg.norm(w_vec) * torch.linalg.norm(v_vec)), -1.0, 1.0), atol=1e-3))
+    try:
+        assert(torch.isclose(torch.cos(angle), torch.clip(torch.dot(w_vec, v_vec) / \
+            (torch.linalg.norm(w_vec) * torch.linalg.norm(v_vec)), -1.0, 1.0), atol=1e-3))
+    except:
+        import ipdb; ipdb.set_trace()
 
     # make vectors 3D for cross product
     v_vec_3d = torch.hstack((v_vec, torch.Tensor([0]).to(device)))
@@ -299,4 +302,31 @@ def rot(theta):
                       [ torch.sin(theta), torch.cos(theta)]])
     return R
 
+
+def is_within_distance_ahead(target_transform, current_transform, max_distance):
+        """
+        Check if a target object is within a certain distance in front of a reference object.
+        :param target_transform: location of the target object
+        :param current_transform: location of the reference object
+        :param orientation: orientation of the reference object
+        :param max_distance: maximum allowed distance
+        :return: True if target object is within max_distance ahead of the reference object
+        """
+        # Get vector to obstacle
+        target_vector = target_transform[0:2] - current_transform[0:2]
+        # Get magnitude of vector
+        norm_target = torch.linalg.norm(target_vector)
+
+        # If the vector is too short, we can simply stop here
+        if norm_target < 0.001:
+            return True, norm_target
+
+        # Regardless of direction, obstacle is too far
+        if norm_target > max_distance:
+            return False, norm_target
+
+        forward_vector = torch.tensor([torch.cos(torch.deg2rad(current_transform[2])), torch.sin(torch.deg2rad(current_transform[2]))]).to(current_transform.device)
+        dot = torch.dot(forward_vector, target_vector) / norm_target
+
+        return (dot > 0.98, norm_target)
 

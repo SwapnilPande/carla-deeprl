@@ -56,6 +56,54 @@ class DefaultMLPMOPOConfig(BaseMOPOConfig):
             carla_gpu = self.gpu
         )
 
+class DefaultMLPObstaclesMOPOConfig(BaseMOPOConfig):
+    def __init__(self):
+        super().__init__()
+
+        self.dynamics_config = dynamics_config.ObstaclesMLPDynamicsConfig()
+
+        self.fake_env_config = fake_env_config.DefaultFakeEnvConfig()
+
+        self.fake_env_config.populate_config(
+            observation_config = "VehicleDynamicsObstacleNoCameraConfig",
+            action_config = "MergedSpeedTanhConfig",
+            reward_config="Simple2RewardConfig"
+        )
+
+        self.eval_env_config = DefaultMainConfig()
+        self.eval_env_config.populate_config(
+            observation_config = "VehicleDynamicsObstacleNoCameraConfig",
+            action_config = "MergedSpeedScaledTanhConfig",
+            reward_config = "Simple2RewardConfig",
+            scenario_config = "NoCrashRegularTown01Config",
+            testing = False,
+            carla_gpu = self.gpu
+        )
+
+class DefaultProbMLPMOPOConfig(BaseMOPOConfig):
+    def __init__(self):
+        super().__init__()
+
+        self.dynamics_config = dynamics_config.DefaultProbabilisticMLPDynamicsConfig()
+
+        self.fake_env_config = fake_env_config.DefaultFakeEnvConfig()
+
+        self.fake_env_config.populate_config(
+            observation_config = "VehicleDynamicsNoCameraConfig",
+            action_config = "MergedSpeedTanhConfig",
+            reward_config="Simple2RewardConfig"
+        )
+
+        self.eval_env_config = DefaultMainConfig()
+        self.eval_env_config.populate_config(
+            observation_config = "VehicleDynamicsNoCameraConfig",
+            action_config = "MergedSpeedScaledTanhConfig",
+            reward_config = "Simple2RewardConfig",
+            scenario_config = "NoCrashEmptyTown01Config",
+            testing = False,
+            carla_gpu = self.gpu
+        )
+
 class DefaultProbGRUMOPOConfig(BaseMOPOConfig):
     def __init__(self):
         super().__init__()

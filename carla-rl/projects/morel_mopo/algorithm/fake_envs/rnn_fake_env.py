@@ -56,17 +56,17 @@ class RNNFakeEnv(BaseFakeEnv):
             rnn_init_state = torch.clone(self.state.normalized)
             rnn_init_action = torch.clone(self.past_action.normalized)
 
-        if(len(self.waypoints == 2)):
+        self.waypoints = feutils.filter_waypoints(waypoints).to(self.device)
+
+        if(len(self.waypoints) == 2):
             self.second_last_waypoint = self.waypoints[0]
         else:
             self.second_last_waypoint = None
 
-        if(len(self.waypoints == 1)):
+        if(len(self.waypoints) == 1):
             self.last_waypoint = self.waypoints[0]
         else:
             self.last_waypoint = None
-
-        self.waypoints = feutils.filter_waypoints(waypoints).to(self.device)
 
         self.vehicle_pose = vehicle_pose.to(self.device)
 

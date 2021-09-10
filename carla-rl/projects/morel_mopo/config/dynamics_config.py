@@ -71,6 +71,15 @@ class DefaultDynamicsModuleConfig(BaseDynamicsModuleConfig):
         self.drop_prob = 0.3
         self.activation = nn.ReLU
 
+class RewardDynamicsModuleConfig(BaseDynamicsModuleConfig):
+    def __init__(self):
+        self.predict_reward = True
+        self.n_neurons = 1024
+        self.n_hidden_layers = 2
+        self.n_head_layers = 2
+        self.drop_prob = 0.3
+        self.activation = nn.ReLU
+
 class BaseDynamicsEnsembleConfig(BaseConfig):
     def __init__(self):
         # Learning Rate for dynamics ensemble members
@@ -108,6 +117,17 @@ class DefaultMLPDynamicsEnsembleConfig(BaseDynamicsEnsembleConfig):
         self.network_cfg = DefaultDynamicsModuleConfig()
         self.gpu = 2
 
+class RewardMLPDynamicsEnsembleConfig(BaseDynamicsEnsembleConfig):
+    def __init__(self):
+        self.lr = 0.001
+        self.n_models = 5
+        self.loss = nn.SmoothL1Loss
+        self.loss_args = {"beta" : 0.5}
+        self.optimizer_type = optim.Adam
+        self.optimizer_args = {"weight_decay" : 0.00}
+        self.network_cfg = RewardDynamicsModuleConfig()
+        self.gpu = 2
+
 class DefaultMLPDynamicsConfig(BaseDynamicsConfig):
     def __init__(self):
         super().__init__()
@@ -118,6 +138,42 @@ class DefaultMLPDynamicsConfig(BaseDynamicsConfig):
         self.dynamics_model_type = dynamics_models.MLPDynamicsEnsemble
 
         self.dynamics_model_config = DefaultMLPDynamicsEnsembleConfig()
+
+        # Config for the associated dataset
+        self.dataset_config = data_module_config.MixedDeterministicMLPDataModuleConfig()
+
+        self.train_epochs = 200
+
+        self.fake_env_type = fake_envs.FakeEnv
+
+class ObstaclesMLPDynamicsConfig(BaseDynamicsConfig):
+    def __init__(self):
+        super().__init__()
+
+        self.gpu = None
+
+        # Which model class to import
+        self.dynamics_model_type = dynamics_models.MLPDynamicsEnsemble
+
+        self.dynamics_model_config = DefaultMLPDynamicsEnsembleConfig()
+
+        # Config for the associated dataset
+        self.dataset_config = data_module_config.ObstaclesMixedDeterministicMLPDataModuleConfig()
+
+        self.train_epochs = 200
+
+        self.fake_env_type = fake_envs.FakeEnv
+
+class RewardMLPDynamicsConfig(BaseDynamicsConfig):
+    def __init__(self):
+        super().__init__()
+
+        self.gpu = None
+
+        # Which model class to import
+        self.dynamics_model_type = dynamics_models.MLPDynamicsEnsemble
+
+        self.dynamics_model_config = RewardMLPDynamicsEnsembleConfig()
 
         # Config for the associated dataset
         self.dataset_config = data_module_config.MixedDeterministicMLPDataModuleConfig()
@@ -204,18 +260,18 @@ class DefaultProbabilisticMLPDynamicsModuleConfig(BaseDynamicsModuleConfig):
         super().__init__()
         self.action_dim = 2
         self.predict_reward = False
-        self.n_neurons = 200
+        self.n_neurons = 1024
         self.n_hidden_layers = 4
         self.n_head_layers = 1
-        self.drop_prob = 0.1
-        self.activation = nn.SiLU
+        self.drop_prob = 0
+        self.activation = nn.ReLU
 
 
 class DefaultProbabilisticMLPEnsembleDynamicsConfig(BaseDynamicsEnsembleConfig):
     def __init__(self):
         super().__init__()
-        self.lr = 0.001
-        self.n_models = 5
+        self.lr = 0.0005
+        self.n_models = 1
         self.loss = nn.SmoothL1Loss
         self.loss_args = {"beta" : 0.5}
         self.optimizer_type = optim.Adam
