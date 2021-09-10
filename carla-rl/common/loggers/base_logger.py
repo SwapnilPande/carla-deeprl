@@ -1,6 +1,7 @@
 import os
 import sys
 import glob
+import traceback
 
 
 class BaseLogger:
@@ -9,6 +10,9 @@ class BaseLogger:
         self.config = config
 
         self.create_log_file()
+
+        if(self.config.pdb_on_exception):
+            self.pdb_on_exception()
 
     def create_log_file(self):
         # Create the file to log all data in
@@ -27,6 +31,15 @@ class BaseLogger:
 
         print("LOGGER: Experiment name - {}".format(self.experiment_name))
         print("LOGGER: Created log directory at {}".format(self.log_dir))
+
+    def pdb_on_exception(self, debugger = "ipdb", limit = 100):
+        """Install handler attach post-mortem pdb console on an exception."""
+
+        def pdb_excepthook(exc_type, exc_val, exc_tb):
+            traceback.print_tb(exc_tb, limit=limit)
+            __import__(str(debugger).strip().lower()).post_mortem(exc_tb)
+
+        sys.excepthook = pdb_excepthook
 
 
 

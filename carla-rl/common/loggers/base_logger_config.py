@@ -14,6 +14,9 @@ class BaseLoggerConfig(BaseConfig):
         # Directory in which to store logs
         self.log_dir = None
 
+        # Boolean about whether or not to launch pdb on exception
+        self.pdb_on_exception = None
+
     def populate(self, experiment_name, tags = []):
         self.experiment_name = experiment_name
         self.tags = tags
