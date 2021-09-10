@@ -8,12 +8,7 @@ sys.path.append(os.path.abspath(os.path.join('../../../')))
 
 from projects.morel_mopo.config.logger_config import CometLoggerConfig
 from common.loggers.comet_logger import CometLogger
-from projects.morel_mopo.config.dynamics_ensemble_config import DefaultDynamicsEnsembleConfig, DefaultGRUDynamicsConfig
-from projects.morel_mopo.algorithm.dynamics_ensemble_module import DynamicsEnsemble
-from projects.morel_mopo.algorithm.dynamics_gru import DynamicsGRUEnsemble
-from projects.morel_mopo.algorithm.data_modules import OfflineCarlaDataModule
-# from projects.morel_mopo.algorithm.fake_env import FakeEnv
-# from projects.morel_mopo.config.fake_env_config import DefaultMainConfig
+from projects.morel_mopo.config.data_module_config import ObstaclesMixedDeterministicMLPDataModuleConfig
 
 import matplotlib.pyplot as plt
 
@@ -51,29 +46,44 @@ def hist(x, bins, xlabel, ylabel, title, log_dir, f_name):
     plt.savefig(file)
     plt.close()
 
+
+def plot_npc_trajectories(log_dir, data_module):
+    while(True):
+        ((obs, action, _, _, _, vehicle_pose), waypoints, npc_poses) = data_module.sample_with_waypoints(50)
+
+        npc_poses = torch.stack(npc_poses).cpu().numpy()
+
+        import ipdb; ipdb.set_trace()
+        plt.figure()
+        for i in range(npc_poses.shape[1]):
+
+            plt.scatter(npc_poses[:,i,0], npc_poses[:,i,1])
+            plt.xlabel("x")
+            plt.ylabel("y")
+            plt.title("NPC POSES")
+        file = os.path.join(log_dir, "npc_poses.png")
+        plt.savefig(file)
+        plt.close()
+
+        input()
+
+
+
+
+
+
+
+
+
 def main(args):
     setup_log_dir(args.log_dir)
 
-    class TempDataModuleConfig():
-        def __init__(self):
-            # Mixed Dataset
-            self.dataset_paths = [
-                "/zfsauton/datasets/ArgoRL/swapnilp/carla-rl_datasets/no_crash_empty_noisy_policy",
-                "/zfsauton/datasets/ArgoRL/swapnilp/carla-rl_datasets/no_crash_empty_random_policy"
-                                ]
-            self.batch_size = 1
-            self.frame_stack = 1
-            self.num_workers = 2
-            self.train_val_split = 1.0
-            self.normalize_data = False
-            # Whether or not to stack the output
-            # Use if the dynamics model is an RNN
-            # False if no stack (MLP), True if stack (RNN)
-
     # data config
-    data_config = TempDataModuleConfig()
-    data_module = OfflineCarlaDataModule(data_config)
+    data_config = ObstaclesMixedDeterministicMLPDataModuleConfig()
+    data_module = data_config.dataset_type(data_config)
     data_module.setup()
+
+    plot_npc_trajectories(args.log_dir, data_module)
 
     # Retrieve all the data from the dataset
     all_obs              = np.vstack([d.obs[:,-1,:].squeeze().cpu().numpy() for d in data_module.datasets])
