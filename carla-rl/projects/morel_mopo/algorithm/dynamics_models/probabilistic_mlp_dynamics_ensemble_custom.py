@@ -8,44 +8,59 @@ import scipy.spatial
 import os
 from tqdm import tqdm
 
-class DynamicsMLP(nn.Module):
+
+class NLLLoss(torch.nn.Module):
+    def __init__(self) -> None:
+        super(NLLLoss, self).__init__()
+
+    def forward(self, x, mu, log_sigma):
+        return torch.mean(float(-0.5 * np.log(2 * np.pi)) - log_sigma - (x - mu) * 2 / (2 * torch.exp(log_sigma) * 2))
+
+
+
+class ProbabilisticDynamicsMLP(nn.Module):
     def __init__(self,
                 state_dim_in,
                 state_dim_out,
                 action_dim,
                 frame_stack,
                 predict_reward = False,
-                n_neurons = 1024,
+                n_neurons = 200,
                 n_hidden_layers = 4,
                 n_head_layers = 1,
-                drop_prob = 0.15,
+                drop_prob = 0,
                 activation = nn.ReLU):
-        super(DynamicsMLP, self).__init__()
+        super(ProbabilisticDynamicsMLP, self).__init__()
 
+
+        #print(state_dim_in,
+        #        state_dim_out,
+        #        action_dim,
+        #        frame_stack)
         # Validate inputs
         assert state_dim_in > 0
         assert state_dim_out > 0
-        assert action_dim > 0
         assert n_neurons > 0
-        assert drop_prob >= 0 and drop_prob <= 1
+        assert drop_prob >= 0 and drop_prob < 1
 
         # Store configuration parameters
 
         # Input is the input state plus actions state
-        self.input_dim = frame_stack*(state_dim_in + action_dim)
+        self.input_dim = int(frame_stack*(state_dim_in + action_dim))
         # Output is the output state dim + reward if True
-        self.output_dim = state_dim_out + int(predict_reward)
+        self.output_dim = (state_dim_out + int(predict_reward))
         self.state_dim_out = state_dim_out
+        self.predict_reward = predict_reward
 
         self.n_neurons = n_neurons
 
-        # Dynamically construct nn according to arguments
+        # layer list
         layer_list = []
-        # First add the input layer and activation
+        # add input list and activation
         layer_list.append(nn.Linear(self.input_dim, n_neurons))
         layer_list.append(activation())
 
-        # For each hidden layer
+        # add hidden layers
         for _ in range(n_hidden_layers):
             # Add Linear layer
             layer_list.append(nn.Linear(n_neurons, n_neurons))
@@ -53,28 +68,16 @@ class DynamicsMLP(nn.Module):
             # Add activation
             layer_list.append(activation())
 
-            # Add dropout if enabled
+            # add dropout if enabled
             if(drop_prob != 0):
                 layer_list.append(nn.Dropout(p = drop_prob))
 
-        # Register shared layers by putting them in a module list
         self.model = nn.ModuleList(layer_list)
 
-        # Next, build the head for the state prediction
-        layer_list = []
-        # For each hidden layer
-        for _ in range(n_head_layers):
-            # Add Linear layer
-            layer_list.append(nn.Linear(n_neurons, n_neurons))
-            # Add activation
-            layer_list.append(activation())
-            # Add dropout if enabled
-            if(drop_prob != 0):
-                layer_list.append(nn.Dropout(p = drop_prob))
-        layer_list.append(nn.Linear(n_neurons, self.state_dim_out))
-
-        # Register state prediction head layers by putting them in a module list
-        self.state_head = nn.ModuleList(layer_list)
+        # add last head layer to match the output size
+        self.mean_state_head = nn.Linear(n_neurons, self.state_dim_out)
+        self.std_state_head = nn.Linear(n_neurons, self.state_dim_out)
+        self.std_act = torch.exp
 
         # Build reward head if we're predicting reward
         self.reward_head = None
@@ -89,37 +92,33 @@ class DynamicsMLP(nn.Module):
                 # Add dropout if enabled
                 if(drop_prob != 0):
                     layer_list.append(nn.Dropout(p = drop_prob))
-            layer_list.append(nn.Linear(n_neurons, 1))
+            layer_list.append(nn.Linear(n_neurons, self.state_dim_out))
 
             # Register state prediction head layers by p
             # Register state prediction head layers by putting them in a module list
             self.reward_head = nn.ModuleList(layer_list)
 
-
-
+    # one single prediction in the form of gaussian
+    # the output is [[meanhat1, meanhat2...], [varhat1, varhat2...], ([rewardhat1, rewardhat2...])]
     def forward(self, x):
-        # x = torch.flatten(x)
-        # Shared layers
         for layer in self.model:
             x = layer(x)
 
-        # State Head
-        # Apply first layer
-        output = self.state_head[0](x)
-        # Apply all other layers
-        for layer in self.state_head[1:]:
-            output = layer(output)
+        mean = self.mean_state_head(x)
+        std = self.std_state_head(x)
+        std = self.std_act(std)
 
-        # Apply reward head if we are predicting rewards
         reward_out = None
         if self.reward_head is not None:
             reward_out = self.reward_head[0](x)
             for layer in self.reward_head[1:]:
                 reward_out = layer(reward_out)
+            output = torch.cat([output, reward_out], dim = 1)
 
-        return output, reward_out
+        return mean, std, reward_out
 
-class MLPDynamicsEnsemble(nn.Module):
+
+class ProbabilisticMLPDynamicsEnsemble(nn.Module):
     log_dir = "dynamics_ensemble"
     model_log_dir = os.path.join(log_dir, "models")
 
@@ -137,7 +136,7 @@ class MLPDynamicsEnsemble(nn.Module):
                     logger = None,
                     log_freq = 1200,
                     disable_bars = True):
-        super(MLPDynamicsEnsemble, self).__init__()
+        super(ProbabilisticMLPDynamicsEnsemble, self).__init__()
 
         self.config = config
 
@@ -148,7 +147,7 @@ class MLPDynamicsEnsemble(nn.Module):
 
         # Save config to load in the future
         if logger is not None:
-            self.logger.pickle_save(self.config, MLPDynamicsEnsemble.log_dir, "config.pkl")
+            self.logger.pickle_save(self.config, ProbabilisticMLPDynamicsEnsemble.log_dir, "config.pkl")
 
 
         self.log_freq = log_freq
@@ -200,29 +199,22 @@ class MLPDynamicsEnsemble(nn.Module):
                             self.action_dim,
                             self.frame_stack,
                             self.normalization_stats)
-            self.logger.pickle_save(state_params, MLPDynamicsEnsemble.log_dir, "state_params.pkl")
+            self.logger.pickle_save(state_params, ProbabilisticMLPDynamicsEnsemble.log_dir, "state_params.pkl")
 
         # Model parameters
         self.n_models = config.n_models
         self.network_cfg = config.network_cfg
-        self.predict_reward = self.network_cfg.predict_reward
 
         self.lr = config.lr
-        # Build the loss function using loss args
-        self.loss = config.loss(**config.loss_args)
 
-        # Validation loss
-        self.mse_loss = torch.nn.MSELoss()
+        self.loss = NLLLoss()
 
         # Save optimizer object
         self.optimizer_type = config.optimizer_type
         self.optimizer_args = config.optimizer_args
 
         # Setup GPU
-        if(gpu is None):
-            self.gpu = self.config.gpu
-        else:
-            self.gpu = gpu
+        self.gpu = self.config.gpu
         if self.gpu == -1:
             self.device = "cpu"
         else:
@@ -231,7 +223,7 @@ class MLPDynamicsEnsemble(nn.Module):
         # Create n_models models
         self.models = nn.ModuleList()
         for i in range(self.n_models):
-            self.models.append(DynamicsMLP(
+            self.models.append(ProbabilisticDynamicsMLP(
                 state_dim_in = self.state_dim_in,
                 state_dim_out = self.state_dim_out,
                 action_dim = self.action_dim,
@@ -240,41 +232,48 @@ class MLPDynamicsEnsemble(nn.Module):
                 n_neurons = self.network_cfg.n_neurons,
                 n_hidden_layers = self.network_cfg.n_hidden_layers,
                 n_head_layers = self.network_cfg.n_head_layers,
-                drop_prob = self.network_cfg.drop_prob,
+                drop_prob = 0,
                 activation = self.network_cfg.activation
             ))
             self.models[-1].to(self.device)
 
-    # def create_log_directories(self):
-    #     # Construct the dynamics_ensemble log dir
-    #     # Base log dir
-    #     self.log_dir = os.path.join(self.logger.log_dir, "dynamics_ensmemble")
-    #     os.mkdir(self.log_dir)
-
-    #     # Log dir for models
-    #     self.model_log_dir = os.path.join(self.log_dir, "models")
-    #     os.mkdir(self.model_log_dir)
-
-
-    #
-    def forward(self, x, model_idx=None):
+    def forward(self, x, model_idx=None, return_dist = False):
+        # Create a list of the models to iterate over
         if model_idx is None:
-            states = []
-            rewards = []
-            # predict for all models
-            for model in self.models:
-                temp_state, temp_reward = model(x)
-                states.append(temp_state)
-                rewards.append(temp_reward)
-
-            return states, rewards
+            model_indices = list(range(self.n_models))
         else:
-            # predict for specified model
-            return self.models[model_idx](x)
+            model_indices = [model_idx]
 
+
+        state_predictions = []
+        reward_predictions = []
+        # predict for all models
+        for model_i in model_indices:
+            # Get output from model
+            mean, std, reward = self.models[model_i](x)
+
+            # Build diagonal gaussian model
+            try:
+                dist = torch.distributions.normal.Normal(
+                                loc = mean,
+                                scale = std
+                            )
+            except:
+                import ipdb; ipdb.set_trace()
+
+            # If not return distribtuon, then sample from the distribution
+            if(not return_dist):
+                output = dist.sample()
+            # Return (dist, reward)
+            else:
+                output = (mean, std)
+
+            state_predictions.append(output)
+            reward_predictions.append(reward)
+
+        return state_predictions, reward_predictions
 
     def prepare_feed(self, state_in, actions):
-        # Input should be obs and actions concatenated, and flattened
         # Convert to cuda first
         state_in = state_in.to(self.device)
         actions = actions.to(self.device)
@@ -294,16 +293,19 @@ class MLPDynamicsEnsemble(nn.Module):
         delta = delta.to(self.device)
         reward = reward.to(self.device)
 
-        return delta, reward
+        if(self.network_cfg.predict_reward):
+            return torch.cat([delta,reward], dim = -1)
+
+        return delta
 
     def prepare_batch(self, state_in, actions, delta, reward):
+        # Input should be obs and actions concatenated, and flattened
         feed_tensor = self.prepare_feed(state_in, actions)
 
-        delta = self.prepare_target(delta, reward)
+        target_tensor = self.prepare_target(delta, reward)
 
-
-        return feed_tensor, delta
-
+        # Else, just return delta
+        return feed_tensor, target_tensor
 
     def training_step(self, batch, model_idx):
         # Zero Optimizer gradients
@@ -312,25 +314,17 @@ class MLPDynamicsEnsemble(nn.Module):
         # Split batch into componenets
         obs, actions, rewards, delta, done, vehicle_pose = batch
 
-        # print('obs', obs.shape, obs)
-        # print('actions', actions.shape, actions)
-        # print('rew', rewards.shape, rewards)
-        # print('delt', delta.shape, delta)
-        # print('done', done.shape, done)
-        # print('vehpose', vehicle_pose.shape, vehicle_pose)
-
         # Combine tensors and reshape batch to flat inputs
-        feed, (target_state, target_reward) = self.prepare_batch(obs, actions, delta, rewards)
+        feed, target = self.prepare_batch(obs, actions, delta, rewards)
 
         # Make prediction with selected model
-        y_hat, reward = self.forward(feed, model_idx = model_idx)
+        y_hat, reward = self.forward(feed, model_idx = model_idx, return_dist=True)
+        # y_hat = y_hat[0]
+        y_hat_mean, y_hat_log_std = y_hat[0][0], y_hat[0][1]
 
-        # Compute loss
-        loss = self.loss(y_hat, target_state)
-
-        # Add reward loss if predicting rewards
-        if(self.predict_reward):
-            loss = loss + self.loss(reward, target_reward)
+        loss = self.loss(target, y_hat_mean, y_hat_log_std)
+        if(torch.any(torch.isnan(loss)) or torch.any(torch.isinf(loss))):
+            import ipdb; ipdb.set_trace()
 
         # Backpropagate
         loss.backward()
@@ -348,28 +342,21 @@ class MLPDynamicsEnsemble(nn.Module):
             obs, actions, rewards, delta, done, vehicle_pose = batch
 
             # Combine tensors and reshape batch to flat inputs
-            feed, (target_state, target_reward) = self.prepare_batch(obs, actions, delta, rewards)
+            feed, target = self.prepare_batch(obs, actions, delta, rewards)
 
             # Predictions by each model
-            y_hat, reward = self.forward(feed, model_idx = model_idx)
 
-            output = {}
+            y_hat, reward = self.forward(feed, model_idx = model_idx, return_dist=True)
+            y_hat_mean, y_hat_log_std = y_hat[0][0], y_hat[0][1]
+
             # Compute loss
-            state_loss = self.loss(y_hat, target_state)
-            state_mse_loss = self.mse_loss(y_hat, target_state)
-            output[f"model_{model_idx}_val_loss"] = state_loss
-            output[f"model_{model_idx}_val_state_loss"] = state_loss
-            output[f"model_{model_idx}_val_mse_state_loss"] = state_mse_loss
 
-            if(self.predict_reward):
-                reward_loss = self.loss(reward, target_reward)
-                reward_mse_loss = self.mse_loss(reward, target_reward)
+            loss = self.loss(target, y_hat_mean, y_hat_log_std)
+            #chaged: loss function
+            #mse_loss = self.mse_loss(y_hat, target)
 
-                output[f"model_{model_idx}_val_loss"] += reward_loss
-                output[f"model_{model_idx}_val_reward_loss"] = reward_loss
-                output[f"model_{model_idx}_val_mse_reward_loss"] = reward_mse_loss
+            return {"model_{}_val_loss".format(model_idx): loss}
 
-            return output
 
     def log_metrics(self, epoch, batch_idx, num_batches, metric_dict):
         if(self.logger is not None):
@@ -390,7 +377,6 @@ class MLPDynamicsEnsemble(nn.Module):
             self.logger.log_hyperparameters({
                 "dyn_ens/lr" : self.lr,
                 "dyn_ens/optimizer" : str(self.optimizer_type),
-                "dyn_ens/optimizer_args" : str(self.optimizer_args),
                 "dyn_ens/n_models" : self.n_models,
                 "dyn_ens/batch_size" : train_dataloader.batch_size,
                 "dyn_ens/train_val_split" : self.data_module.train_val_split,
@@ -399,11 +385,10 @@ class MLPDynamicsEnsemble(nn.Module):
                 "dyn_ens/n_neurons" : self.network_cfg.n_neurons,
                 "dyn_ens/n_hidden_layers" : self.network_cfg.n_hidden_layers,
                 "dyn_ens/n_head_layers" : self.network_cfg.n_head_layers,
-                "dyn_ens/drop_prob" : self.network_cfg.drop_prob,
-                "dyn_ens/predict_reward" : self.network_cfg.predict_reward,
-                "dyn_ens/activation" : str(self.network_cfg.activation),
                 "dyn_ens/frame_stack" : self.frame_stack,
-                "dyn_ens/network_type" : "Deterministic MLP"
+                "dyn_ens/drop_prob" : 0,
+                "dyn_ens/activation" : str(self.network_cfg.activation)
+
             })
 
 
@@ -423,7 +408,7 @@ class MLPDynamicsEnsemble(nn.Module):
             for model_idx in range(self.n_models): # Loop over models
 
                 self.train()
-                with tqdm(total = num_train_batches, disable = self.disable_bars) as pbar:
+                with tqdm(total = num_train_batches) as pbar:
                     pbar.set_description_str("Train epoch {}, Model {}:".format(epoch, model_idx))
                     for batch_idx, batch in enumerate(train_dataloader): # Loop over batches
                         # Run training step for jth model
@@ -435,35 +420,32 @@ class MLPDynamicsEnsemble(nn.Module):
                         if batch_idx % self.log_freq == 0 and self.logger is not None:
                             self.log_metrics(epoch, batch_idx, num_train_batches, log_params)
 
-
                 self.eval()
-                with tqdm(total = num_val_batches, disable = self.disable_bars) as pbar:
-                    # Store running count of validation metrics
-                    val_running_counts = None
+                with tqdm(total = num_val_batches) as pbar:
                     pbar.set_description_str("Validation:".format(epoch))
                     for batch_idx, batch in enumerate(val_dataloader): # Loop over batches
                         # Run training step for jth model
                         log_params = self.validation_step(batch, model_idx)
 
-                        # Add values
-                        if(val_running_counts is None):
-                            val_running_counts = log_params
-                        else:
-                            for key, val in val_running_counts.items():
-                                val_running_counts[key] += log_params[key]
-
                         pbar.set_postfix_str("epoch {}, model_idx: {}, loss: {}".format(epoch, model_idx, log_params['model_{}_val_loss'.format(model_idx)]))
                         pbar.update(1)
 
-                    if self.logger is not None:
-                        for key, val in val_running_counts.items():
-                            val_running_counts[key] /= num_val_batches
-                        self.log_metrics(epoch, num_train_batches, num_train_batches, log_params)
+                        if batch_idx % self.log_freq == 0 and self.logger is not None:
+                            self.log_metrics(epoch, batch_idx, num_val_batches, log_params)
 
-            # if(epoch % steps_between_model_save == 0):
-            #     self.save("incremental-step-{}".format(epoch, ))
+            if(epoch % steps_between_model_save == 0):
+                self.save("incremental-step-{}".format(epoch, ))
 
         self.save("final")
+
+
+    def configure_optimizers(self):
+        # Define optimizers
+        # self.optimizer is defined in __init__
+        # This is the type of optimizer we want to use
+        optimizers = [self.optimizer_type(model.parameters()) for model in self.models]
+
+        return optimizers
 
     def predict(self, obs, actions):
         self.eval()
@@ -471,18 +453,6 @@ class MLPDynamicsEnsemble(nn.Module):
         feed = self.prepare_feed(obs, actions)
 
         return self.forward(feed)
-
-
-
-
-    def configure_optimizers(self):
-        # Define optimizers
-        # self.optimizer is defined in __init__
-        # This is the type of optimizer we want to use
-        optimizers = [self.optimizer_type(model.parameters(), lr = self.lr, **self.optimizer_args) for model in self.models]
-        # optimizers = [self.optimizer_type(model.parameters(), lr = self.lr) for model in self.models]
-
-        return optimizers
 
 
     def save(self, model_name):
@@ -494,10 +464,10 @@ class MLPDynamicsEnsemble(nn.Module):
         print("DYNAMICS ENSEMBLE: Saving model {}".format(model_name))
 
         # Save model
-        self.logger.torch_save(self.state_dict(), MLPDynamicsEnsemble.model_log_dir, model_name)
+        self.logger.torch_save(self.state_dict(), ProbabilisticMLPDynamicsEnsemble.model_log_dir, model_name)
 
     @classmethod
-    def load(cls, logger, model_name, gpu, data_config):
+    def load(cls, logger, model_name, gpu):
         # To load the model, we first need to build an instance of this class
         # We want to keep the same config parameters, so we will build it from the pickled config
         # Also, we will load the dimensional parameters of the model from the saved dimensions
@@ -505,10 +475,10 @@ class MLPDynamicsEnsemble(nn.Module):
 
         print("DYNAMICS ENSEMBLE: Loading dynamics model {}".format(model_name))
         # Get config from pickle first
-        config = logger.pickle_load(MLPDynamicsEnsemble.log_dir, "config.pkl")
+        config = logger.pickle_load(ProbabilisticMLPDynamicsEnsemble.log_dir, "config.pkl")
 
         # Next, get pickle containing the state parameters
-        state_dim_in, state_dim_out, action_dim, frame_stack, norm_stats = logger.pickle_load(MLPDynamicsEnsemble.log_dir, "state_params.pkl")
+        state_dim_in, state_dim_out, action_dim, frame_stack, norm_stats = logger.pickle_load(ProbabilisticMLPDynamicsEnsemble.log_dir, "state_params.pkl")
         print("DYNAMICS ENSEMBLE: state_dim_in: {}\tstate_dim_out: {}\taction_dim: {}\tframe_stack: {}".format(
             state_dim_in,
             state_dim_out,
@@ -516,25 +486,11 @@ class MLPDynamicsEnsemble(nn.Module):
             frame_stack,
         ))
 
-        data_module = None
-        if(data_config is not None):
-            data_module = data_config.dataset_type(data_config)
-
         # Create a configured dynamics ensemble object
-        model = cls(config = config,
-                    data_module = data_module,
+        return cls(config = config,
                     state_dim_in = state_dim_in,
                     state_dim_out = state_dim_out,
                     action_dim = action_dim,
                     frame_stack = frame_stack,
                     norm_stats = norm_stats,
                     gpu = gpu)
-
-        model.load_state_dict(logger.torch_load(MLPDynamicsEnsemble.model_log_dir, model_name))
-
-        return model
-
-
-
-
-

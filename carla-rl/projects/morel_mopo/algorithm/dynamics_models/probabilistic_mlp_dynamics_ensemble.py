@@ -23,6 +23,21 @@ class NLLLoss(torch.nn.Module):
         return mean_neg_log_prob
 
 
+class LogGaussianLoss(torch.nn.Module):
+
+    def __init__(self) -> None:
+        super(NLLLoss, self).__init__()
+
+    def forward(self, x, mu, log_sigma):
+
+        # Get neg_log_prob for all batch dim, time step, state dim
+        neg_log_prob = - prediction.log_prob(target)
+        # Average across state dim
+        mean_neg_log_prob = torch.mean(neg_log_prob)
+
+        return float(-0.5 * np.log(2 * np.pi)) - log_sigma - (x - mu) * 2 / (2 * torch.exp(log_sigma) * 2)
+
+
 
 class ProbabilisticDynamicsMLP(nn.Module):
     def __init__(self,
@@ -35,7 +50,7 @@ class ProbabilisticDynamicsMLP(nn.Module):
                 n_hidden_layers = 4,
                 n_head_layers = 1,
                 drop_prob = 0,
-                activation = nn.SiLU):
+                activation = nn.ReLU):
         super(ProbabilisticDynamicsMLP, self).__init__()
 
 
@@ -47,7 +62,7 @@ class ProbabilisticDynamicsMLP(nn.Module):
         assert state_dim_in > 0
         assert state_dim_out > 0
         assert n_neurons > 0
-        assert drop_prob >= 0
+        assert drop_prob >= 0 and drop_prob < 1
 
         # Store configuration parameters
 
@@ -62,7 +77,6 @@ class ProbabilisticDynamicsMLP(nn.Module):
 
         # layer list
         layer_list = []
-
         # add input list and activation
         layer_list.append(nn.Linear(self.input_dim, n_neurons))
         layer_list.append(activation())
@@ -81,12 +95,8 @@ class ProbabilisticDynamicsMLP(nn.Module):
 
         self.model = nn.ModuleList(layer_list)
 
-        # build mean head and logsd head
-        layer_list_mean, layer_list_logsd = [], []
-
         # add last head layer to match the output size
         self.mean_state_head = nn.Linear(n_neurons, self.state_dim_out)
-
         self.std_state_head = nn.Linear(n_neurons, self.state_dim_out)
         self.std_act = torch.exp
 
@@ -113,8 +123,6 @@ class ProbabilisticDynamicsMLP(nn.Module):
     # the output is [[meanhat1, meanhat2...], [varhat1, varhat2...], ([rewardhat1, rewardhat2...])]
     def forward(self, x):
         for layer in self.model:
-            #print("dim of x", x.shape)
-            #print("dim of layer", layer)
             x = layer(x)
 
         mean = self.mean_state_head(x)
@@ -219,8 +227,7 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
         self.network_cfg = config.network_cfg
 
         self.lr = config.lr
-        # Build the loss function using loss args
-        # changed
+
         self.loss = NLLLoss()
 
         # Save optimizer object
@@ -266,11 +273,16 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
             # Get output from model
             mean, std, reward = self.models[model_i](x)
 
+            print(torch.linalg.norm(std))
+
             # Build diagonal gaussian model
-            dist = torch.distributions.normal.Normal(
-                            loc = mean,
-                            scale = std
-                        )
+            try:
+                dist = torch.distributions.normal.Normal(
+                                loc = mean,
+                                scale = std
+                            )
+            except:
+                import ipdb; ipdb.set_trace()
 
             # If not return distribtuon, then sample from the distribution
             if(not return_dist):
@@ -325,13 +337,6 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
         # Split batch into componenets
         obs, actions, rewards, delta, done, vehicle_pose = batch
 
-        # print('obs', obs.shape, obs)
-        # print('actions', actions.shape, actions)
-        # print('rew', rewards.shape, rewards)
-        # print('delt', delta.shape, delta)
-        # print('done', done.shape, done)
-        # print('vehpose', vehicle_pose.shape, vehicle_pose)
-
         # Combine tensors and reshape batch to flat inputs
         feed, target = self.prepare_batch(obs, actions, delta, rewards)
 
@@ -340,7 +345,8 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
         y_hat = y_hat[0]
 
         loss = self.loss(y_hat, target)
-        #print(loss.shape)
+        if(torch.any(torch.isnan(loss)) or torch.any(torch.isinf(loss))):
+            import ipdb; ipdb.set_trace()
 
         # Backpropagate
         loss.backward()
@@ -353,25 +359,25 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
 
 
     def validation_step(self, batch, model_idx = 0):
+        with torch.no_grad():
+            # Split batch into componenets
+            obs, actions, rewards, delta, done, vehicle_pose = batch
 
-        # Split batch into componenets
-        obs, actions, rewards, delta, done, vehicle_pose = batch
+            # Combine tensors and reshape batch to flat inputs
+            feed, target = self.prepare_batch(obs, actions, delta, rewards)
 
-        # Combine tensors and reshape batch to flat inputs
-        feed, target = self.prepare_batch(obs, actions, delta, rewards)
+            # Predictions by each model
 
-        # Predictions by each model
+            y_hat, reward = self.forward(feed, model_idx = model_idx, return_dist=True)
+            y_hat = y_hat[0]
 
-        y_hat, reward = self.forward(feed, model_idx = model_idx, return_dist=True)
-        y_hat = y_hat[0]
+            # Compute loss
 
-        # Compute loss
+            loss = self.loss(y_hat, target)
+            #chaged: loss function
+            #mse_loss = self.mse_loss(y_hat, target)
 
-        loss = self.loss(y_hat, target)
-        #chaged: loss function
-        #mse_loss = self.mse_loss(y_hat, target)
-
-        return {"model_{}_val_loss".format(model_idx): loss}
+            return {"model_{}_val_loss".format(model_idx): loss}
 
 
     def log_metrics(self, epoch, batch_idx, num_batches, metric_dict):
@@ -401,6 +407,7 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
                 "dyn_ens/n_neurons" : self.network_cfg.n_neurons,
                 "dyn_ens/n_hidden_layers" : self.network_cfg.n_hidden_layers,
                 "dyn_ens/n_head_layers" : self.network_cfg.n_head_layers,
+                "dyn_ens/frame_stack" : self.frame_stack,
                 "dyn_ens/drop_prob" : 0,
                 "dyn_ens/activation" : str(self.network_cfg.activation)
 
@@ -416,10 +423,13 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
 
 
         steps_between_model_save = epochs // n_incremental_models
+        if(steps_between_model_save == 0):
+            steps_between_model_save = 1
 
         for epoch in range(epochs): # Loop over epochs
             for model_idx in range(self.n_models): # Loop over models
 
+                self.train()
                 with tqdm(total = num_train_batches) as pbar:
                     pbar.set_description_str("Train epoch {}, Model {}:".format(epoch, model_idx))
                     for batch_idx, batch in enumerate(train_dataloader): # Loop over batches
@@ -432,7 +442,7 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
                         if batch_idx % self.log_freq == 0 and self.logger is not None:
                             self.log_metrics(epoch, batch_idx, num_train_batches, log_params)
 
-
+                self.eval()
                 with tqdm(total = num_val_batches) as pbar:
                     pbar.set_description_str("Validation:".format(epoch))
                     for batch_idx, batch in enumerate(val_dataloader): # Loop over batches
@@ -458,6 +468,13 @@ class ProbabilisticMLPDynamicsEnsemble(nn.Module):
         optimizers = [self.optimizer_type(model.parameters()) for model in self.models]
 
         return optimizers
+
+    def predict(self, obs, actions):
+        self.eval()
+
+        feed = self.prepare_feed(obs, actions)
+
+        return self.forward(feed)
 
 
     def save(self, model_name):

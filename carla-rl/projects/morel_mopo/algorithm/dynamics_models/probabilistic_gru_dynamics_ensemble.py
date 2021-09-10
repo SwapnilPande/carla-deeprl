@@ -12,10 +12,10 @@ class MaskedNLLLoss(torch.nn.Module):
     def __init__(self) -> None:
         super(MaskedNLLLoss, self).__init__()
 
-    def forward(self, input, target, mask):
+    def forward(self, prediction, target, mask):
 
         # Get neg_log_prob for all batch dim, time step, state dim
-        neg_log_prob = - input.log_prob(target)
+        neg_log_prob = - prediction.log_prob(target)
         # Average across state dim
         mean_neg_log_prob = torch.sum(neg_log_prob, dim = -1) / neg_log_prob.shape[-1]
 
@@ -188,7 +188,7 @@ class ProbabilisticGRUDynamicsEnsemble(nn.Module):
         self.lr = config.lr
         # Build the loss function using loss args
         #TODO FIX THIS
-        self.loss = MaskedNLLLoss() #config.loss(**config.loss_args)
+        self.loss = MaskedNLLLoss()
 
         # Save optimizer object
         self.optimizer_type = config.optimizer_type
