@@ -134,28 +134,28 @@ class NoCrashEmptyTown02Config(NoCrashConfig):
 class NoCrashRegularTown01Config(NoCrashConfig):
     def __init__(self):
         super().__init__()
-        self.scenarios = "no_crash_empty"
+        self.scenarios = "no_crash_regular"
         self.num_npc = 20
         self.city_name = "Town01"
 
 class NoCrashRegularTown02Config(NoCrashConfig):
     def __init__(self):
         super().__init__()
-        self.scenarios = "no_crash_empty"
+        self.scenarios = "no_crash_regular"
         self.num_npc = 15
         self.city_name = "Town02"
 
 class NoCrashDenseTown01Config(NoCrashConfig):
     def __init__(self):
         super().__init__()
-        self.scenarios = "no_crash_empty"
+        self.scenarios = "no_crash_dense"
         self.num_npc = 100
         self.city_name = "Town01"
 
 class NoCrashDenseTown02Config(NoCrashConfig):
     def __init__(self):
         super().__init__()
-        self.scenarios = "no_crash_empty"
+        self.scenarios = "no_crash_dense"
         self.num_npc = 70
         self.city_name = "Town02"
 
@@ -179,11 +179,11 @@ class LeaderboardConfig(BaseScenarioConfig):
         self.scenarios = "challenge_train_scenario"
         self.updated_scenarios = False
         self.vehicle_type = "vehicle.toyota.prius"
-        self.num_pedestrians = 0 
+        self.num_pedestrians = 0
         self.num_npc = 0
         self.sample_npc = True
-        self.num_npc_lower_threshold = 70 
-        self.num_npc_upper_threshold = 150 
+        self.num_npc_lower_threshold = 70
+        self.num_npc_upper_threshold = 150
         self.traffic_light_proximity_threshold = 15
         self.min_dist_from_red_light = 4
         self.disable_traffic_light = False
@@ -197,14 +197,14 @@ class LeaderboardConfig(BaseScenarioConfig):
         self.enable_lane_invasion_sensor = True
         self.disable_static = True
         self.disable_lane_invasion_collision = False
- 
+
 
 class NoTrafficLightNoCrashEmptyConfig(NoCrashEmptyTown01Config):
     def __init__(self):
         super().__init__()
-        self.disable_traffic_light = True 
+        self.disable_traffic_light = True
 
 class NoTrafficLightNoCrashDenseConfig(NoCrashDenseTown01Config):
     def __init__(self):
         super().__init__()
-        self.disable_traffic_light = True 
+        self.disable_traffic_light = True

@@ -27,7 +27,7 @@ class BaseActionConfig(BaseConfig):
 class MergedSpeedScaledTanhConfig(BaseActionConfig):
     def __init__(self):
         self.action_type = "merged_speed_scaled_tanh"
-        self.action_space = Box(low=np.array([-0.5, -1.0]), high=np.array([0.5, 1.0]))
+        self.action_space = Box(low=np.array([-1.0, -1.0]), high=np.array([1.0, 1.0]))
         self.enable_brake = True
         self.discrete_actions = False
         self.frame_skip = 1
@@ -37,7 +37,7 @@ class MergedSpeedScaledTanhConfig(BaseActionConfig):
 class MergedSpeedTanhConfig(BaseActionConfig):
     def __init__(self):
         self.action_type = "merged_speed_tanh"
-        self.action_space = Box(low=np.array([-0.5, -1.0]), high=np.array([0.5, 1.0]))
+        self.action_space = Box(low=np.array([-1.0, -1.0]), high=np.array([1.0, 1.0]))
         self.enable_brake = True
         self.discrete_actions = False
         self.frame_skip = 1

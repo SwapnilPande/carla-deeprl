@@ -119,6 +119,7 @@ class CarlaEnv(gym.Env):
         self.episode_measurements['traffic_light_orientation'] = -1
         self.episode_measurements["runover_light"] = False
         self.episode_measurements["steer_angle"] = 0
+        self.episode_measurements["npc_poses"] = None
 
         self.vehicle_collisions = 0
         self.static_collisions = 0
@@ -260,6 +261,10 @@ class CarlaEnv(gym.Env):
             self.episode_measurements["waypoints"] = carla_obs["waypoints"]
             next_waypoints = [(wp.transform.location.x, wp.transform.location.y, wp.transform.location.z) for wp in carla_obs['next_waypoints']]
             self.episode_measurements["next_waypoints"] = next_waypoints
+
+            # State data about the positions of all other actors in the environment
+            self.episode_measurements["npc_poses"] = carla_obs["npc_poses"]
+
 
             self.num_steps += 1
 
@@ -813,6 +818,28 @@ class CarlaEnv(gym.Env):
                 light = self.config.obs_config.default_obs_traffic_val
 
             obs_output = np.concatenate((np.array([self.episode_measurements['next_orientation']]), np.array([obstacle_dist]), np.array([obstacle_speed]), np.array([speed]), np.array([steer]), np.array([ldist]), np.array([distance_to_goal_trajec]), np.array([light])))
+
+        elif self.config.obs_config.input_type in ['wp_obstacle_speed_steer']:
+            speed = self.episode_measurements['speed'] / 10
+            steer = self.episode_measurements['control_steer']
+            ldist = self.episode_measurements['dist_to_trajectory']
+
+            obstacle_dist = self.episode_measurements['obstacle_dist']
+            obstacle_speed = self.episode_measurements['obstacle_speed']
+            # normalization
+
+            if obstacle_dist != -1:
+                obstacle_dist = obstacle_dist / self.config.obs_config.vehicle_proximity_threshold
+            else:
+                obstacle_dist = self.config.obs_config.default_obs_traffic_val
+
+            if obstacle_speed != -1:
+                obstacle_speed = obstacle_speed / 20
+            else:
+                obstacle_speed = self.config.obs_config.default_obs_traffic_val
+
+            obs_output = np.concatenate((np.array([self.episode_measurements['next_orientation']]), np.array([speed]), np.array([steer]), np.array([ldist]), np.array([obstacle_dist]), np.array([obstacle_speed])))
+
 
         elif self.config.obs_config.input_type == "wp_obs_info_speed_steer":
             speed = self.episode_measurements['speed'] / 10

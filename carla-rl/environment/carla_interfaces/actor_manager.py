@@ -260,9 +260,24 @@ class ActorManager910():
 
         return control, episode_measurements
 
+    def get_npc_poses(self):
+        actor_poses = np.zeros([len(self.actor_list), 4])
+        for i, actor in enumerate(self.actor_list):
+            # Don't include poses of ego vehicle, and of non-vehicle actors
+            if actor.id == self.ego_vehicle._vehicle.id or "vehicle" not in actor.type_id:
+                continue
+
+            pose = actor.get_transform()
+            speed = util.get_speed_from_velocity(actor.get_velocity())
+            actor_poses[i, :] = np.array([pose.location.x, pose.location.y, pose.rotation.yaw, speed])
+
+        return actor_poses
+
     def step(self, action):
         control, ep_measurements = self.get_control(action)
         self.ego_vehicle._vehicle.apply_control(control)
+
+        ep_measurements = {**ep_measurements, "npc_poses" : self.get_npc_poses()}
 
         return ep_measurements
 
