@@ -10,7 +10,7 @@ import carla
 from common.loggers.comet_logger import CometLogger
 from projects.morel_mopo.config.logger_config import CometLoggerConfig
 from projects.morel_mopo.algorithm.mopo import MOPO
-from projects.morel_mopo.config.morel_mopo_config import DefaultMLPMOPOConfig
+from projects.morel_mopo.config.morel_mopo_config import DefaultMLPMOPOConfig, DefaultProbMLPMOPOConfig, DefaultProbGRUMOPOConfig, DefaultMLPObstaclesMOPOConfig
 
 
 
@@ -21,7 +21,7 @@ def main(args):
     logger_conf.populate(experiment_name = args.exp_name, tags = ["MOPO"])
     logger = CometLogger(logger_conf)
 
-    config = DefaultMLPMOPOConfig()
+    config = DefaultMLPObstaclesMOPOConfig()
     config.populate_config(gpu = args.gpu, policy_algorithm = "PPO")
 
     model = MOPO(config = config,

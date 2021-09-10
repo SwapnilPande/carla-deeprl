@@ -12,7 +12,7 @@ from projects.morel_mopo.config.logger_config import CometLoggerConfig
 
 
 from common.loggers.comet_logger import CometLogger
-from projects.morel_mopo.config.dynamics_config import DefaultMLPDynamicsConfig, DefaultDeterministicGRUDynamicsConfig, DefaultProbabilisticGRUDynamicsConfig
+from projects.morel_mopo.config.dynamics_config import RewardMLPDynamicsConfig, DefaultMLPDynamicsConfig, DefaultProbabilisticMLPDynamicsConfig, DefaultDeterministicGRUDynamicsConfig, DefaultProbabilisticGRUDynamicsConfig
 from projects.morel_mopo.algorithm.data_modules import OfflineCarlaDataModule, RNNOfflineCarlaDataModule
 # from projects.morel_mopo.algorithm.fake_env import FakeEnv
 # from projects.morel_mopo.config.fake_env_config import DefaultMainConfig
@@ -29,6 +29,7 @@ def main(args):
     logger = CometLogger(logger_conf)
 
 
+
     # Create config for MLP dynamics
     # dynamics_config = DefaultMLPDynamicsConfig()
     dynamics_config = DefaultProbabilisticGRUDynamicsConfig()
@@ -36,7 +37,7 @@ def main(args):
 
     ######### MLP
     # data config
-    data_module = dynamics_config.dataset_config.dataset_type(dynamics_config.dataset_config) 
+    data_module = dynamics_config.dataset_config.dataset_type(dynamics_config.dataset_config)
 
     # dynamics config
     # dyn_ensemble_config = DefaultDynamicsEnsembleConfig()
