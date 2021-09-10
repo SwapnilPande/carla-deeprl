@@ -74,7 +74,8 @@ class DataCollector():
         self.policy = None
         self.path = None
 
-    def collect_data(self, path=None,
+    def collect_data(self, env = None,
+                           path=None,
                            policy=None,
                            n_samples=1,
                            carla_gpu=0,
@@ -86,6 +87,7 @@ class DataCollector():
         print('************using path', self.path)
 
         # Set env if not passed in
+        self.env = env
         if self.env is None:
             config = DefaultMainConfig()
             config.populate_config(
@@ -192,15 +194,31 @@ class DataCollector():
 
 
 
+if __name__ == "__main__":
 
-# parser = argparse.ArgumentParser()
-# parser.add_argument('--gpu', type=str, default='0')
-# parser.add_argument('--n_samples', type=int, default=100000)
-# parser.add_argument('--policy')
-# parser.add_argument('--env')
-# # parser.add_argument('--behavior', type=str, default='cautious')
-# parser.add_argument('--path', type=str)
-# args = parser.parse_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--gpu', type=str, default='0')
+    parser.add_argument('--n_samples', type=int, default=100000)
+    parser.add_argument('--policy')
+    parser.add_argument('--path', type=str)
+    args = parser.parse_args()
 
+    data_collector = DataCollector()
 
-# collect_data(args.env, args.policy, args.path, args.n_samples, args.gpu)
+    config = DefaultMainConfig()
+    config.populate_config(
+                observation_config = "VehicleDynamicsNoCameraConfig",
+                action_config = "MergedSpeedTanhConfig",
+                reward_config = "Simple2RewardConfig",
+                scenario_config = "NoCrashRegularTown01Config",
+                testing = False,
+                carla_gpu = args.gpu
+            )
+    # TEMPORARY
+    # config.action_config.target_speed = 40
+
+    env = CarlaEnv(config = config, log_dir = "/home/scratch/swapnilp/carla_test")
+
+    policy = AutopilotNoisePolicy(env, 0.1, 0.1)
+
+    data_collector.collect_data(env = env, policy = policy, path = args.path, n_samples = args.n_samples, carla_gpu = args.gpu)
