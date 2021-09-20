@@ -959,7 +959,7 @@ class CarlaEnv(gym.Env):
         self.total_reward = 0 # Episode level total reward
         self.unseen = unseen
 
-        carla_obs = self.carla_interface.reset(unseen = self.unseen)
+        carla_obs = self.carla_interface.reset(unseen = self.unseen, index = index)
 
         ################################################
         # Episode information(again)
@@ -1012,6 +1012,8 @@ class CarlaEnv(gym.Env):
             self.total_distance += carla_obs["distance_to_goal_trajec"]
         self.episode_measurements['dist_to_trajectory'] = carla_obs["dist_to_trajectory"]
         self.next_waypoints = carla_obs["next_waypoints"]
+        next_waypoints = [(wp.transform.location.x, wp.transform.location.y, wp.transform.location.z) for wp in carla_obs['next_waypoints']]
+        self.episode_measurements["next_waypoints"] = next_waypoints
 
 
 
