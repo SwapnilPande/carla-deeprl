@@ -191,7 +191,8 @@ def filter_waypoints(waypoints):
         else:
             i += 1
     if(popped):
-        print("FAKE_ENV: POPPED DUPLICATE WAYPOINTS")
+        pass
+        # print("FAKE_ENV: POPPED DUPLICATE WAYPOINTS")
 
     return torch.FloatTensor(waypoints)
 
@@ -278,7 +279,7 @@ def process_waypoints(waypoints, vehicle_pose, device, second_last_waypoint = No
                                     next_waypoints[0],
                                     device)
         else:
-            print("CODE BROKE HERE UH OH _----------------------")
+            # print("CODE BROKE HERE UH OH _----------------------")
             dist_to_trajectory = 0.0
 
     else: # Run out of wps
@@ -290,7 +291,7 @@ def process_waypoints(waypoints, vehicle_pose, device, second_last_waypoint = No
                                     device)
 
         else:
-            print("CODE BROKE HERE UH OH _----------------------")
+            # print("CODE BROKE HERE UH OH _----------------------")
             dist_to_trajectory = 0.0
 
     return angle, dist_to_trajectory, next_waypoints, next_waypoints_angles, next_waypoints_vectors, remaining_waypoints, second_last_waypoint, last_waypoint

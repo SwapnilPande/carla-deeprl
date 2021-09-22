@@ -118,7 +118,7 @@ class MOPO():
         return action
 
     @classmethod
-    def load(cls, logger, policy_model_name, gpu, policy_only = True, dynamics_model_name = None):
+    def load(cls, logger, policy_model_name, gpu, policy_only = True, dynamics_model_name = None, config=None):
         # To load the model, we first need to build an instance of this class
         # We want to keep the same config parameters, so we will build it from the pickled config
         # Also, we will load the dimensional parameters of the model from the saved dimensions
@@ -126,7 +126,8 @@ class MOPO():
 
         print("MOPO: Loading policy {}".format(policy_model_name))
         # Get config from pickle first
-        config = logger.pickle_load(MOPO.log_dir, "config.pkl")
+        if not config:
+            config = logger.pickle_load(MOPO.log_dir, "config.pkl")
 
         # Create a configured dynamics ensemble object
         mopo = cls(config = config,

@@ -1054,7 +1054,18 @@ class CarlaEnv(gym.Env):
         ##################################################################################3
 
     def get_autopilot_action(self, target_speed=0.5):
-        hazard_detected = self.carla_interface.actor_fleet.ego_vehicle.check_for_hazard()
+        hazard_detected = False
+
+        # check for red light
+        red_light_dist = self.episode_measurements['red_light_dist']
+        if red_light_dist != -1 and red_light_dist < 7:
+            hazard_detected = True
+        
+        obstacle_dist = self.episode_measurements['obstacle_dist']
+        if obstacle_dist != -1 and obstacle_dist < 7:
+            hazard_detected = True
+
+        # hazard_detected = self.carla_interface.actor_fleet.ego_vehicle.check_for_hazard()
         if hazard_detected:
             return np.array([0,-1])
         else:
