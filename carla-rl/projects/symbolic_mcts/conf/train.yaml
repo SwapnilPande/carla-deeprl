@@ -1,0 +1,25 @@
+exp_name: ???
+checkpoint_freq: 1
+
+gpu: 0 # assuming single GPU
+seed: 0
+
+eval_freq: 1
+eval_length: 5000
+num_eval_episodes: 25
+
+dataset_path: '/zfsauton/datasets/ArgoRL/brianyan/carla_data_v4/'
+batch_size: 64
+num_workers: 4
+
+num_epochs: 100
+
+agent: transformer
+
+trainer:
+    precision: 16
+    gpus: ${gpu}
+
+hydra:
+    run:
+        dir: /home/scratch/brianyan/outputs/${exp_name}/${now:%Y-%m-%d_%H-%M-%S}
