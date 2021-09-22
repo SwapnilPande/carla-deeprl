@@ -1192,6 +1192,16 @@ class CarlaEnv(gym.Env):
         ]
         self.next_waypoints = carla_obs["next_waypoints"]
 
+        next_waypoints = [
+            (
+                wp.transform.location.x,
+                wp.transform.location.y,
+                wp.transform.location.z,
+            )
+            for wp in carla_obs["next_waypoints"]
+        ]
+        self.episode_measurements["next_waypoints"] = next_waypoints
+
         # Update obstacle distance measurements
         # self._update_env_obs(front_rgb_image=rgb_image)
         self._update_env_obs()

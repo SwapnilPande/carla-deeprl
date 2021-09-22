@@ -3,14 +3,29 @@ import os
 import numpy as np
 import cv2
 import json
+import torch
 
 from projects.reactive_mbrl.data.reward_map import (
     calculate_reward_map,
     calculate_world_grid_points,
 )
+from projects.reactive_mbrl.agents.pid_agent import PIDAgent
+from projects.reactive_mbrl.npc_modeling.kinematic import Kinematic
+from projects.reactive_mbrl.ego_model import EgoModel
 
 WIDE_CROP_TOP = 48
 NARROW_CROP_BOTTOM = 80
+
+
+def load_ego_model():
+    project_home = os.environ["PROJECT_HOME"]
+    model_weights = torch.load(
+        os.path.join(project_home, "carla-rl/projects/reactive_mbrl/ego_model.th")
+    )
+    # model = EgoModel(dt=10.0)
+    model = EgoModel(dt=1.0)
+    model.load_state_dict(model_weights)
+    return model
 
 
 class DataCollector:
@@ -19,29 +34,51 @@ class DataCollector:
         self.path = path
         self.waypointer = None
 
-    def collect_trajectory(self, speed, max_path_length=5000, warm_start=100):
+    def collect_trajectory(self, speed, max_path_length=5000, warm_start=50):
         print(f"Collecting a new trajectory.")
         self.setup_output_dir()
         obs = self.env.reset()
+        waypoints = self.env.carla_interface.global_planner._waypoints_queue
+        waypoints = np.array(
+            [
+                [
+                    w[0].transform.location.x,
+                    w[0].transform.location.y,
+                    w[0].transform.rotation.yaw,
+                ]
+                for w in waypoints
+            ]
+        )
+        model = load_ego_model()
+        npc_predictor = Kinematic(model, waypoints)
+        agent = PIDAgent(npc_predictor, None)
+        agent.reset(waypoints)
+        
+        _, _, _, info = self.env.step(np.array([0,-1]))
+
         route = self.get_route()
         for _ in range(warm_start):
-            expert_action = self.env.get_autopilot_action(target_speed=5.0)
-            self.env.step(expert_action)
+            speed = info["speed"]
+            action = agent.predict(self.env, info, speed, 8)
+            next_obs, reward, done, info = self.env.step(action)
 
         for step in range(max_path_length):
-            expert_action = self.env.get_autopilot_action(speed)
-            next_obs, reward, done, info = self.env.step(expert_action)
+            # expert_action = self.env.get_autopilot_action(speed)
+            speed = info["speed"]
+            action = agent.predict(self.env, info, speed, 8)
+            next_obs, reward, done, info = self.env.step(action)
 
-            reward_map, world_pts, _ = calculate_reward_map(self.env, route)
+            # reward_map, world_pts, _ = calculate_reward_map(self.env, route)
             experience = create_experience(
-                obs, next_obs, expert_action, done, reward, info
+                obs, next_obs, action, done, reward
             )
-            self.save_data(reward_map, world_pts, experience, info, route, step)
+            self.save_data(experience, step)
             if done:
                 break
 
             obs = next_obs
-        print(f"Done collecting trajectory, number of steps {step + 1}")
+
+        print(f"Done collecting trajectory, number of steps {step + 1}, termination state {info['termination_state']}")
         return step + 1
 
     def get_route(self):
@@ -68,44 +105,44 @@ class DataCollector:
             return 0
 
         os.mkdir(self.save_path)
-        os.mkdir(os.path.join(self.save_path, "topdown"))
-        os.mkdir(os.path.join(self.save_path, "wide_rgb"))
-        os.mkdir(os.path.join(self.save_path, "wide_seg"))
-        os.mkdir(os.path.join(self.save_path, "narrow_rgb"))
-        os.mkdir(os.path.join(self.save_path, "narrow_seg"))
-        os.mkdir(os.path.join(self.save_path, "reward"))
-        os.mkdir(os.path.join(self.save_path, "route"))
-        os.mkdir(os.path.join(self.save_path, "world"))
-        os.mkdir(os.path.join(self.save_path, "measurements"))
+        # os.mkdir(os.path.join(self.save_path, "topdown"))
+        # os.mkdir(os.path.join(self.save_path, "wide_rgb"))
+        # os.mkdir(os.path.join(self.save_path, "wide_seg"))
+        # os.mkdir(os.path.join(self.save_path, "narrow_rgb"))
+        # os.mkdir(os.path.join(self.save_path, "narrow_seg"))
+        # os.mkdir(os.path.join(self.save_path, "reward"))
+        # os.mkdir(os.path.join(self.save_path, "route"))
+        # os.mkdir(os.path.join(self.save_path, "world"))
+        # os.mkdir(os.path.join(self.save_path, "measurements"))
 
-    def save_data(self, reward_map, world_pts, experience, info, route, idx):
-        cropped_wide_rgb = info["sensor.camera.rgb/front_wide"][WIDE_CROP_TOP:, :, ::-1]
-        cropped_wide_seg = info["sensor.camera.semantic_segmentation/front_wide"][
-            WIDE_CROP_TOP:
-        ]
-        cropped_narr_rgb = info["sensor.camera.rgb/front_narrow"][
-            :-NARROW_CROP_BOTTOM, :, ::-1
-        ]
-        cropped_narr_seg = info["sensor.camera.semantic_segmentation/front_narrow"][
-            :-NARROW_CROP_BOTTOM
-        ]
-        self.save_img(cropped_wide_rgb, "wide_rgb", idx)
-        self.save_img(cropped_wide_seg, "wide_seg", idx)
-        self.save_img(cropped_narr_rgb, "narrow_rgb", idx)
-        self.save_img(cropped_narr_seg, "narrow_seg", idx)
-        self.save_img(info["sensor.camera.rgb/top"], "topdown", idx)
+    def save_data(self, experience, idx):
+        # cropped_wide_rgb = info["sensor.camera.rgb/front_wide"][WIDE_CROP_TOP:, :, ::-1]
+        # cropped_wide_seg = info["sensor.camera.semantic_segmentation/front_wide"][
+        #     WIDE_CROP_TOP:
+        # ]
+        # cropped_narr_rgb = info["sensor.camera.rgb/front_narrow"][
+        #     :-NARROW_CROP_BOTTOM, :, ::-1
+        # ]
+        # cropped_narr_seg = info["sensor.camera.semantic_segmentation/front_narrow"][
+        #     :-NARROW_CROP_BOTTOM
+        # ]
+        # self.save_img(cropped_wide_rgb, "wide_rgb", idx)
+        # self.save_img(cropped_wide_seg, "wide_seg", idx)
+        # self.save_img(cropped_narr_rgb, "narrow_rgb", idx)
+        # self.save_img(cropped_narr_seg, "narrow_seg", idx)
+        # self.save_img(info["sensor.camera.rgb/top"], "topdown", idx)
 
-        cmd = self.env.carla_interface.next_cmds[0]
-        experience["cmd_name"] = cmd.name
-        experience["cmd_value"] = cmd.value
+        # cmd = self.env.carla_interface.next_cmds[0]
+        # experience["cmd_name"] = cmd.name
+        # experience["cmd_value"] = cmd.value
 
-        np.save(os.path.join(self.save_path, "route", "{:04d}".format(idx)), route)
-        np.save(
-            os.path.join(self.save_path, "reward", "{:04d}".format(idx)), reward_map
-        )
-        np.save(os.path.join(self.save_path, "world", "{:04d}".format(idx)), world_pts)
+        # np.save(os.path.join(self.save_path, "route", "{:04d}".format(idx)), route)
+        # np.save(
+        #     os.path.join(self.save_path, "reward", "{:04d}".format(idx)), reward_map
+        # )
+        # np.save(os.path.join(self.save_path, "world", "{:04d}".format(idx)), world_pts)
         measurements_path = os.path.join(
-            self.save_path, "measurements", "{:04d}.json".format(idx)
+            self.save_path, "{:04d}.json".format(idx)
         )
         with open(measurements_path, "w") as out:
             json.dump(experience, out)
@@ -115,21 +152,21 @@ class DataCollector:
         cv2.imwrite(img_path, img_arr)
 
 
-def create_experience(obs, next_obs, action, done, reward, info):
+def create_experience(obs, next_obs, action, done, reward):
 
     return {
-        "obs": obs.tolist(),
-        "next_obs": next_obs.tolist(),
+        "obs": obs,
+        "next_obs": next_obs,
         "action": action.tolist(),
         "reward": reward,
         "done": done.item(),
-        "location": info["location"],
-        "speed": info["speed"],
-        "yaw": info["ego_vehicle_theta"],
-        "distance_to_goal": info["distance_to_goal"],
-        "speed_reward": info["speed_reward"],
-        "steer_reward": info["steer_reward"],
-        "ego_vehicle_x": info["ego_vehicle_x"],
-        "ego_vehicle_y": info["ego_vehicle_y"],
+        # "location": info["location"],
+        # "speed": info["speed"],
+        # "yaw": info["ego_vehicle_theta"],
+        # "distance_to_goal": info["distance_to_goal"],
+        # "speed_reward": info["speed_reward"],
+        # "steer_reward": info["steer_reward"],
+        # "ego_vehicle_x": info["ego_vehicle_x"],
+        # "ego_vehicle_y": info["ego_vehicle_y"],
         #'gnss': info['sensor.other.gnss']
     }

@@ -2,6 +2,7 @@ from environment import CarlaEnv, CarlaEvalEnv
 import math
 import importlib
 
+from projects.symbolic_mcts.symbolic_env import SymbolicCarlaEnv
 import environment.config.scenario_configs
 from environment.config.config import DefaultMainConfig
 from environment.config.observation_configs import *
@@ -125,23 +126,25 @@ def create_env_config(cfg):
     action_config.frame_skip = 5
 
     config.populate_config(
-        observation_config=obs_config, scenario_config=scenario_config
+        observation_config=obs_config, action_config=action_config, scenario_config=scenario_config
     )
     return config
 
 def create_scenario_config(cfg):
     class_name = f"{cfg.family}{cfg.town}Config"
     class_ = getattr(environment.config.scenario_configs, class_name)
-    return class_()
+    scenario_config = class_()
+    scenario_config.use_scenarios = cfg.use_scenarios
+    return scenario_config
 
 
 def create_env(run_config, log_dir):
     config = create_env_config(run_config)
-    env = CarlaEnv(config=config, log_dir=log_dir + "/")
+    env = SymbolicCarlaEnv(config=config, log_dir=log_dir + "/")
     return env
 
 
-def create_eval_env(log_dir):
-    config = create_env_config()
-    env = CarlaEnv(config=config, log_dir=log_dir + "/")
-    return CarlaEvalEnv(env, 5000)
+# def create_eval_env(log_dir):
+#     config = create_env_config()
+#     env = CarlaEnv(config=config, log_dir=log_dir + "/")
+#     return CarlaEvalEnv(env, 5000)

@@ -77,11 +77,11 @@ def evaluate(env, cfg):
         else:
             agent = GreedyDPAgent(npc_predictor, output_dir)
         scenario_name = f"scenario_{index}_{cfg.environment.family}{cfg.environment.town}"
-        agent.reset(scenario_name, waypoints)
+        agent.reset(waypoints)
         total_reward = 0.0
 
         print("Warming up")
-        for _ in range(60):
+        for _ in range(1):
             action = env.get_autopilot_action(5)
             obs, reward, done, info = env.step(action)
 

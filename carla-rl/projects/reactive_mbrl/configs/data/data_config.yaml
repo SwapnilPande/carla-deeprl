@@ -1,4 +1,4 @@
-train_dataset: "/zfsauton/datasets/ArgoRL/jhoang/big_dataset/"
+train_dataset: "/home/brian/temp/test_data/"
 small_train_dataset: "/zfsauton/datasets/ArgoRL/jhoang/small_dataset/"
 val_dataset: "/zfsauton/datasets/ArgoRL/jhoang/val/"
 model_dir: "/zfsauton/datasets/ArgoRL/jhoang/models/"
