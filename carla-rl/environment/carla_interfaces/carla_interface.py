@@ -9,20 +9,9 @@ import numpy as np
 import numpy.random as nprandom
 import py_trees
 
-# Leaerboard Import
-import sys, os
-# Add paths to get leaderboard to work
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../../leaderboard'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../../scenario_runner'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), './'))
-from leaderboard.utils.route_manipulation import interpolate_trajectory
-from leaderboard.utils.route_parser import RouteParser, TRIGGER_THRESHOLD, TRIGGER_ANGLE_THRESHOLD
-from leaderboard.scenarios.route_scenario import scenario_sampling, build_scenario_instances, convert_transform_to_location, Trigger
-from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 # print(leaderboard, leaderboard.__file__)
 # interpolate_trajectory = route_manipulation.interpolate_trajectory
 # print(leaderboard.utils.route_manipulation.interpolate_trajectory)
-# TODO make sure carla import works
 import carla
 
 #TODO add handling for offline map - needed for leaderboard
