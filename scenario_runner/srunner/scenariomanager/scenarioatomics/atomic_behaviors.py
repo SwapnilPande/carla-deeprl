@@ -28,10 +28,10 @@ import py_trees
 from py_trees.blackboard import Blackboard
 
 import carla
-from agents.navigation.basic_agent import BasicAgent, LocalPlanner
-from agents.navigation.local_planner import RoadOption
-from agents.navigation.global_route_planner import GlobalRoutePlanner
-from agents.navigation.global_route_planner_dao import GlobalRoutePlannerDAO
+from environment.carla_interfaces.agents.navigation.basic_agent import BasicAgent, LocalPlanner
+from environment.carla_interfaces.agents.navigation.local_planner import RoadOption
+from environment.carla_interfaces.agents.navigation.global_route_planner import GlobalRoutePlanner
+from environment.carla_interfaces.agents.navigation.global_route_planner_dao import GlobalRoutePlannerDAO
 
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 from srunner.scenariomanager.actorcontrols.actor_control import ActorControl

@@ -9,11 +9,7 @@ from copy import deepcopy
 
 from leaderboard.autoagents.autonomous_agent import AutonomousAgent, Track
 
-import autoagents.utils as utils
-from autoagents.rl_core.planner import GlobalPlanner
-from autoagents.rl_core.agents.navigation.basic_agent import BasicAgent
-from autoagents.rl_core.reward import compute_reward
-from autoagents.waypointer import Waypointer
+from environment.carla_interfaces.agents.navigation.basic_agent import BasicAgent
 
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 
@@ -216,7 +212,7 @@ class RLAgent(AutonomousAgent):
 
         ego_transform = self.actor.get_transform()
         ego_velocity = self.actor.get_velocity()
-        speed = utils.get_speed_from_velocity(ego_velocity)
+        speed = util.get_speed_from_velocity(ego_velocity)
 
         left_steer = self.actor.get_wheel_steer_angle(carla.VehicleWheelLocation.FL_Wheel)
         right_steer = self.actor.get_wheel_steer_angle(carla.VehicleWheelLocation.FR_Wheel)

@@ -6,8 +6,8 @@ import numpy.random as random
 import carla
 import py_trees
 
-from agents.navigation.global_route_planner import GlobalRoutePlanner
-from agents.navigation.global_route_planner_dao import GlobalRoutePlannerDAO
+from environment.carla_interfaces.agents.navigation.global_route_planner import GlobalRoutePlanner
+from environment.carla_interfaces.agents.navigation.global_route_planner_dao import GlobalRoutePlannerDAO
 
 from srunner.scenarioconfigs.scenario_configuration import ScenarioConfiguration, ActorConfigurationData
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
@@ -22,18 +22,18 @@ from .train_scenario import TrainScenario
 
 class NoCrashTrainScenario(TrainScenario):
     category = "TrainScenario"
-    
+
     def __init__(self, world, config, debug_mode=0, criteria_enable=True):
 
         # Overwrite
         self.config = config
         self.list_scenarios = []
-        
+
         # Set route
         self._set_route()
 
         ego_vehicle = self._update_ego_vehicle()
-        
+
         BasicScenario.__init__(self, name=config.name,
                                             ego_vehicles=[ego_vehicle],
                                             config=config,
@@ -47,7 +47,7 @@ class NoCrashTrainScenario(TrainScenario):
             if isinstance(behavior, WeatherBehavior):
                 self.scenario.scenario_tree.replace_child(behavior, DynamicWeatherBehavior())
                 break
-        
+
         world_annotations = RouteParser.parse_annotations_file(config.scenario_file)
         potential_scenarios_definitions, _ = RouteParser.scan_route_for_scenarios(
             config.town, self.route, world_annotations)
@@ -78,14 +78,14 @@ class DynamicWeatherBehavior(py_trees.behaviour.Behaviour):
         Set current time to current CARLA time
         """
         self._current_time = GameTime.get_time()
-        
+
     def update(self):
         new_time = GameTime.get_time()
         delta_time = new_time - self._current_time
-        
+
         # Switch to a different weather every 10s
         if delta_time > 10:
             self._current_time = new_time
             CarlaDataProvider.get_world().set_weather(random.choice(self.WEATHERS))
-            
+
         return py_trees.common.Status.RUNNING

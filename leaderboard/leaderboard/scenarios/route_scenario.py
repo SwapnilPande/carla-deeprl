@@ -19,7 +19,7 @@ import py_trees
 
 import carla
 
-from agents.navigation.local_planner import RoadOption
+from environment.carla_interfaces.agents.navigation.local_planner import RoadOption
 
 # pylint: disable=line-too-long
 from srunner.scenarioconfigs.scenario_configuration import ScenarioConfiguration, ActorConfigurationData

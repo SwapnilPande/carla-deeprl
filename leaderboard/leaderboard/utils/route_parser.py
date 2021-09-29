@@ -12,7 +12,7 @@ import math
 import xml.etree.ElementTree as ET
 
 import carla
-from agents.navigation.local_planner import RoadOption
+from environment.carla_interfaces.agents.navigation.local_planner import RoadOption
 from srunner.scenarioconfigs.route_scenario_configuration import RouteScenarioConfiguration
 
 # TODO  check this threshold, it could be a bit larger but not so large that we cluster scenarios.
@@ -95,7 +95,7 @@ class RouteParser(object):
             for weather_attrib in route.iter("weather"):
 
                 if 'cloudiness' in weather_attrib.attrib:
-                    weather.cloudiness = float(weather_attrib.attrib['cloudiness']) 
+                    weather.cloudiness = float(weather_attrib.attrib['cloudiness'])
                 if 'precipitation' in weather_attrib.attrib:
                     weather.precipitation = float(weather_attrib.attrib['precipitation'])
                 if 'precipitation_deposits' in weather_attrib.attrib:

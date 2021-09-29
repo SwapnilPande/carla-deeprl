@@ -11,14 +11,6 @@ from copy import deepcopy
 import json
 
 # Leaerboard Import
-
-# Add paths to get leaderboard to work
-sys.path.insert(0, '/zfsauton2/home/swapnilp/rails/leaderboard/')
-sys.path.insert(0, '/zfsauton2/home/swapnilp/rails/scenario_runner')
-sys.path.insert(0, '/zfsauton2/home/swapnilp/rails')
-sys.path.insert(0, '/zfsauton2/home/swapnilp/rails/autoagents/rl_core')
-
-
 from leaderboard.leaderboard_evaluator import LeaderboardEvaluator
 from leaderboard.utils.statistics_manager import StatisticsManager
 import carla
@@ -67,7 +59,7 @@ class LeaderboardInterface():
         }
 
         # This is our leaderboard agent
-        self.agent_path = "/zfsauton2/home/swapnilp/carla-deeprl/carla-rl/environment/carla_interfaces/rl_agent"
+        self.agent_path = os.path.join(os.environ["CARLA_RL"], "carla-rl/environment/carla_interfaces/rl_agent")
         self.agent_config = {
             "send_event" : self.send_event,
             "receive_event" : self.receive_event,

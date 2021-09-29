@@ -10,7 +10,7 @@ This module provides the key configuration parameters for a route-based scenario
 """
 
 import carla
-from agents.navigation.local_planner import RoadOption
+from environment.carla_interfaces.agents.navigation.local_planner import RoadOption
 
 from srunner.scenarioconfigs.scenario_configuration import ScenarioConfiguration
 

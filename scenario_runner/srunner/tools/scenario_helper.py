@@ -16,8 +16,8 @@ import shapely.affinity
 import numpy as np
 
 import carla
-from agents.tools.misc import vector
-from agents.navigation.local_planner import RoadOption
+from environment.carla_interfaces.agents.tools.misc import vector
+from environment.carla_interfaces.agents.navigation.local_planner import RoadOption
 
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 
