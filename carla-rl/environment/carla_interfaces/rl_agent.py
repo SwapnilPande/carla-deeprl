@@ -322,8 +322,7 @@ class RLAgent(AutonomousAgent):
 
         self.step += 1
 
-        # return self.get_control(self.data_buffer["policy_action"])
-        return self.get_control(np.array([0,0]))
+        return self.get_control(self.data_buffer["policy_action"])
 
     def get_control(self, action):
         """ Get Control object for Carla from action

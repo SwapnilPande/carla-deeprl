@@ -23,9 +23,9 @@ class LeaderboardArgs:
         self.agent_config = agent_config
 
         self.scenario_class = "train_scenario"
-        self.scenarios = "/zfsauton2/home/swapnilp/rails/assets/all_towns_traffic_scenarios.json"
+        self.scenarios = os.path.join(os.environ["CARLA_RL"], "assets/all_towns_traffic_scenarios.json")
         self.town = "Town01"
-        self.routes = "/zfsauton2/home/swapnilp/rails/assets/routes_all.xml"
+        self.routes = os.path.join(os.environ["CARLA_RL"], "assets/routes_all.xml")
         self.repetitions = 1
 
         self.host = "localhost"
