@@ -1,5 +1,6 @@
 from collections import OrderedDict
 from dictor import dictor
+import numpy as np
 
 import copy
 
@@ -43,6 +44,14 @@ class RouteIndexer():
 
         key, config = self._configs_list[self._index]
         self._index += 1
+
+        return config
+
+    def sample(self):
+
+        i = np.random.randint(len(self._configs_list))
+
+        key, config = self._configs_list[i]
 
         return config
 

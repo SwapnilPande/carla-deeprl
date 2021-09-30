@@ -126,6 +126,10 @@ class LeaderboardEvaluator(object):
         else:
             self.town = None
 
+        # Number of routes we've run
+        self.route_index = 0
+
+
     def _signal_handler(self, signum, frame):
         """
         Terminate scenario ticking when receiving a signal interrupt
@@ -422,7 +426,11 @@ class LeaderboardEvaluator(object):
 
         while route_indexer.peek():
             # setup
-            config = route_indexer.next()
+            ## Changed
+            # Sample routes from route indexer, instead of choosing them in line
+            # config = route_indexer.next()
+            config = route_indexer.sample()
+            config.index = self.route_index
 
             if self.town is not None:
                 config.town = self.town
@@ -431,6 +439,8 @@ class LeaderboardEvaluator(object):
             self._load_and_run_scenario(args, config)
 
             route_indexer.save_state(args.checkpoint)
+
+        self.route_index += 1
 
         # save global statistics
         print("\033[1m> Registering the global statistics\033[0m")

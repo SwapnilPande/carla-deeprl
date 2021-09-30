@@ -112,10 +112,10 @@ class StatisticsManager(object):
     def set_scenario(self, scenario):
         """
         Sets the scenario from which the statistics will be taken.
-        
+
         This works in conjunction with set_route so that the variable
         is only active when the simulation is active, to avoid statistic
-        errors in case something breaks between simulations 
+        errors in case something breaks between simulations
         """
         self._master_scenario = scenario
 
