@@ -259,12 +259,8 @@ class TrainScenario(RouteScenario):
 
         blueprints = CarlaDataProvider._blueprint_library.filter('walker.pedestrian.*')
         spawn_points = []
-        # print("sleeping before getting spawn points")
-        # import time
-        # time.sleep(10)
-        # i = 0
+
         while len(spawn_points) < amount:
-            # print(i)
             spawn_point = carla.Transform()
             loc = CarlaDataProvider.get_world().get_random_location_from_navigation()
             if (loc != None):

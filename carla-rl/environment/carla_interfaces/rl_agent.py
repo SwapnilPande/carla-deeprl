@@ -309,11 +309,8 @@ class RLAgent(AutonomousAgent):
         if(self.data_buffer['reset'] or self.step > 500):
             self.step = 0
             self.data_buffer['reset'] = False
-            if(self.data_buffer["initial_reset"]):
-               self.data_buffer["initial_reset"] = False
-            else:
-                print("THREAD: Resetting")
-                raise Exception("Resetting")
+            print("THREAD: Resetting")
+            raise Exception("Resetting")
 
         # # TODO WHY IS THIS HERE
         # # _, col = input_data.get('COLLISION')

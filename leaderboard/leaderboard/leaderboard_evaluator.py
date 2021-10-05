@@ -264,9 +264,9 @@ class LeaderboardEvaluator(object):
             crash_message
         )
 
-        print("\033[1m> Registering the route statistics\033[0m")
-        self.statistics_manager.save_record(current_stats_record, config.index, checkpoint)
-        self.statistics_manager.save_entry_status(entry_status, False, checkpoint)
+        print("\033[1m> Registering the route statistics. NOTE: THIS IS CURRENTLY DISABLED\033[0m")
+        # self.statistics_manager.save_record(current_stats_record, config.index, checkpoint)
+        # self.statistics_manager.save_entry_status(entry_status, False, checkpoint)
 
     def _load_and_run_scenario(self, args, config):
         """

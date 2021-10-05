@@ -1654,8 +1654,18 @@ class RouteCompletionTest(Criterion):
                 if dot_ve_wp > 0:
                     # good! segment completed!
                     self._current_index = index
-                    self._percentage_route_completed = 100.0 * float(self._accum_meters[self._current_index]) \
-                        / float(self._accum_meters[-1])
+                    try:
+                        self._percentage_route_completed = 100.0 * float(self._accum_meters[self._current_index]) \
+                            / float(self._accum_meters[-1])
+                    except Exception as e:
+                        print("----------------------------------------------")
+                        print("CAUGHT DIVIDE BY ZERO")
+                        print("HERE ARE THE WAYPOINT")
+                        print(self._waypoints)
+                        print("HERE IS THE ACCUM METERS")
+                        print(self._waypoints)
+                        print("GOOD LUCK!")
+                        print("----------------------------------------------")
                     self._traffic_event.set_dict({
                         'route_completed': self._percentage_route_completed})
                     self._traffic_event.set_message(
