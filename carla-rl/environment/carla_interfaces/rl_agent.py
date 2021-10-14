@@ -285,6 +285,9 @@ class RLAgent(AutonomousAgent):
 
         ep_measurements["traffic_light"] = self.get_traffic_light_states()
         ep_measurements["obstacles"] = self.get_obstacle_states(self.next_waypoints)
+        ep_measurements["dist_to_goal"] = self.actor.get_transform().location.distance(self.destination_transform.location)
+        ep_measurements["autopilot_action"] = self.get_autopilot_action()
+
 
         # # Write the data to the data buffer
         self.data_buffer["lock"].acquire()
@@ -294,11 +297,6 @@ class RLAgent(AutonomousAgent):
         # # Set event to signal that data is ready
         # print(f"THREAD {self.step}: SENT DATA TO CARLA INTERFACE")
         self.receive_event.set()
-
-
-        ep_measurements = {
-            'dist_to_goal' : self.actor.get_transform().location.distance(self.destination_transform.location),
-        }
 
         # # Wait for the carla_interface to send the action data
         self.send_event.wait()
@@ -412,6 +410,7 @@ class RLAgent(AutonomousAgent):
             self.traffic_light_state['nearest_traffic_actor_state'] = None
 
         self.traffic_light_state['dist_to_light'] = dist
+        print(dist)
 
         return self.traffic_light_state
 
@@ -462,3 +461,17 @@ class RLAgent(AutonomousAgent):
             obstacle_state['obstacle_speed'] = -1
 
         return obstacle_state
+
+    def get_hazard(self):
+        return self.basic_agent.check_for_hazard()
+
+    def get_autopilot_action(self, target_speed = 1.0):
+        hazard_detected = self.get_hazard()
+
+        if hazard_detected:
+            return np.array([0,-1])
+        else:
+            waypoint = self.next_waypoints[0]
+            steer = self.lateral_controller.pid_control(waypoint)
+            steer = np.clip(steer, -1, 1)
+            return np.array([steer, target_speed])

@@ -112,6 +112,7 @@ class CarlaEnv(gym.Env):
         self.episode_measurements["runover_light"] = False
         self.episode_measurements["steer_angle"] = 0
         self.episode_measurements["npc_poses"] = None
+        self.episode_measurements["autopilot_action"] = None
 
         self.vehicle_collisions = 0
         self.static_collisions = 0
@@ -186,8 +187,6 @@ class CarlaEnv(gym.Env):
 
         world_frame = None
         reward = 0
-
-
         for _ in range(self.config.action_config.frame_skip):
             carla_obs = self.carla_interface.step(action)
 
@@ -232,7 +231,7 @@ class CarlaEnv(gym.Env):
             self.episode_measurements['steer_angle'] = carla_obs['steer_angle']
             self.episode_measurements['dist_to_trajectory'] = carla_obs['dist_to_trajectory']
             self.episode_measurements['distance_to_goal_trajec'] = carla_obs['distance_to_goal_trajec']
-            # self.episode_measurements['speed'] = util.get_speed_from_velocity(carla_obs['ego_vehicle_velocity'])
+            self.episode_measurements['speed'] = carla_obs["speed"]
             self.episode_measurements['target_speed'] = carla_obs['target_speed']
 
             self.episode_measurements['num_collisions'] = carla_obs['collision_sensor']['num_collisions']
@@ -246,6 +245,8 @@ class CarlaEnv(gym.Env):
             self.episode_measurements['distance_to_goal'] = carla_obs['dist_to_goal']
             if self.episode_measurements['min_distance_to_goal'] >= carla_obs['dist_to_goal']:
                 self.episode_measurements['min_distance_to_goal'] = carla_obs['dist_to_goal']
+
+            self.episode_measurements["autopilot_action"] = np.array(carla_obs["autopilot_action"])
 
             # Additional state vectors storing the position of the vehicle
             # TODO CHANGED
@@ -630,6 +631,7 @@ class CarlaEnv(gym.Env):
     #     self.episode_measurements['dist_to_light'] = dist
 
     def create_observations_scalar(self):
+
         # Creates the state space apart from the image/image encodings
         obs_output = np.array([self.episode_measurements['next_orientation']])
 
@@ -668,13 +670,13 @@ class CarlaEnv(gym.Env):
         elif self.config.obs_config.input_type == 'wp_speed_steer_goal':
             obs_speed = self.episode_measurements['speed'] / 10
             distance_to_goal_trajec = self.episode_measurements['distance_to_goal_trajec'] / 100
-            steer = self.episode_measurements['control_steer']
+            steer = self.episode_measurements['steer_angle']
             obs_output = np.concatenate((np.array(self.episode_measurements['next_orientation']), np.array([obs_speed]), np.array([steer]), np.array([distance_to_goal_trajec])))
 
         elif self.config.obs_config.input_type == 'wp_speed_steer_goal_obs_bool':
             obs_speed = self.episode_measurements['speed'] / 10
             distance_to_goal_trajec = self.episode_measurements['distance_to_goal_trajec'] / 100
-            steer = self.episode_measurements['control_steer']
+            steer = self.episode_measurements['steer_angle']
             obs_bool = self.episode_measurements['obstacle_visible']
             obs_output = np.concatenate((np.array(self.episode_measurements['next_orientation']), np.array([obs_speed]), np.array([steer]), np.array([distance_to_goal_trajec]), np.array([obs_bool])))
 
@@ -682,7 +684,7 @@ class CarlaEnv(gym.Env):
 
             speed = self.episode_measurements['speed'] / 10
             obs_bool = self.episode_measurements['obstacle_visible']
-            steer = self.episode_measurements['control_steer']
+            steer = self.episode_measurements['steer_angle']
             distance_to_goal_trajec = self.episode_measurements['distance_to_goal_trajec'] / 500
             light = self.episode_measurements['red_light_dist']
 
@@ -695,11 +697,10 @@ class CarlaEnv(gym.Env):
             obs_output = np.concatenate((np.array([self.episode_measurements['next_orientation']]), np.array([obs_bool]), np.array([speed]), np.array([steer]), np.array([distance_to_goal_trajec]), np.array([light])))
 
         elif self.config.obs_config.input_type == 'wp_obs_info_speed_steer_ldist_goal_light':
-
             speed = self.episode_measurements['speed'] / 10
             obstacle_dist = self.episode_measurements['obstacle_dist']
             obstacle_speed = self.episode_measurements['obstacle_speed']
-            steer = self.episode_measurements['control_steer']
+            steer = self.episode_measurements['steer_angle']
             ldist = self.episode_measurements['dist_to_trajectory']
             distance_to_goal_trajec = self.episode_measurements['distance_to_goal_trajec'] / 500
             light = self.episode_measurements['red_light_dist']
@@ -728,7 +729,7 @@ class CarlaEnv(gym.Env):
             speed = self.episode_measurements['speed'] / 10
             obstacle_dist = self.episode_measurements['obstacle_dist']
             obstacle_speed = self.episode_measurements['obstacle_speed']
-            steer = self.episode_measurements['control_steer']
+            steer = self.episode_measurements['steer_angle']
             ldist = self.episode_measurements['dist_to_trajectory']
             distance_to_goal_trajec = self.episode_measurements['distance_to_goal_trajec'] / 500
 
@@ -751,7 +752,7 @@ class CarlaEnv(gym.Env):
             speed = self.episode_measurements['speed'] / 10
             obstacle_dist = self.episode_measurements['obstacle_dist']
             obstacle_speed = self.episode_measurements['obstacle_speed']
-            steer = self.episode_measurements['control_steer']
+            steer = self.episode_measurements['steer_angle']
             ldist = self.episode_measurements['dist_to_trajectory']
             light = self.episode_measurements['red_light_dist']
 
@@ -777,7 +778,7 @@ class CarlaEnv(gym.Env):
             speed = self.episode_measurements['speed'] / 10
             obstacle_dist = self.episode_measurements['obstacle_dist']
             obstacle_speed = self.episode_measurements['obstacle_speed']
-            steer = self.episode_measurements['control_steer']
+            steer = self.episode_measurements['steer_angle']
             ldist = self.episode_measurements['dist_to_trajectory']
             distance_to_goal_trajec = self.episode_measurements['distance_to_goal_trajec'] / 500
             light = self.episode_measurements['red_light_dist']
@@ -803,7 +804,7 @@ class CarlaEnv(gym.Env):
 
         elif self.config.obs_config.input_type in ['wp_obstacle_speed_steer']:
             speed = self.episode_measurements['speed'] / 10
-            steer = self.episode_measurements['control_steer']
+            steer = self.episode_measurements['steer_angle']
             ldist = self.episode_measurements['dist_to_trajectory']
 
             obstacle_dist = self.episode_measurements['obstacle_dist']
@@ -931,7 +932,6 @@ class CarlaEnv(gym.Env):
     def _reset(self, unseen=False, index=0, expert_agent=False):
         self.clear_episode_measurements()
 
-
         ################################################
         # Episode information and initialization
         ################################################
@@ -958,11 +958,13 @@ class CarlaEnv(gym.Env):
 
         self.episode_measurements['distance_to_goal'] = carla_obs['dist_to_goal']
         self.episode_measurements['min_distance_to_goal'] = 1000000.0
-        # self.episode_measurements['speed'] = util.get_speed_from_velocity(carla_obs['ego_vehicle_velocity'])
+        self.episode_measurements['speed'] = carla_obs["speed"]
 
         self.episode_measurements['total_steps'] = self.total_steps
         self.episode_measurements['initial_dist_to_red_light'] = -1
 
+
+        self.episode_measurements["autopilot_action"] = np.array(carla_obs["autopilot_action"])
 
         # TODO: fix bug with no sensor_image. empty image for now
         # x_res = int(self.config["sensor_x_res"])
@@ -1037,14 +1039,7 @@ class CarlaEnv(gym.Env):
         ##################################################################################3
 
     def get_autopilot_action(self, target_speed=0.5):
-        hazard_detected = self.carla_interface.actor_fleet.ego_vehicle.check_for_hazard()
-        if hazard_detected:
-            return np.array([0,-1])
-        else:
-            waypoint = self.carla_interface.next_waypoints[0]
-            steer = self.carla_interface.actor_fleet.lateral_controller.pid_control(waypoint)
-            steer = np.clip(steer, -1, 1)
-            return np.array([steer, target_speed])
+       return self.episode_measurements["autopilot_action"]
 
     def get_wp_obs_input(self):
         '''
@@ -1119,7 +1114,8 @@ class CarlaEnv(gym.Env):
 
         # Episode termination conditions
         success = self.episode_measurements["distance_to_goal"] < self.config.scenario_config.dist_for_success
-        offlane = self.episode_measurements["offlane_steps"] > self.config.scenario_config.max_offlane_steps # Unused
+        if(success):
+            import ipdb; ipdb.set_trace()
 
         # Check if static threshold reach, always False if static is disabled
         static = (self.episode_measurements["static_steps"] > self.config.scenario_config.max_static_steps) and \
@@ -1128,6 +1124,8 @@ class CarlaEnv(gym.Env):
         # Check if collision, always False if collision is disabled
         collision = self.episode_measurements["is_collision"] and not self.config.scenario_config.disable_collision
         runover_light = self.episode_measurements["runover_light"] and not self.config.scenario_config.disable_traffic_light
+        if runover_light:
+            import ipdb; ipdb.set_trace()
         maxStepsTaken = self.episode_measurements["num_steps"] > self.config.scenario_config.max_steps
         offlane = (self.episode_measurements['num_laneintersections'] > 0) and not self.config.obs_config.disable_lane_invasion_sensor
 
@@ -1181,6 +1179,8 @@ class CarlaEnv(gym.Env):
         self.episode_measurements['termination_state_code'] = termination_state_code
 
         done = success or collision or runover_light or offlane or static or maxStepsTaken
+        if(done):
+            print(f"--------------\nsuccess: {success}\ncollision: {collision}\nrunover_light: {runover_light}\nofflane: {offlane}\nstatic: {static}\nmaxStepsTaken: {maxStepsTaken}\n--------------")
         return done
 
     def printInfo(self):
