@@ -30,12 +30,13 @@ def compute_reward(prev, current, config, verbose=False):
 
 
     # Light Reward
+
     light_reward = 0
     current["runover_light"] = False
     # Only compute reward if traffic light enabled
     if (not config.scenario_config.disable_traffic_light):
         if (_check_if_signal_crossed(prev, current) # Signal Crossed
-            and (prev['nearest_traffic_actor_state'] == carla.TrafficLightState.Red) # Light is red
+            and (prev['nearest_traffic_actor_state'] == str(carla.TrafficLightState.Red)) # Light is red
             and (current["speed"] > config.scenario_config.zero_speed_threshold) # Vehicle is moving forward
             and (prev['initial_dist_to_red_light'] > config.obs_config.min_dist_from_red_light)): # We are within threshold distance of red light
 

@@ -304,7 +304,7 @@ class RLAgent(AutonomousAgent):
         # print(f"THREAD {self.step}: RECEIVED DATA FROM CARLA INTERFACE")
 
         # # If the policy sends a reset event, raise an exception to end the rollout
-        if(self.data_buffer['reset'] or self.step > 500):
+        if(self.data_buffer['reset']):
             self.step = 0
             self.data_buffer['reset'] = False
             print("THREAD: Resetting")
@@ -402,7 +402,7 @@ class RLAgent(AutonomousAgent):
                 self.traffic_light_state['initial_dist_to_red_light'] = -1
 
             self.traffic_light_state['nearest_traffic_actor_id'] = traffic_actor.id
-            self.traffic_light_state['nearest_traffic_actor_state'] = traffic_actor.state
+            self.traffic_light_state['nearest_traffic_actor_state'] = str(traffic_actor.state)
         else:
             self.traffic_light_state['red_light_dist'] = -1
             self.traffic_light_state['initial_dist_to_red_light'] = -1
@@ -410,7 +410,6 @@ class RLAgent(AutonomousAgent):
             self.traffic_light_state['nearest_traffic_actor_state'] = None
 
         self.traffic_light_state['dist_to_light'] = dist
-        print(dist)
 
         return self.traffic_light_state
 

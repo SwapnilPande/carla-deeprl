@@ -1114,8 +1114,6 @@ class CarlaEnv(gym.Env):
 
         # Episode termination conditions
         success = self.episode_measurements["distance_to_goal"] < self.config.scenario_config.dist_for_success
-        if(success):
-            import ipdb; ipdb.set_trace()
 
         # Check if static threshold reach, always False if static is disabled
         static = (self.episode_measurements["static_steps"] > self.config.scenario_config.max_static_steps) and \
@@ -1124,8 +1122,7 @@ class CarlaEnv(gym.Env):
         # Check if collision, always False if collision is disabled
         collision = self.episode_measurements["is_collision"] and not self.config.scenario_config.disable_collision
         runover_light = self.episode_measurements["runover_light"] and not self.config.scenario_config.disable_traffic_light
-        if runover_light:
-            import ipdb; ipdb.set_trace()
+
         maxStepsTaken = self.episode_measurements["num_steps"] > self.config.scenario_config.max_steps
         offlane = (self.episode_measurements['num_laneintersections'] > 0) and not self.config.obs_config.disable_lane_invasion_sensor
 
