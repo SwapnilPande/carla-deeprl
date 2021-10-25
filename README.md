@@ -71,5 +71,5 @@ You should read the following docs to understand how to configure the environmen
 * [Environment Config Documentation](/carla-rl/environment/config/README.md)
 
 ## Logger Docs
-* [Logger docs)[/carla-rl/common/loggers/README.md]
+* [Logger docs](/carla-rl/common/loggers/README.md)
 
