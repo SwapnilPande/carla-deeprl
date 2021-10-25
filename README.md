@@ -28,9 +28,9 @@ cd ~
 * Install CARLA v0.9.10 (https://carla.org/2020/09/25/release-0.9.10/) for which the binaries are available here: (https://carla-releases.s3.eu-west-3.amazonaws.com/Linux/CARLA_0.9.10.1.tar.gz)
 
 ```
-mkdir $HOME/carla910
-cd $HOME/carla910
-wget "https://carla-releases.s3.eu-west-3.amazonaws.com/Linux/CARLA_0.9.10.1.tar.gz"
+mkdir $HOME/carla910_dirty
+cd $HOME/carla910_dirty
+cp /zfsauton/datasets/ArgoRL/CARLA_0.9.10.1-dirty.tar.gz
 tar xvzf CARLA_0.9.10.1.tar.gz
 ```
 
