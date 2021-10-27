@@ -8,7 +8,7 @@ import time
 import random
 import numpy as np
 import numpy.random as nprandom
-import py_trees
+
 
 # print(leaderboard, leaderboard.__file__)
 # interpolate_trajectory = route_manipulation.interpolate_trajectory
@@ -278,7 +278,7 @@ class Carla910Interface():
             'distance_to_goal_trajec' : self.dist_to_trajectory,
             'dist_to_trajectory' : self.dist_to_trajectory,
             'dist_to_goal' : ego_vehicle_transform.location.distance(self.destination_transform.location),
-            'ego_vehicle_location' : ego_vehicle_transform,
+            'ego_vehicle_location' : [ego_vehicle_transform.location.x, ego_vehicle_transform.location.y, ego_vehicle_transform.rotation.yaw],
             'ego_vehicle_velocity' : ego_vehicle_velocity,
             'location' : location,
             'waypoints' : self.all_waypoints,

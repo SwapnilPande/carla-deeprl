@@ -10,7 +10,7 @@ This module provides an NPC agent to control the ego vehicle
 from __future__ import print_function
 
 import carla
-from agents.navigation.basic_agent import BasicAgent
+from environment.carla_interfaces.agents.navigation.basic_agent import BasicAgent
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 
 from leaderboard.autoagents.autonomous_agent import AutonomousAgent, Track

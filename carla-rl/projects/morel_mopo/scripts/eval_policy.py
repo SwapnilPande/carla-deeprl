@@ -241,15 +241,14 @@ def closed_loop_eval(exp_name, logger, env, fake_env, policy, n_rollouts):
 
 class MOPOEvaluationConf:
     def __init__(self):
-        self.policy_model_name = "best_model_1000000.zip"
-        self.experiment_key = "cb248318a263406795aaabc4e8a51a3f"
+        self.policy_model_name = "best_model_1800000.zip"
+        self.experiment_key = "aa2787f0101e4a119906ca92fc0c5838"
         self.policy_only = True
         # self.dynamics_model_name = "final"
         self.dynamics_model_name = None
 
 
 def main(args):
-    import ipdb; ipdb.set_trace()
     # First, set up comet logger to retrieve experiment
     mopo_evaluation_conf = MOPOEvaluationConf()
 
@@ -268,6 +267,7 @@ def main(args):
     mopo.config.eval_env_config.carla_gpu = args.gpu
     mopo.config.eval_env_config.obs_config = VehicleDynamicsObstacleConfig() # VehicleDynamicsOnlyConfig()
     mopo.config.eval_env_config.scenario_config = NoCrashDenseTown01Config()
+    mopo.config.eval_env_config.server_binary = os.environ.get("CARLA_9_4_PATH") + '/CarlaUE4.sh'
     env = CarlaEnv(config = mopo.config.eval_env_config, logger = logger, log_dir = logger.log_dir)
 
     # closed_loop_eval("test", logger, env, mopo.fake_env, mopo, 5)

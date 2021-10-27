@@ -26,7 +26,7 @@ class LeaderboardArgs:
         self.scenarios = os.path.join(os.environ["CARLA_RL"], "assets/all_towns_traffic_scenarios.json")
         self.town = "Town01"
         self.routes = os.path.join(os.environ["CARLA_RL"], "assets/routes_all.xml")
-        self.repetitions = 1
+        self.repetitions = 10000
 
         self.host = "localhost"
         self.port = server_port
@@ -144,6 +144,9 @@ class LeaderboardInterface():
                 self.data_buffer["leaderboard_data"][key] = self.data_buffer["leaderboard_data"][key].tolist()
 
         # obs = json.loads(json.dumps(self.data_buffer["leaderboard_data"]))
+        if isinstance(self.data_buffer["leaderboard_data"]["traffic_light"]["nearest_traffic_actor_state"], carla.libcarla.TrafficLightState):
+            import ipdb; ipdb.set_trace()
+
         obs = deepcopy(self.data_buffer["leaderboard_data"])
         self.data_buffer["lock"].release()
 

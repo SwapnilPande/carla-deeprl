@@ -174,11 +174,12 @@ class TrainScenario(RouteScenario):
             scenario_class = NUMBER_CLASS_TRANSLATION[definition['name']]
 
             # Create the other actors that are going to appear
-            if definition['other_actors'] is not None:
-                list_of_actor_conf_instances = self._get_actors_instances(definition['other_actors'])
-            else:
-                list_of_actor_conf_instances = []
+            # if definition['other_actors'] is not None:
+            #     list_of_actor_conf_instances = self._get_actors_instances(definition['other_actors'])
+            # else:
+            #     list_of_actor_conf_instances = []
             # Create an actor configuration for the ego-vehicle trigger position
+            list_of_actor_conf_instances = []
 
             egoactor_trigger_position = convert_json_to_transform(definition['trigger_position'])
             scenario_configuration = ScenarioConfiguration()
@@ -243,16 +244,16 @@ class TrainScenario(RouteScenario):
 
         # initialize background pedestrians
         town_amount = {
-            'Town01': 150,
-            'Town02': 120,
-            'Town03': 150,
-            'Town04': 200,
-            'Town05': 150,
-            'Town06': 200,
-            'Town07': 120,
-            'Town08': 200,
-            'Town09': 320,
-            'Town10HD': 150,
+            'Town01':   0,
+            'Town02':   0,
+            'Town03':   0,
+            'Town04':   0,
+            'Town05':   0,
+            'Town06':   0,
+            'Town07':   0,
+            'Town08':   0,
+            'Town09':   0,
+            'Town10HD': 0,
         }
 
         amount = town_amount[config.town] if config.town in town_amount else 0
@@ -285,10 +286,10 @@ class TrainScenario(RouteScenario):
 
         pedestrian_controllers = CarlaDataProvider.handle_actor_batch(batch)
         CarlaDataProvider.get_world().set_pedestrians_cross_factor(1.0)
-        # for controller in pedestrian_controllers:
-        #     controller.start()
-        #     controller.go_to_location(CarlaDataProvider.get_world().get_random_location_from_navigation())
-        #     controller.set_max_speed(1.2 + random.random())
+        for controller in pedestrian_controllers:
+            controller.start()
+            controller.go_to_location(CarlaDataProvider.get_world().get_random_location_from_navigation())
+            controller.set_max_speed(1.2 + random.random())
 
         for actor in itertools.chain(pedestrians, pedestrian_controllers):
             if actor is None:
