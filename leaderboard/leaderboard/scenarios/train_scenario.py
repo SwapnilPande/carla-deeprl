@@ -285,10 +285,10 @@ class TrainScenario(RouteScenario):
 
         pedestrian_controllers = CarlaDataProvider.handle_actor_batch(batch)
         CarlaDataProvider.get_world().set_pedestrians_cross_factor(1.0)
-        # for controller in pedestrian_controllers:
-        #     controller.start()
-        #     controller.go_to_location(CarlaDataProvider.get_world().get_random_location_from_navigation())
-        #     controller.set_max_speed(1.2 + random.random())
+        for controller in pedestrian_controllers:
+            controller.start()
+            controller.go_to_location(CarlaDataProvider.get_world().get_random_location_from_navigation())
+            controller.set_max_speed(1.2 + random.random())
 
         for actor in itertools.chain(pedestrians, pedestrian_controllers):
             if actor is None:
