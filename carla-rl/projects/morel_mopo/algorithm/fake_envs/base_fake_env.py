@@ -202,7 +202,8 @@ class BaseFakeEnv(gym.Env):
             self.npc_poses = npc_poses
 
         self.waypoints = feutils.filter_waypoints(waypoints).to(self.device)
-
+        if(not isinstance(self.npc_poses, torch.Tensor)):
+            self.npc_poses = torch.Tensor(self.npc_poses)
         self.npc_poses = self.npc_poses.to(self.device)
 
 
@@ -304,6 +305,31 @@ class BaseFakeEnv(gym.Env):
 
             return torch.cat([angle, state[1:2] / 10, state[0:1], dist_to_trajectory, torch.tensor([obstacle_dist]).to(self.device), torch.tensor([obstacle_vel]).to(self.device)], dim=0).float().to(self.device), dist_to_trajectory, angle
 
+    def check_collision(self, other_vehicle_pose):
+        # This is cos(theta) from the centroid of our vehicle to one of the corners
+        # any value larger than this signifies that the vehicle collision would be with the front of the car
+        # any value smaller than this signifies that the vehicle collision would be with the back of the car
+        # TODO we are not handling rear collision properly (Assumes that it is the same as side collision)
+        car_corner_angle = 0.913
+        front_collision_threshold = 5.5 #meters
+        side_collision_threshold = 2 # meters
+
+        # Vector for current heading of vehicle
+        heading_vector = torch.tensor([torch.cos(torch.deg2rad(self.vehicle_pose[2])), torch.sin(torch.deg2rad(self.vehicle_pose[2]))]).to(self.device)
+
+        # Vector between the other vehicle and our vehicle
+        vec_to_other_vehicle = other_vehicle_pose[0:2] - self.vehicle_pose[0:2]
+
+        # Calculate normalized dot product - heading vector is a unit vector, so don't need to divide by that
+        norm_dot = torch.dot(heading_vector, vec_to_other_vehicle) / torch.norm(vec_to_other_vehicle)
+
+        if(norm_dot > car_corner_angle):
+            return torch.norm(vec_to_other_vehicle) < front_collision_threshold
+        else:
+            return torch.norm(vec_to_other_vehicle) < side_collision_threshold
+
+
+
     '''
     Takes one step according to action
     @ params: new_action
@@ -376,16 +402,14 @@ class BaseFakeEnv(gym.Env):
 
             ################## calc reward with penalty for uncertainty ##############################
             collision = False
-            collision_threshold = 1.5
+            collision_threshold = 2.5
             cur_npc_poses = self.npc_poses[self.steps_elapsed]
-            for i in range(cur_npc_poses.shape[0]):
-                # Get magnitude of vector
-                distance = torch.linalg.norm(cur_npc_poses[i][0:2] - self.vehicle_pose[0:2])
+            # Check for collisions with any vehicle
+            collision = any([self.check_collision(other_vehicle) for other_vehicle in cur_npc_poses])
 
-                # If too close to a car, set collision to true
-                collision = (distance < collision_threshold) | collision
+            out_of_lane = torch.abs(dist_to_trajectory) > 1.5
 
-            reward_out = compute_reward(self.state.unnormalized[0], dist_to_trajectory, collision, self.config)
+            reward_out = compute_reward(self.state.unnormalized[0], dist_to_trajectory, collision or out_of_lane, self.config)
 
             uncertain =  self.usad(self.deltas.normalized.detach().cpu().numpy())
             reward_out[0] = reward_out[0] - uncertain * self.uncertainty_coeff
@@ -416,7 +440,7 @@ class BaseFakeEnv(gym.Env):
 
             # Check done condition
             done = (len(self.waypoints) == 0 or
-                    torch.abs(dist_to_trajectory) > 2.5 or
+                    out_of_lane or
                     collision or
                     self.steps_elapsed >= len(self.npc_poses) or
                     timeout)
