@@ -693,12 +693,12 @@ def eval_policy_obs(exp_name, logger, fake_env, policies, num_episodes, n = 50):
 class DynamicsEvaluationConf:
     def __init__(self):
         self.model_name = "final"
-        self.experiment_key = "1dfe064769f24397b27a413d7d5520ad"
+        self.experiment_key = "cb248318a263406795aaabc4e8a51a3f"
 
 class MOPOEvaluationConf:
     def __init__(self):
-        self.policy_model_name = "best_model_1300000.zip"
-        self.experiment_key = "1dfe064769f24397b27a413d7d5520ad"
+        self.policy_model_name = "policy_checkpoint__7000000_steps.zip"
+        self.experiment_key = "cb248318a263406795aaabc4e8a51a3f"
         self.policy_only = True
 
 
@@ -754,17 +754,18 @@ def main(args):
                 logger = logger)
 
     mopo_evaluation_conf = MOPOEvaluationConf()
-    # policy = MOPOPolicy(logger, mopo_evaluation_conf)
+    policy = MOPOPolicy(logger, mopo_evaluation_conf)
     autopilot_policy = AutopilotPolicy(fake_env)
 
-    eval_policy_obs("test", logger, fake_env, [autopilot_policy], 10, 50)
+    eval_policy_obs("test", logger, fake_env, [policy, autopilot_policy], 10, 50)
+    exit()
 
     # Run desired experiments
     # n_step_eval("V3_autopilot_5_step", logger, env, fake_env, policy, 5, n = 5, generate_videos = True)
 
     # n_step_eval("V3_autopilot_25_step", logger, env, fake_env, policy, 5, n = 25, generate_videos = True)
 
-    visualize_trajectory_distribution("25_step", logger, env, fake_env, policy, 1, n = 25, n_samples = 50)
+    # visualize_trajectory_distribution("25_step", logger, env, fake_env, policy, 1, n = 25, n_samples = 50)
 
     # policy = RandomPolicy(env)
 

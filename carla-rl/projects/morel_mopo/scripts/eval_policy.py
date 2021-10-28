@@ -10,6 +10,10 @@ import subprocess
 import shutil
 import copy
 
+# Logger
+from common.loggers.comet_logger import CometLogger
+from projects.morel_mopo.config.logger_config import ExistingCometLoggerConfig
+
 import gym
 from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.env_util import DummyVecEnv
@@ -22,13 +26,22 @@ from environment.config.observation_configs import VehicleDynamicsOnlyConfig, Ve
 from environment.config.scenario_configs import NoCrashRegularTown01Config, NoCrashDenseTown01Config
 
 
-# Logger
-from common.loggers.comet_logger import CometLogger
-from projects.morel_mopo.config.logger_config import ExistingCometLoggerConfig
+
 
 
 # MOPO
 from projects.morel_mopo.algorithm.mopo import MOPO
+
+class AutopilotPolicy:
+    def __init__(self, env):
+        self.env = env
+
+    def __call__(self, obs):
+        return self.env.get_autopilot_action()
+
+    def policy_predict(self, obs):
+        return self.env.get_autopilot_action()
+
 
 
 
@@ -51,7 +64,7 @@ def generate_video(logger, image_path, save_path, name):
 
 
 
-def generate_rollouts(logger, env, policy, n_rollouts = 10, timeout = 1000):
+def generate_rollouts(logger, env, policy, n_rollouts = 10, timeout = 500):
     image_save_dir = logger.prep_dir("policy_eval/images")
     video_save_dir = logger.prep_dir("policy_eval/videos")
 
@@ -65,6 +78,7 @@ def generate_rollouts(logger, env, policy, n_rollouts = 10, timeout = 1000):
             action = policy.policy_predict(obs)
 
             obs, reward, done, info = env.step(action)
+            print(obs[0][3])
 
             image = info["sensor.camera.rgb/top"]
 
@@ -75,7 +89,7 @@ def generate_rollouts(logger, env, policy, n_rollouts = 10, timeout = 1000):
 
             if done:
                 break
-                # pass
+                pass
 
     generate_video(logger = logger,
                     image_path = image_save_dir,
@@ -263,16 +277,18 @@ def main(args):
                     policy_only = mopo_evaluation_conf.policy_only,
                     dynamics_model_name = mopo_evaluation_conf.dynamics_model_name)
 
+
     mopo.config.eval_env_config.render_server = True
     mopo.config.eval_env_config.carla_gpu = args.gpu
     mopo.config.eval_env_config.obs_config = VehicleDynamicsObstacleConfig() # VehicleDynamicsOnlyConfig()
     mopo.config.eval_env_config.scenario_config = NoCrashDenseTown01Config()
-    mopo.config.eval_env_config.server_binary = os.environ.get("CARLA_9_4_PATH") + '/CarlaUE4.sh'
     env = CarlaEnv(config = mopo.config.eval_env_config, logger = logger, log_dir = logger.log_dir)
 
+    # autopilot_policy = AutopilotPolicy(env)
     # closed_loop_eval("test", logger, env, mopo.fake_env, mopo, 5)
 
     generate_rollouts(logger = logger, env = env, policy = mopo)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -282,31 +298,3 @@ if __name__ == "__main__":
     # parser.add_argument('--path', type=str)
     args = parser.parse_args()
     main(args)
-
-
-
-
-
-# config = DefaultMainConfig()
-# config.populate_config(
-#     observation_config = "VehicleDynamicsNoCameraConfig",
-#     action_config = "MergedSpeedTanhConfig",
-#     reward_config="Simple2RewardConfig",
-#     scenario_config = "NoCrashEmptyTown01Config",
-#     testing = False,
-#     carla_gpu = 1
-# )
-# # logger_callback = PPOLoggerCallback(logger)
-
-
-# env = CarlaEnv(config = config, logger = None, log_dir = "/home/swapnil/carla_logs")
-
-
-# policy = PPO.load("/home/swapnil/best_model.zip")
-
-# while True:
-#     obs = env.reset()
-#     for i in range(1000):
-#         action, _states = policy.predict(obs)
-#         obs, rewards, done, info = env.step(action)
-#         env.render()

@@ -18,11 +18,12 @@ def main(args):
     ########################################## logger  ####################################
 
     logger_conf = CometLoggerConfig()
-    logger_conf.populate(experiment_name = args.exp_name, tags = ["MOPO"])
+    logger_conf.populate(experiment_name = args.exp_name, tags = ["MOPO", "uncertainty_sweep"])
     logger = CometLogger(logger_conf)
 
     config = DefaultMLPObstaclesMOPOConfig()
     config.populate_config(gpu = args.gpu, policy_algorithm = "PPO")
+    config.fake_env_config.uncertainty_coeff = args.uncertainty
 
     model = MOPO(config = config,
                 logger=logger)
@@ -35,6 +36,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--gpu', type=str)
     parser.add_argument('--exp_name', type=str)
+    parser.add_argument("--uncertainty", type=float)
     args = parser.parse_args()
     main(args)
 

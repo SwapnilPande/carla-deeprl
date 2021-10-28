@@ -82,9 +82,6 @@ def main(args):
     data_config = ObstaclesMixedDeterministicMLPDataModuleConfig()
     data_module = data_config.dataset_type(data_config)
     data_module.setup()
-
-    plot_npc_trajectories(args.log_dir, data_module)
-
     # Retrieve all the data from the dataset
     all_obs              = np.vstack([d.obs[:,-1,:].squeeze().cpu().numpy() for d in data_module.datasets])
     all_actions          = np.vstack([d.actions[:,-1,:].squeeze().cpu().numpy() for d in data_module.datasets])

@@ -317,7 +317,7 @@ class Carla910Interface():
                 self.traffic_light_state['initial_dist_to_red_light'] = -1
 
             self.traffic_light_state['nearest_traffic_actor_id'] = traffic_actor.id
-            self.traffic_light_state['nearest_traffic_actor_state'] = traffic_actor.state
+            self.traffic_light_state['nearest_traffic_actor_state'] = str(traffic_actor.state)
         else:
             self.traffic_light_state['red_light_dist'] = -1
             self.traffic_light_state['initial_dist_to_red_light'] = -1

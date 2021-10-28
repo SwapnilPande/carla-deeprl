@@ -1,4 +1,9 @@
 export CARLA_RL=$HOME/carla-deeprl
+if [ ! -d "/home/scratch/$USER/tmpdir" ]
+then
+    mkdir /home/scratch/$USER/tmpdir
+fi
+export TMPDIR=/home/scratch/$USER/tmpdir
 export LIBS=$CARLA_RL/libs
 export PATH=$LIBS/nasm/bin:$LIBS/libjpeg8/bin:$LIBS/libpng/bin:$LIBS/libjpeg/bin:$LIBS/libjpeglua/bin:$PATH
 export LD_LIBRARY_PATH=$LIBS/libjpeg8/lib:$LIBS/libpng/lib:$LIBS/libjpeg/lib64:$LIBS/libjpeglua/lib:$LD_LIBRARY_PATH

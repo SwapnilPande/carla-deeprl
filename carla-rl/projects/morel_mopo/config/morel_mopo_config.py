@@ -75,7 +75,7 @@ class DefaultMLPObstaclesMOPOConfig(BaseMOPOConfig):
             observation_config = "VehicleDynamicsObstacleNoCameraConfig",
             action_config = "MergedSpeedScaledTanhConfig",
             reward_config = "Simple2RewardConfig",
-            scenario_config = "NoCrashRegularTown01Config",
+            scenario_config = "NoCrashDenseTown01Config",
             testing = False,
             carla_gpu = self.gpu
         )

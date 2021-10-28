@@ -11,7 +11,7 @@ from environment.env import CarlaEnv
 
 # Stable baselines PPO
 from stable_baselines3.common.env_util import DummyVecEnv
-from stable_baselines3 import PPO, SAC
+from stable_baselines3 import PPO
 
 # Environment
 from stable_baselines3.common.callbacks import EvalCallback
@@ -64,7 +64,8 @@ class MOPO():
         self.logger.log_hyperparameters({
             "mopo/uncertainty_penalty" : self.fake_env_config.uncertainty_coeff,
             "mopo/rollout_length" : self.fake_env_config.timeout_steps,
-            "mopo/policy_algorithm" : str(self.policy_algo)
+            "mopo/policy_algorithm" : str(self.policy_algo),
+            "mopo/policy_weight_decay" : 0.0
         })
 
         self.dynamics = self.dynamics_config.dynamics_model_type(
@@ -101,7 +102,17 @@ class MOPO():
         print("MOPO: Beginning Policy Training")
 
         # import ipdb; ipdb.set_trace()
-        self.policy = self.policy_algo("MlpPolicy", fake_env, verbose=1, carla_logger = self.logger, device = self.dynamics.device)
+        self.policy = self.policy_algo("MlpPolicy",
+            fake_env,
+            verbose=1,
+            carla_logger = self.logger,
+            device = self.dynamics.device,
+            #  policy_kwargs = {
+            #     "optimizer_kwargs" : {
+            #         "weight_decay" : 0.1
+            #     }
+            # }
+        )
         self.policy.learn(total_timesteps=self.policy_epochs, callback = [eval_callback, checkpoint_callback])
         self.policy.save(os.path.join(self.logger.log_dir, "policy", "models", "final_policy"))
 
