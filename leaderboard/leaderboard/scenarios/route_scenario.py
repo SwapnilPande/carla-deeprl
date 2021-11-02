@@ -195,7 +195,7 @@ class RouteScenario(BasicScenario):
                                                              self.sampled_scenarios_definitions,
                                                              scenarios_per_tick=10,
                                                              timeout=self.timeout,
-                                                             debug_mode=debug_mode>1)
+                                                             debug_mode=debug_mode>0)
 
         super(RouteScenario, self).__init__(name=config.name,
                                             ego_vehicles=[ego_vehicle],
@@ -450,16 +450,16 @@ class RouteScenario(BasicScenario):
         """
         # Create the background activity of the route
         town_amount = {
-            'Town01':   0,
-            'Town02':   0,
-            'Town03':   0,
-            'Town04':   0,
-            'Town05':   0,
-            'Town06':   0,
-            'Town07':   0,
-            'Town08':   0,
-            'Town09':   0,
-            'Town10HD': 0,
+            'Town01': 120,
+            'Town02': 100,
+            'Town03': 120,
+            'Town04': 200,
+            'Town05': 120,
+            'Town06': 150,
+            'Town07': 110,
+            'Town08': 180,
+            'Town09': 300,
+            'Town10HD': 120,
         }
 
         amount = town_amount[config.town] if config.town in town_amount else 0

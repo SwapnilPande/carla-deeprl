@@ -16,15 +16,14 @@ from leaderboard.utils.statistics_manager import StatisticsManager
 import carla
 
 
-
 class LeaderboardArgs:
     def __init__(self, agent, agent_config, server_port):
         self.agent = agent
         self.agent_config = agent_config
 
-        self.scenario_class = "train_scenario"
+        self.scenario_class = "route_scenario"
         self.scenarios = os.path.join(os.environ["CARLA_RL"], "assets/all_towns_traffic_scenarios.json")
-        self.town = "Town01"
+        self.town = "Town02"
         self.routes = os.path.join(os.environ["CARLA_RL"], "assets/routes_all.xml")
         self.repetitions = 10000
 
@@ -39,7 +38,7 @@ class LeaderboardArgs:
         self.record = ''
 
         self.timeout = 60
-        self.debug = False
+        self.debug = True
 
 
 
