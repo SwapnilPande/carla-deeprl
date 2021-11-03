@@ -23,11 +23,7 @@ def main(args):
 
     config = DefaultMLPObstaclesMOPOConfig()
     config.populate_config(gpu = args.gpu, policy_algorithm = "PPO")
-<<<<<<< Updated upstream
     config.fake_env_config.uncertainty_coeff = args.uncertainty
-=======
-    config.fake_env_config.uncertainty_coeff = 1
->>>>>>> Stashed changes
 
     model = MOPO(config = config,
                 logger=logger)
