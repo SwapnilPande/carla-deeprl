@@ -6,7 +6,7 @@ import environment.carla_interfaces.controller as controller
 from environment import env_util as util
 from copy import deepcopy
 
-
+from leaderboard.autoagents.agent_wrapper import KillSimulator
 from leaderboard.autoagents.autonomous_agent import AutonomousAgent, Track
 
 from environment.carla_interfaces.agents.navigation.basic_agent import BasicAgent
@@ -123,15 +123,6 @@ class RLAgent(AutonomousAgent):
         self.traffic_light_state = {
             'initial_dist_to_red_light' : -1
         }
-
-    def destroy(self):
-        self.data_buffer = None
-
-        del self.actor
-        del self.basic_agent
-        del self.world
-        del self.map
-
 
     def sensors(self):
         #TODO move sensors to config
@@ -303,10 +294,15 @@ class RLAgent(AutonomousAgent):
         self.send_event.clear()
         # print(f"THREAD {self.step}: RECEIVED DATA FROM CARLA INTERFACE")
 
+        # If a exit command is received, kill leaderboard evaluator
+        if self.data_buffer["exit"]:
+            print("BEGGININIGNIGNG EXIT _------------------------------------------------------")
+            raise KillSimulator("Received kill signal from main thread")
         # # If the policy sends a reset event, raise an exception to end the rollout
         if(self.data_buffer['reset']):
             self.step = 0
             self.data_buffer['reset'] = False
+            print("BEGGININIGNIGNG RESET _------------------------------------------------------")
             print("THREAD: Resetting")
             raise Exception("Resetting")
 

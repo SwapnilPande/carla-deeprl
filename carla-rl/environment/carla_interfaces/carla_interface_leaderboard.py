@@ -54,7 +54,8 @@ class LeaderboardInterface():
         self.receive_event = threading.Event()
         self.data_buffer = {
             "lock" : threading.Lock(),
-            "initial_reset" : True
+            "initial_reset" : True,
+            "exit" : False,
         }
 
         # This is our leaderboard agent
@@ -166,5 +167,13 @@ class LeaderboardInterface():
 
 
     def close(self):
+        print("Shutting down leaderboard and CARLA server")
+        self.data_buffer["lock"].acquire()
+        self.data_buffer["exit"] = True
+        self.data_buffer["lock"].release()
+        self.send_event.set()
+
+
+        time.sleep(20)
         if self.server is not None:
             self.server.close()
