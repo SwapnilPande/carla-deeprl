@@ -8,33 +8,33 @@ from torch import nn
 
 class Encoder(nn.Module):
 
-	def __init__(self, params):
-		'''
-		Arg
-			params: A dictionary storing model-type-specific arguments.
-		'''
-		super(Encoder, self).__init__()
+    def __init__(self, params):
+        '''
+        Arg
+            params: A dictionary storing model-type-specific arguments.
+        '''
+        super(Encoder, self).__init__()
 
-		self.layer_params = params['layer_params']
+        self.layer_params = params['layer_params']
 
-		if params['model_type'] == 'conv':
-			self.mod = self.get_conv_mod()
-		else:
-			raise Exception ('Invalid model type found.')
-
-
-
-	def get_conv_mod(self):
-		'''
-		Build the convolutional module and return it.
-		'''
-		pass
+        if params['model_type'] == 'conv':
+            self.mod = self.get_conv_mod()
+        else:
+            raise Exception ('Invalid model type found.')
 
 
 
-	def forward(self, x):
+    def get_conv_mod(self):
+        '''
+        Build the convolutional module and return it.
+        '''
+        pass
 
-		return self.mod(x)
+
+
+    def forward(self, x):
+
+        return self.mod(x)
 
 
 
