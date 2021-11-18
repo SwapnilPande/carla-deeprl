@@ -10,6 +10,7 @@ from leaderboard.autoagents.agent_wrapper import KillSimulator
 from leaderboard.autoagents.autonomous_agent import AutonomousAgent, Track
 
 from environment.carla_interfaces.agents.navigation.basic_agent import BasicAgent
+from environment.carla_interfaces.symbolic_utils import fetch_symbolic_dict
 
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 
@@ -233,6 +234,11 @@ class RLAgent(AutonomousAgent):
             'waypoints' : all_waypoints
         })
 
+        episode_measurements["traffic_light"] = self.get_traffic_light_states()
+        episode_measurements["obstacles"] = self.get_obstacle_states(self.next_waypoints)
+        episode_measurements["dist_to_goal"] = self.actor.get_transform().location.distance(self.destination_transform.location)
+        episode_measurements["autopilot_action"] = self.get_autopilot_action()
+
         # planner / waypoint features
         # next_orientation, dist_to_trajectory, dist_to_goal, next_waypoints, all_waypoints = self.planner.get_next_orientation_new(ego_transform)
         # episode_measurements.update({
@@ -265,6 +271,10 @@ class RLAgent(AutonomousAgent):
         # obstacle_features = self.get_obstacle_features(next_waypoints)
         # episode_measurements.update(obstacle_features)
 
+        # symbolic features
+        other_actors = self.world.get_actors().filter('*vehicle*')
+        episode_measurements['symbolic_features'] = fetch_symbolic_dict(self.actor, other_actors, episode_measurements)
+
         return episode_measurements
 
     def run_step(self, input_data, timestamp):
@@ -273,11 +283,6 @@ class RLAgent(AutonomousAgent):
 
         # # get episode measurements (features, rewards, images, etc...)
         ep_measurements = self.update_measurements(input_data)
-
-        ep_measurements["traffic_light"] = self.get_traffic_light_states()
-        ep_measurements["obstacles"] = self.get_obstacle_states(self.next_waypoints)
-        ep_measurements["dist_to_goal"] = self.actor.get_transform().location.distance(self.destination_transform.location)
-        ep_measurements["autopilot_action"] = self.get_autopilot_action()
 
 
         # # Write the data to the data buffer

@@ -19,3 +19,14 @@ def train_restart_wrapper(train_fn, total_timesteps, restart_interval):
 
 
         model_load_name = model_save_name
+
+
+def collect_data_restart_wrapper(train_fn, total_timesteps, restart_interval):
+    for i in range(total_timesteps // restart_interval):
+        print(f"Starting training interation for steps {i * restart_interval} to {(i+1) * restart_interval}")
+
+        # Train for restart_interval steps
+        process = multiprocessing.Process(target=train_fn, args=(restart_interval,))
+        process.start()
+        process.join()
+

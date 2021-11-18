@@ -13,7 +13,8 @@ from gym.core import ObservationWrapper
 sys.path.append(os.path.abspath(os.path.join('../../../')))
 
 from common.loggers.comet_logger import CometLogger
-from projects.morel_mopo.config.logger_config import CometLoggerConfig
+# from projects.morel_mopo.config.logger_config import CometLoggerConfig
+from algorithms.restart_wrapper import collect_data_restart_wrapper
 
 import gym
 from algorithms import PPO
@@ -26,8 +27,8 @@ from environment.env import CarlaEnv
 from environment.config.config import DefaultMainConfig
 EXPERIMENT_NAME = "NO_CRASH_EMPTY_FIRST_TEST"
 
-logger_conf = CometLoggerConfig()
-logger_conf.populate(experiment_name = EXPERIMENT_NAME, tags = ["Online_PPO"])
+# logger_conf = CometLoggerConfig()
+# logger_conf.populate(experiment_name = EXPERIMENT_NAME, tags = ["Online_PPO"])
 
 
 
@@ -92,7 +93,7 @@ class DataCollector():
             config = DefaultMainConfig()
             config.populate_config(
                 observation_config = "VehicleDynamicsNoCameraConfig",
-                action_config = "MergedSpeedTanhConfig",
+                action_config = "MergedScaledSpeedTanhConfig",
                 reward_config = "Simple2RewardConfig",
                 scenario_config = "NoCrashEmptyTown01Config",
                 testing = False,
@@ -195,7 +196,6 @@ class DataCollector():
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
     parser.add_argument('--gpu', type=str, default='0')
     parser.add_argument('--n_samples', type=int, default=100000)
@@ -203,22 +203,25 @@ if __name__ == "__main__":
     parser.add_argument('--path', type=str)
     args = parser.parse_args()
 
-    data_collector = DataCollector()
+    def collect_data_fn(restart_interval):
+        data_collector = DataCollector()
 
-    config = DefaultMainConfig()
-    config.populate_config(
-                observation_config = "VehicleDynamicsNoCameraConfig",
-                action_config = "MergedSpeedTanhConfig",
-                reward_config = "Simple2RewardConfig",
-                scenario_config = "NoCrashRegularTown01Config",
-                testing = False,
-                carla_gpu = args.gpu
-            )
-    # TEMPORARY
-    # config.action_config.target_speed = 40
+        config = DefaultMainConfig()
+        config.populate_config(
+                    observation_config = "VehicleDynamicsNoCameraConfig",
+                    action_config = "MergedSpeedScaledTanhConfig",
+                    reward_config = "Simple2RewardConfig",
+                    scenario_config = "LeaderboardConfig",
+                    testing = False,
+                    carla_gpu = args.gpu
+                )
+        # TEMPORARY
+        # config.action_config.target_speed = 40
 
-    env = CarlaEnv(config = config, log_dir = "/home/scratch/swapnilp/carla_test")
+        env = CarlaEnv(config = config)
 
-    policy = AutopilotNoisePolicy(env, 0.1, 0.1)
+        policy = AutopilotNoisePolicy(env, 0.1, 0.1)
+        
+        data_collector.collect_data(env = env, policy = policy, path = args.path, n_samples = restart_interval, carla_gpu = args.gpu)
 
-    data_collector.collect_data(env = env, policy = policy, path = args.path, n_samples = args.n_samples, carla_gpu = args.gpu)
+    collect_data_restart_wrapper(collect_data_fn, args.n_samples, 10)

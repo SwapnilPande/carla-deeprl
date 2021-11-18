@@ -73,7 +73,7 @@ class LeaderboardInterface():
 
 
         # Instantiate and start server
-        self.server = CarlaServer(config, logger = logger)
+        self.server = CarlaServer(config)
 
         self.setup()
 
