@@ -221,7 +221,7 @@ class RLAgent(AutonomousAgent):
         # ego vehicle features
         #TODO Add distance to goal
         episode_measurements.update({
-            # 'ego_vehicle_location': [ego_transform.location.x, ego_transform.location.y, ego_transform.rotation.yaw],
+            'ego_vehicle_location': [ego_transform.location.x, ego_transform.location.y, ego_transform.rotation.yaw],
             # 'ego_vehicle_velocity': ego_velocity,
             'speed': speed,
             'steer_angle': steer_angle,
@@ -230,7 +230,7 @@ class RLAgent(AutonomousAgent):
             'dist_to_goal' : ego_transform.location.distance(self.destination_transform.location),
             'next_orientation': next_orientation,
             # 'next_waypoints' : next_waypoints,
-            # 'waypoints' : all_waypoints
+            'waypoints' : all_waypoints
         })
 
         # planner / waypoint features
@@ -249,7 +249,7 @@ class RLAgent(AutonomousAgent):
         episode_measurements.update(self.current_controls)
 
         # Add NPC poses
-        # episode_measurements["npc_poses"] = self.get_npc_poses()
+        episode_measurements["npc_poses"] = self.get_npc_poses()
 
         # episode_measurements.update(self.get_sensor_readings(input_data))
 
@@ -296,13 +296,11 @@ class RLAgent(AutonomousAgent):
 
         # If a exit command is received, kill leaderboard evaluator
         if self.data_buffer["exit"]:
-            print("BEGGININIGNIGNG EXIT _------------------------------------------------------")
             raise KillSimulator("Received kill signal from main thread")
         # # If the policy sends a reset event, raise an exception to end the rollout
         if(self.data_buffer['reset']):
             self.step = 0
             self.data_buffer['reset'] = False
-            print("BEGGININIGNIGNG RESET _------------------------------------------------------")
             print("THREAD: Resetting")
             raise Exception("Resetting")
 
@@ -357,6 +355,19 @@ class RLAgent(AutonomousAgent):
             else:
                 throttle = gas
                 brake = 0.0
+        elif self.action_config.action_type == "merged_speed_tanh":
+            # steer = float(action[0])
+            steer = np.clip(float(action[0]), -1.0, 1.0)
+            target_speed = float(np.clip((action[1] + 1) * 10.0, 0, self.target_speed))
+            current_speed = util.get_speed_from_velocity(self.actor.get_velocity()) * 3.6
+            gas = self.controller.pid_control(target_speed, current_speed, enable_brake=self.action_config.enable_brake)
+            if gas < 0:
+                throttle = 0.0
+                brake = abs(gas)
+            else:
+                throttle = gas
+                brake = 0.0
+
         elif self.action_config.action_type == "control":
             target_speed = -1
             episode_measurements["target_speed"] = target_speed
@@ -377,7 +388,7 @@ class RLAgent(AutonomousAgent):
     def get_traffic_light_states(self):
         ego_vehicle = self.basic_agent
         traffic_actors = self.world.get_actors().filter('*traffic_light*')
-        traffic_actor, dist, traffic_light_orientation = ego_vehicle.find_nearest_traffic_light(traffic_actors)
+        traffic_actor, dist, traffic_light_orientation, nearest_light_transform = ego_vehicle.find_nearest_traffic_light(traffic_actors)
 
 
         if traffic_light_orientation is not None:
@@ -406,7 +417,7 @@ class RLAgent(AutonomousAgent):
             self.traffic_light_state['nearest_traffic_actor_state'] = None
 
         self.traffic_light_state['dist_to_light'] = dist
-
+        self.traffic_light_state['nearest_traffic_actor_location'] = nearest_light_transform
         return self.traffic_light_state
 
 

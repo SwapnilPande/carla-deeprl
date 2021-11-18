@@ -191,6 +191,7 @@ class Agent(object):
         nearest_traffic_light = None
         nearest_dist_to_light = 100000
         nearest_crossed_vector = None
+        nearest_light_transform = None
         traffic_light_found = False
         for traffic_light in lights_list:
             object_waypoint = self._map.get_waypoint(traffic_light.get_location())
@@ -207,8 +208,9 @@ class Agent(object):
                 nearest_traffic_light = traffic_light
                 nearest_dist_to_light = dist
                 nearest_crossed_vector = crossed_vector
+                nearest_light_transform = [light_transform.x, light_transform.y]
         if traffic_light_found:
-            return (nearest_traffic_light, nearest_dist_to_light, nearest_crossed_vector)
+            return (nearest_traffic_light, nearest_dist_to_light, nearest_crossed_vector, nearest_light_transform)
         else:
             return (None, -1, None)
 
@@ -253,6 +255,7 @@ class Agent(object):
         nearest_traffic_light = None
         nearest_dist_to_light = 100000
         nearest_crossed_vector = None
+        nearest_light_transform = None
         traffic_light_found = False
         for traffic_light in lights_list:
             object_location = self._get_trafficlight_trigger_location(traffic_light)
@@ -276,10 +279,11 @@ class Agent(object):
                 nearest_traffic_light = traffic_light
                 nearest_dist_to_light = dist
                 nearest_crossed_vector = crossed_vector
+                nearest_light_transform = [object_waypoint.transform.location.x, object_waypoint.transform.location.y]
         if traffic_light_found:
-            return (nearest_traffic_light, nearest_dist_to_light, nearest_crossed_vector)
+            return (nearest_traffic_light, nearest_dist_to_light, nearest_crossed_vector, nearest_light_transform)
         else:
-            return (None, -1, None)
+            return (None, -1, None, None)
 
     def _find_nearest_traffic_light_us_style(self, lights_list, waypoint=None, debug=False):
         """

@@ -20,11 +20,13 @@ import carla
 
 class Carla910Interface():
 
-    def __init__(self, config, log_dir):
+    def __init__(self, config, log_dir, logger = None):
         self.config = config
 
+        self.logger = logger
+
         # Instantiate and start server
-        self.server = CarlaServer(config)
+        self.server = CarlaServer(config, logger = logger)
 
         self.client = None
 
@@ -296,7 +298,7 @@ class Carla910Interface():
 
     def get_traffic_light_states(self):
         ego_vehicle = self.actor_fleet.ego_vehicle
-        traffic_actor, dist, traffic_light_orientation = ego_vehicle.find_nearest_traffic_light(self.traffic_actors)
+        traffic_actor, dist, traffic_light_orientation, nearest_light_transform = ego_vehicle.find_nearest_traffic_light(self.traffic_actors)
 
 
         if traffic_light_orientation is not None:
@@ -325,7 +327,7 @@ class Carla910Interface():
             self.traffic_light_state['nearest_traffic_actor_state'] = None
 
         self.traffic_light_state['dist_to_light'] = dist
-
+        self.traffic_light_state['nearest_traffic_actor_location'] = nearest_light_transform
         return self.traffic_light_state
 
 
@@ -373,6 +375,8 @@ class Carla910Interface():
         if not found_obstacle:
             obstacle_state['obstacle_dist'] = -1
             obstacle_state['obstacle_speed'] = -1
+
+
 
         return obstacle_state
 

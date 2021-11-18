@@ -44,8 +44,9 @@ class LeaderboardArgs:
 
 class LeaderboardInterface():
 
-    def __init__(self, config, log_dir):
+    def __init__(self, config, log_dir = None, logger = None):
         self.config = config
+        self.logger = logger
 
         # These are events to sync communication between the leaderboard thread and the main thread
         # When main thread (policy) is sending data to leaderboard, we set the send_event flag
@@ -72,7 +73,7 @@ class LeaderboardInterface():
 
 
         # Instantiate and start server
-        self.server = CarlaServer(config)
+        self.server = CarlaServer(config, logger = logger)
 
         self.setup()
 
@@ -114,6 +115,7 @@ class LeaderboardInterface():
             if(isinstance(self.data_buffer["leaderboard_data"][key], np.ndarray)):
                 self.data_buffer["leaderboard_data"][key] = self.data_buffer["leaderboard_data"][key].tolist()
         # obs = deepcopy(json.loads(json.dumps(self.data_buffer["leaderboard_data"]))
+        # import ipdb; ipdb.set_trace()
         obs = deepcopy(self.data_buffer["leaderboard_data"])
         self.data_buffer["lock"].release()
 
@@ -146,7 +148,7 @@ class LeaderboardInterface():
         # obs = json.loads(json.dumps(self.data_buffer["leaderboard_data"]))
         if isinstance(self.data_buffer["leaderboard_data"]["traffic_light"]["nearest_traffic_actor_state"], carla.libcarla.TrafficLightState):
             import ipdb; ipdb.set_trace()
-
+        # import ipdb; ipdb.set_trace()
         obs = deepcopy(self.data_buffer["leaderboard_data"])
         self.data_buffer["lock"].release()
 
