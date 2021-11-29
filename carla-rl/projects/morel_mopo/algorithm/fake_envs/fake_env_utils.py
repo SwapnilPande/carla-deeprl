@@ -196,9 +196,21 @@ def filter_waypoints(waypoints):
     return torch.FloatTensor(waypoints)
 
 
+def check_if_waypoint_crossed(vehicle_pose, waypoint1, waypoint2, device):
+    '''
+    Checks if vehicle crossed a waypoint
+    @param waypoint:     [x,y]
+        vehicle_pose: torch.Tensor([x, y, yaw])
+    '''
+    wp_vector = torch.tensor(waypoint2[0:2]).to(device) - torch.tensor(waypoint1[0:2]).to(device)
+
+    vehicle_vector = vehicle_pose[:2] - torch.tensor(waypoint1[0:2]).to(device)
+
+    # Check if dot product is positive
+    return torch.dot(wp_vector, vehicle_vector) > 0
 
 
-def process_waypoints(waypoints, vehicle_pose, device, second_last_waypoint = None, last_waypoint = None):
+def process_waypoints(waypoints, vehicle_pose, device, second_last_waypoint = None, last_waypoint = None, previous_waypoint = None):
     '''
     Calculate dist to trajectory, angle
     @param waypoints:    [torch.Tensor([wp1_x,wp1_y]), torch.Tensor([wp2_x,wp2_y)......]
@@ -217,7 +229,6 @@ def process_waypoints(waypoints, vehicle_pose, device, second_last_waypoint = No
     num_next_waypoints = 5
     last_waypoint, second_last_waypoint = None, None
 
-
     # closest wp to car
     min_dist_index = -1
 
@@ -230,7 +241,16 @@ def process_waypoints(waypoints, vehicle_pose, device, second_last_waypoint = No
         dist_i = distance_vehicle(waypoint, vehicle_pose, device)
         # print(f'wp {i},  {waypoint}, dist: {dist_i}')
         if dist_i <= MIN_REMOVE_DISTANCE:
-            min_dist_index = i
+            passed = False
+            if len(waypoints) - i > 1:
+                # get dist from vehicle to a line formed by the next two wps
+                passed = check_if_waypoint_crossed(
+                                        vehicle_pose,
+                                        waypoint,
+                                        waypoints[i+1],
+                                        device)
+            if passed:
+                min_dist_index = i
 
     wp_len = len(waypoints)
     if min_dist_index >= 0:
@@ -242,6 +262,9 @@ def process_waypoints(waypoints, vehicle_pose, device, second_last_waypoint = No
                 last_waypoint = waypoint
             elif i == wp_len - 2:
                 second_last_waypoint = waypoint
+
+            if(i == min_dist_index):
+                previous_waypoint = waypoint
 
     remaining_waypoints = waypoints
     # only keep next N waypoints
@@ -261,13 +284,23 @@ def process_waypoints(waypoints, vehicle_pose, device, second_last_waypoint = No
         # print("No next waypoint found!")
         angle = 0
 
+
+
     if len(next_waypoints) > 1:
-        # get dist from vehicle to a line formed by the next two wps
-        dist_to_trajectory = vehicle_to_line_distance(
-                                vehicle_pose,
-                                next_waypoints[0],
-                                next_waypoints[1],
-                                device)
+        if(previous_waypoint is not None):
+            # get dist from vehicle to a line formed by the next two wps
+            dist_to_trajectory = vehicle_to_line_distance(
+                                    vehicle_pose,
+                                    previous_waypoint,
+                                    next_waypoints[0],
+                                    device)
+        else:
+            dist_to_trajectory = vehicle_to_line_distance(
+                                    vehicle_pose,
+                                    next_waypoints[0],
+                                    next_waypoints[1],
+                                    device)
+
 
     # if only one next waypoint, use it and second to last
     elif len(next_waypoints) == 1:
@@ -293,7 +326,7 @@ def process_waypoints(waypoints, vehicle_pose, device, second_last_waypoint = No
             print("CODE BROKE HERE UH OH _----------------------")
             dist_to_trajectory = 0.0
 
-    return angle, dist_to_trajectory, next_waypoints, next_waypoints_angles, next_waypoints_vectors, remaining_waypoints, second_last_waypoint, last_waypoint
+    return angle, dist_to_trajectory, next_waypoints, next_waypoints_angles, next_waypoints_vectors, remaining_waypoints, second_last_waypoint, last_waypoint, previous_waypoint
 
 
 
@@ -328,5 +361,31 @@ def is_within_distance_ahead(target_transform, current_transform, max_distance):
         forward_vector = torch.tensor([torch.cos(torch.deg2rad(current_transform[2])), torch.sin(torch.deg2rad(current_transform[2]))]).to(current_transform.device)
         dot = torch.dot(forward_vector, target_vector) / norm_target
 
-        return (dot > 0.98, norm_target)
+        return (dot > 0, norm_target)
+
+
+def check_if_vehicle_in_same_lane(target_vehicle, next_waypoints, dist_to_trajec_threshold, device):
+    # Get the dist to trajectory for the target vehicle
+    _, \
+    dist_to_trajectory, \
+    _,\
+    _, _, \
+    _, \
+    _, \
+    _, _ = process_waypoints(next_waypoints,
+                                                    target_vehicle,
+                                                    device)
+
+    # if(torch.abs(dist_to_trajectory) < dist_to_trajec_threshold):
+    #     print(f"DIST TO TRAJECTORY {dist_to_trajectory}")
+
+
+    # If the target vehicle is within dist_to_trajectory_threshold of the trajectory, we can assume that the target vehicle is in the same lane
+    return torch.abs(dist_to_trajectory) < dist_to_trajec_threshold
+
+
+
+
+
+
 

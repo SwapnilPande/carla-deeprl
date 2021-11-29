@@ -86,6 +86,7 @@ class GlobalPlanner():
                 self._waypoints_queue.append(elem)
                 self._waypoints_queue_old.append(elem)
             prev_wp = elem[0]
+        self.previous_waypoint = None
 
     def get_next_orientation(self, vehicle_transform):
 
@@ -200,6 +201,17 @@ class GlobalPlanner():
 
         return wp_list
 
+    def check_if_waypoint_crossed(self, vehicle_transform, waypoint1, waypoint2):
+        point = np.array([vehicle_transform.location.x, vehicle_transform.location.y])
+        point1_on_line = np.array([waypoint1.transform.location.x, waypoint1.transform.location.y])
+        point2_on_line = np.array([waypoint2.transform.location.x, waypoint2.transform.location.y])
+
+        wp_vector = point2_on_line - point1_on_line
+        vehicle_vector = point - point1_on_line
+
+        # Check if dot product is positive
+        return np.dot(wp_vector, vehicle_vector) > 0
+
     def get_next_orientation_new(self, vehicle_transform):
 
         next_waypoints_angles = []
@@ -214,7 +226,15 @@ class GlobalPlanner():
                     waypoint, vehicle_transform)
             # print("i:{0}, dist : {1}".format(i, dist_i))
             if dist_i < self._min_distance:
-                max_index = i
+                passed = False
+                if len(self._waypoints_queue) - i > 1:
+                    # get dist from vehicle to a line formed by the next two wps
+                    passed = self.check_if_waypoint_crossed(
+                                            vehicle_transform,
+                                            waypoint,
+                                            self._waypoints_queue[i+1][0])
+                if passed:
+                    max_index = i
 
         q_len = len(self._waypoints_queue)
         if max_index >= 0:
@@ -225,6 +245,9 @@ class GlobalPlanner():
                     self.last_waypoint = waypoint
                 elif i == q_len - 2:
                     self.second_last_waypoint = waypoint
+
+                if(i == max_index):
+                    self.previous_waypoint = waypoint
 
         for i, (waypoint, _, dist) in enumerate(self._waypoints_queue):
             if i > num_next_waypoints - 1:
@@ -287,10 +310,16 @@ class GlobalPlanner():
             angle = 0
 
         if len(next_waypoints) > 1:
-            self.dist_to_trajectory = self.getPointToLineDistance(
+            if(self.previous_waypoint is not None):
+                self.dist_to_trajectory = self.getPointToLineDistance(
                                     vehicle_transform,
-                                    next_waypoints[0],
-                                    next_waypoints[1])
+                                    self.previous_waypoint,
+                                    next_waypoints[0])
+            else:
+                self.dist_to_trajectory = self.getPointToLineDistance(
+                                        vehicle_transform,
+                                        next_waypoints[0],
+                                        next_waypoints[1])
         elif len(next_waypoints) > 0:
             self.dist_to_trajectory = self.getPointToLineDistance(
                                     vehicle_transform,

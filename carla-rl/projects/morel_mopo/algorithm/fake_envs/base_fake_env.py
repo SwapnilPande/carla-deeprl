@@ -202,13 +202,25 @@ class BaseFakeEnv(gym.Env):
             self.npc_poses = npc_poses
 
         self.waypoints = feutils.filter_waypoints(waypoints).to(self.device)
+
         if(not isinstance(self.npc_poses, torch.Tensor)):
             self.npc_poses = torch.Tensor(self.npc_poses)
+        remove_indices = []
+        # Loop over all poses at the first time step
+        for i in range(self.npc_poses.shape[1]):
+            if(torch.all(self.npc_poses[0,i] == torch.zeros(self.npc_poses[0,i].shape))):
+                remove_indices.append(i)
+                # print(f"Removing {i}\t {self.npc_poses[0,i]}")
+
+        remove_mask = np.ones(self.npc_poses.shape[1], dtype=bool)
+        remove_mask[remove_indices] = False
+        self.npc_poses = self.npc_poses[:, remove_mask, :]
         self.npc_poses = self.npc_poses.to(self.device)
 
 
         if(len(self.waypoints) == 2):
             self.second_last_waypoint = self.waypoints[0]
+            self.last_waypoint = self.waypoints[1]
         else:
             self.second_last_waypoint = None
 
@@ -216,6 +228,7 @@ class BaseFakeEnv(gym.Env):
             self.last_waypoint = self.waypoints[0]
         else:
             self.last_waypoint = None
+        self.previous_waypoint = None
 
 
 
@@ -274,11 +287,13 @@ class BaseFakeEnv(gym.Env):
         _, _, \
         remaining_waypoints, \
         self.second_last_waypoint, \
-        self.last_waypoint = feutils.process_waypoints(self.waypoints,
+        self.last_waypoint, \
+        self.previous_waypoint = feutils.process_waypoints(self.waypoints,
                                                         self.vehicle_pose,
                                                         self.device,
                                                         second_last_waypoint = self.second_last_waypoint,
-                                                        last_waypoint = self.last_waypoint)
+                                                        last_waypoint = self.last_waypoint,
+                                                        previous_waypoint = self.previous_waypoint)
 
         # convert to tensors
         self.waypoints = torch.FloatTensor(remaining_waypoints)
@@ -293,15 +308,21 @@ class BaseFakeEnv(gym.Env):
 
         elif(self.config.obs_config.input_type == "wp_obstacle_speed_steer"):
             #TODO Check config here
-            obstacle_dist = 1
-            obstacle_vel = 1
             cur_npc_poses = self.npc_poses[self.steps_elapsed]
-            for i in range(cur_npc_poses.shape[0]):
-                d_bool, norm_target = feutils.is_within_distance_ahead(cur_npc_poses[i], self.vehicle_pose, self.config.obs_config.vehicle_proximity_threshold)
+            obstacle_dist, obstacle_vel = self.get_obstacle_states(cur_npc_poses, self.waypoints)
+            if(obstacle_dist == -1):
+                obstacle_dist = 1
+                obstacle_vel = 1
+            else:
+                obstacle_dist /= self.config.obs_config.vehicle_proximity_threshold
+                obstacle_vel /= 20
 
-                if(d_bool):
-                    obstacle_dist = norm_target/self.config.obs_config.vehicle_proximity_threshold
-                    obstacle_vel = cur_npc_poses[i][3] / 20
+            # for i in range(cur_npc_poses.shape[0]):
+            #     d_bool, norm_target = feutils.is_within_distance_ahead(cur_npc_poses[i], self.vehicle_pose, self.config.obs_config.vehicle_proximity_threshold)
+
+            #     if(d_bool):
+            #         obstacle_dist = norm_target/self.config.obs_config.vehicle_proximity_threshold
+            #         obstacle_vel = cur_npc_poses[i][3] / 20
 
             return torch.cat([angle, state[1:2] / 10, state[0:1], dist_to_trajectory, torch.tensor([obstacle_dist]).to(self.device), torch.tensor([obstacle_vel]).to(self.device)], dim=0).float().to(self.device), dist_to_trajectory, angle
 
@@ -324,9 +345,51 @@ class BaseFakeEnv(gym.Env):
         norm_dot = torch.dot(heading_vector, vec_to_other_vehicle) / torch.norm(vec_to_other_vehicle)
 
         if(norm_dot > car_corner_angle):
+            front_collision = torch.norm(vec_to_other_vehicle) < front_collision_threshold
+            if(front_collision):
+                print("FRONT COLLISION HAS OCCURED Whatevs")
             return torch.norm(vec_to_other_vehicle) < front_collision_threshold
         else:
+            side_collision = torch.norm(vec_to_other_vehicle) < side_collision_threshold
+            if(side_collision):
+                print("SIDE COLLISION HAS OCCURED OMG")
             return torch.norm(vec_to_other_vehicle) < side_collision_threshold
+
+
+    def get_obstacle_states(self, cur_npc_poses, next_waypoints):
+        obstacle_state = {}
+        obstacle_state['obstacle_visible'] = False
+        obstacle_state['obstacle_orientation'] = -1
+
+        min_obs_distance = 100000000
+        found_obstacle = False
+
+        # try:
+        for i in range(cur_npc_poses.shape[0]):
+
+            # if the object is not in our lane it's not an obstacle
+            d_bool, distance = feutils.is_within_distance_ahead(cur_npc_poses[i], self.vehicle_pose, self.config.obs_config.vehicle_proximity_threshold)
+
+            if not d_bool:
+                continue
+            else:
+                if not feutils.check_if_vehicle_in_same_lane(cur_npc_poses[i], next_waypoints, 1.3, self.device):
+                    continue
+
+                found_obstacle = True
+                obstacle_state['obstacle_visible'] = True
+
+                if distance < min_obs_distance:
+                    obstacle_state['obstacle_dist'] = distance
+                    obstacle_state['obstacle_speed'] = cur_npc_poses[i][3]
+
+                    min_obs_distance = distance
+
+        if not found_obstacle:
+            obstacle_state['obstacle_dist'] = -1
+            obstacle_state['obstacle_speed'] = -1
+
+        return obstacle_state['obstacle_dist'], obstacle_state['obstacle_speed']
 
 
 
@@ -402,7 +465,6 @@ class BaseFakeEnv(gym.Env):
 
             ################## calc reward with penalty for uncertainty ##############################
             collision = False
-            collision_threshold = 2.5
             cur_npc_poses = self.npc_poses[self.steps_elapsed]
             # Check for collisions with any vehicle
             collision = any([self.check_collision(other_vehicle) for other_vehicle in cur_npc_poses])
@@ -439,11 +501,25 @@ class BaseFakeEnv(gym.Env):
                     }
 
             # Check done condition
+
             done = (len(self.waypoints) == 0 or
                     out_of_lane or
                     collision or
                     self.steps_elapsed >= len(self.npc_poses) or
                     timeout)
+
+            # If done, print the termination type
+            if(done):
+                if(timeout):
+                    print("Timeout")
+                elif(out_of_lane):
+                    print("Out of lane")
+                elif(collision):
+                    print("Collision")
+                elif(len(self.waypoints) == 0):
+                    print("No waypoints")
+                else:
+                    print("Unknown")
 
             res = policy_obs.cpu().numpy(), float(reward_out.item()), done, info
 
