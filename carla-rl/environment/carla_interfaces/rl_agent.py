@@ -6,10 +6,11 @@ import environment.carla_interfaces.controller as controller
 from environment import env_util as util
 from copy import deepcopy
 
-
+from leaderboard.autoagents.agent_wrapper import KillSimulator
 from leaderboard.autoagents.autonomous_agent import AutonomousAgent, Track
 
 from environment.carla_interfaces.agents.navigation.basic_agent import BasicAgent
+from environment.carla_interfaces.symbolic_utils import fetch_symbolic_dict
 
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 
@@ -124,15 +125,6 @@ class RLAgent(AutonomousAgent):
             'initial_dist_to_red_light' : -1
         }
 
-    def destroy(self):
-        self.data_buffer = None
-
-        del self.actor
-        del self.basic_agent
-        del self.world
-        del self.map
-
-
     def sensors(self):
         #TODO move sensors to config
         sensors = [
@@ -230,7 +222,7 @@ class RLAgent(AutonomousAgent):
         # ego vehicle features
         #TODO Add distance to goal
         episode_measurements.update({
-            # 'ego_vehicle_location': [ego_transform.location.x, ego_transform.location.y, ego_transform.rotation.yaw],
+            'ego_vehicle_location': [ego_transform.location.x, ego_transform.location.y, ego_transform.rotation.yaw],
             # 'ego_vehicle_velocity': ego_velocity,
             'speed': speed,
             'steer_angle': steer_angle,
@@ -239,8 +231,13 @@ class RLAgent(AutonomousAgent):
             'dist_to_goal' : ego_transform.location.distance(self.destination_transform.location),
             'next_orientation': next_orientation,
             # 'next_waypoints' : next_waypoints,
-            # 'waypoints' : all_waypoints
+            'waypoints' : all_waypoints
         })
+
+        episode_measurements["traffic_light"] = self.get_traffic_light_states()
+        episode_measurements["obstacles"] = self.get_obstacle_states(self.next_waypoints)
+        episode_measurements["dist_to_goal"] = self.actor.get_transform().location.distance(self.destination_transform.location)
+        episode_measurements["autopilot_action"] = self.get_autopilot_action()
 
         # planner / waypoint features
         # next_orientation, dist_to_trajectory, dist_to_goal, next_waypoints, all_waypoints = self.planner.get_next_orientation_new(ego_transform)
@@ -258,7 +255,7 @@ class RLAgent(AutonomousAgent):
         episode_measurements.update(self.current_controls)
 
         # Add NPC poses
-        # episode_measurements["npc_poses"] = self.get_npc_poses()
+        episode_measurements["npc_poses"] = self.get_npc_poses()
 
         # episode_measurements.update(self.get_sensor_readings(input_data))
 
@@ -274,6 +271,10 @@ class RLAgent(AutonomousAgent):
         # obstacle_features = self.get_obstacle_features(next_waypoints)
         # episode_measurements.update(obstacle_features)
 
+        # symbolic features
+        other_actors = self.world.get_actors().filter('*vehicle*')
+        episode_measurements['symbolic_features'] = fetch_symbolic_dict(self.actor, other_actors, episode_measurements)
+
         return episode_measurements
 
     def run_step(self, input_data, timestamp):
@@ -282,11 +283,6 @@ class RLAgent(AutonomousAgent):
 
         # # get episode measurements (features, rewards, images, etc...)
         ep_measurements = self.update_measurements(input_data)
-
-        ep_measurements["traffic_light"] = self.get_traffic_light_states()
-        ep_measurements["obstacles"] = self.get_obstacle_states(self.next_waypoints)
-        ep_measurements["dist_to_goal"] = self.actor.get_transform().location.distance(self.destination_transform.location)
-        ep_measurements["autopilot_action"] = self.get_autopilot_action()
 
 
         # # Write the data to the data buffer
@@ -303,6 +299,9 @@ class RLAgent(AutonomousAgent):
         self.send_event.clear()
         # print(f"THREAD {self.step}: RECEIVED DATA FROM CARLA INTERFACE")
 
+        # If a exit command is received, kill leaderboard evaluator
+        if self.data_buffer["exit"]:
+            raise KillSimulator("Received kill signal from main thread")
         # # If the policy sends a reset event, raise an exception to end the rollout
         if(self.data_buffer['reset']):
             self.step = 0
@@ -361,6 +360,19 @@ class RLAgent(AutonomousAgent):
             else:
                 throttle = gas
                 brake = 0.0
+        elif self.action_config.action_type == "merged_speed_tanh":
+            # steer = float(action[0])
+            steer = np.clip(float(action[0]), -1.0, 1.0)
+            target_speed = float(np.clip((action[1] + 1) * 10.0, 0, self.target_speed))
+            current_speed = util.get_speed_from_velocity(self.actor.get_velocity()) * 3.6
+            gas = self.controller.pid_control(target_speed, current_speed, enable_brake=self.action_config.enable_brake)
+            if gas < 0:
+                throttle = 0.0
+                brake = abs(gas)
+            else:
+                throttle = gas
+                brake = 0.0
+
         elif self.action_config.action_type == "control":
             target_speed = -1
             episode_measurements["target_speed"] = target_speed
@@ -381,7 +393,7 @@ class RLAgent(AutonomousAgent):
     def get_traffic_light_states(self):
         ego_vehicle = self.basic_agent
         traffic_actors = self.world.get_actors().filter('*traffic_light*')
-        traffic_actor, dist, traffic_light_orientation = ego_vehicle.find_nearest_traffic_light(traffic_actors)
+        traffic_actor, dist, traffic_light_orientation, nearest_light_transform = ego_vehicle.find_nearest_traffic_light(traffic_actors)
 
 
         if traffic_light_orientation is not None:
@@ -410,7 +422,7 @@ class RLAgent(AutonomousAgent):
             self.traffic_light_state['nearest_traffic_actor_state'] = None
 
         self.traffic_light_state['dist_to_light'] = dist
-
+        self.traffic_light_state['nearest_traffic_actor_location'] = nearest_light_transform
         return self.traffic_light_state
 
 

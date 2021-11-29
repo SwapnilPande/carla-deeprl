@@ -53,6 +53,14 @@ class AgentError(Exception):
     def __init__(self, message):
         super(AgentError, self).__init__(message)
 
+class KillSimulator(Exception):
+    """
+    Exceptions thrown when the agent signals to kill the simulator
+    """
+
+    def __init__(self, message):
+        super(KillSimulator, self).__init__(message)
+
 
 class AgentWrapper(object):
 

@@ -140,9 +140,9 @@ class CarlaEnv(gym.Env):
         # Logging
         ################################################
         # self.base_dir = os.path.join("/",*(log_dir.split("/")[:-3]))
-        self.log_dir = os.path.join(log_dir, "env")
-        if(not os.path.isdir(self.log_dir)):
-            os.makedirs(self.log_dir)
+        # self.log_dir = os.path.join(log_dir, "env")
+        # if(not os.path.isdir(self.log_dir)):
+        #     os.makedirs(self.log_dir)
 
         self.logger = logger
         self.vis_wrapper = vis_wrapper
@@ -540,6 +540,8 @@ class CarlaEnv(gym.Env):
 
         for key, val in carla_obs["obstacles"].items():
             episode_measurements[key] = val
+
+        episode_measurements['symbolic_features'] = carla_obs['symbolic_features']
 
         return episode_measurements
 
