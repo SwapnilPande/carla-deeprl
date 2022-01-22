@@ -12,8 +12,8 @@ faulthandler.enable()
 # Setup imports for algorithm and environment
 sys.path.append(os.path.abspath(os.path.join('../../../')))
 
-from common.loggers.comet_logger import CometLogger
-from projects.online_ppo.config.logger_config import CometLoggerConfig
+from common.loggers.tensorboard_logger import TensorboardLogger
+from projects.online_ppo.config.logger_config import TensorboardLoggerConfig, ExistingTensorboardLoggerConfig
 
 import gym
 from algorithms import PPO
@@ -27,16 +27,21 @@ from environment.config.config import DefaultMainConfig
 import time
 
 def main(args):
-    # logger_conf = CometLoggerConfig()
-    # logger_conf.populate(experiment_name = args.exp_name, tags = ["leaderboard"])
-
+    logger_conf = TensorboardLoggerConfig()
+    logger_conf.populate(experiment_name = args.exp_name)
+    logger =  TensorboardLogger(logger_conf)
+    exp_key = logger.experiment_key
 
     def train_fn(train_steps_per_restart, model_save_name, model_load_name = None):
         device = f"cuda:{args.gpu}"
         print(f"Using device: {device}")
 
-        # logger =  CometLogger(logger_conf)
-        # print(logger.log_dir)
+        # Configure logger
+        logger_conf = ExistingTensorboardLoggerConfig()
+        logger_conf.experiment_key = exp_key
+        logger = TensorboardLogger(logger_conf)
+
+        print(logger.log_dir)
 
         config = DefaultMainConfig()
         config.populate_config(
@@ -47,13 +52,13 @@ def main(args):
             testing = False,
             carla_gpu = args.gpu
         )
-        # MODIFIED: Set the collision speed penatly to 10
-        config.reward_config.collision_penalty_speed_coeff = 10
+
         # config.verify()
-        # logger_callback = PPOLoggerCallback(logger)
 
-        env = CarlaEnv(config = config, logger = None, log_dir = "/home/scratch/swapnilp/leaderboard_policies_auto_restart_3")
+        env = CarlaEnv(config = config, logger = None, log_dir = os.path.join(logger.log_dir, "env"))
 
+
+        # TODO Eval callback is not included because switching between eval and train is not trivial for leaderboard
         # eval_env = env.get_eval_env(eval_frequency = 100000)
         # dummy_eval_env = DummyVecEnv([lambda: eval_env])
 
@@ -63,15 +68,14 @@ def main(args):
         #                             n_eval_episodes=config.scenario_config.num_episodes)
 
         if(model_load_name is not None):
-            model_path = os.path.join("/home/scratch/swapnilp/leaderboard_policies_auto_restart_3/policy/models", model_load_name)
+            model_path = os.path.join(logger.log_dir, "policy", "models", model_load_name)
             print(f"LOADING MODEL FROM: {model_path}")
             model = PPO.load(model_path,
                             env = env,
                             device = device,
-                            carla_logger=None,
-                            ent_coef = 0.01)#PPO("MlpPolicy", env, verbose=1, carla_logger = None, device = device)
+                            carla_logger=None)
         else:
-            model = PPO("MlpPolicy", env, verbose=1, carla_logger = None, device = device)
+            model = PPO("MlpPolicy", env, verbose=1, carla_logger = logger, device = device)
             # print(f"LOADING MODEL FROM: /home/scratch/swapnilp/leaderboard_policies_auto_restart/policy/models/policy_3000000_steps.zip")
             # model = PPO.load("/home/scratch/swapnilp/leaderboard_policies_auto_restart/policy/models/policy_3000000_steps.zip",
             #                 env = env,
@@ -89,14 +93,14 @@ def main(args):
             raise e
 
 
-        model.save(os.path.join("/home/scratch/swapnilp/leaderboard_policies_auto_restart/policy/models", model_save_name))
+        model.save(os.path.join(logger.log_dir, "policy", "models", model_save_name))
 
         env.close()
         time.sleep(5)
 
         return True
 
-    train_restart_wrapper(train_fn, 10000000, 200000)
+    train_restart_wrapper(train_fn, 10000000, 100000)
 
 
 if __name__ == '__main__':
