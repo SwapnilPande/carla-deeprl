@@ -28,10 +28,14 @@ class BaseConfig:
     def set_parameter(self, name, value):
         """ Set the value of a parameter in the config.
 
-        This is the safe way to set parameters, as it works regardless if the parameter exists or not.
+        Set the parameter of a config. NOTE: this will raise an exception if the parameter is not specified in the config.
+        This behavior is to prevent accidentally setting a non-existent parameter due to a typo.
         """
 
-        setattr(self, name, value)
+        if(hasattr(self, name)):
+            setattr(self, name, value)
+        else:
+            raise Exception("Parameter {} not found in config {}".format(name, self.__class__.__name__))
 
     def get_parameter(self, name):
         """ Get the value of a parameter. This is equivalent to config.{PARAM_NAME}
