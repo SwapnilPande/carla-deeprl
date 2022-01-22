@@ -8,7 +8,7 @@ import time
 from tqdm import tqdm
 
 class CarlaServer():
-    def __init__(self, config=None):
+    def __init__(self, config=None, logger = None):
         # print("Launching CARLA server...")
         # Save config parameters
         self.config = config
