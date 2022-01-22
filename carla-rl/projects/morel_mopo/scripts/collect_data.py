@@ -85,6 +85,9 @@ class DataCollector():
         assert(path is not None), "path cannot be None"
         self.path = path
 
+        if(not os.path.isdir(self.path)):
+            os.makedirs(self.path)
+
         print('************using path', self.path)
 
         # Set env if not passed in
@@ -99,11 +102,12 @@ class DataCollector():
                 testing = False,
                 carla_gpu = carla_gpu
             )
-            self.env = CarlaEnv(config = config, log_dir = "/home/scratch/vccheng/carla_test")
+            self.env = CarlaEnv(config = config)
 
         # Create the policy
         if policy is None:
             self.policy = AutopilotPolicy(self.env)
+            raise Exception("policy cannot be None")
         else:
             # if policy passed in
             self.policy = policy
@@ -156,7 +160,7 @@ class DataCollector():
 
             except:
                 action = self.policy(obs)
-                next_obs, reward, done, info = self.env.step(action)
+                (next_obs), reward, done, info = self.env.step(action)
 
             # print(f'next_obs: {next_obs}, rew: {reward}, done: {done}, info: {info}')
             experience = {
@@ -170,12 +174,12 @@ class DataCollector():
             experience.update(info)
             # save as json
             if save_to_json:
-                self.save_env_state(experience, save_path, step) # TODO add back in
-
-
+                # self.save_env_state(experience, save_path, step, topdown = topdown['sensor.camera.semantic_segmentation/top']['image'])
+                self.save_env_state(experience, save_path, step)
             if done:
                 break
             obs = next_obs
+            # topdown = next_topdown
 
         return step + 1
 
@@ -187,6 +191,7 @@ class DataCollector():
 
         if topdown is not None:
             topdown_path = os.path.join(save_path, 'topdown', '{:04d}.png'.format(idx))
+            topdown = np.argmax(topdown, axis=-1)
             cv2.imwrite(topdown_path, topdown)
 
         measurements_path = os.path.join(save_path, 'measurements', '{:04d}.json'.format(idx))
@@ -208,20 +213,19 @@ if __name__ == "__main__":
 
         config = DefaultMainConfig()
         config.populate_config(
-                    observation_config = "VehicleDynamicsNoCameraConfig",
-                    action_config = "MergedSpeedScaledTanhConfig",
-                    reward_config = "Simple2RewardConfig",
-                    scenario_config = "LeaderboardConfig",
-                    testing = False,
-                    carla_gpu = args.gpu
-                )
-        # TEMPORARY
-        # config.action_config.target_speed = 40
+                observation_config = "VehicleDynamicsObstacleNoCameraConfig",
+                action_config = "MergedSpeedScaledTanhConfig",
+                reward_config = "Simple2RewardConfig",
+                scenario_config = "LeaderboardConfig",
+                testing = False,
+                carla_gpu = args.gpu
+            )
 
         env = CarlaEnv(config = config)
 
         policy = AutopilotNoisePolicy(env, 0.1, 0.1)
-        
+        # policy = RandomPolicy(env)
+
         data_collector.collect_data(env = env, policy = policy, path = args.path, n_samples = restart_interval, carla_gpu = args.gpu)
 
-    collect_data_restart_wrapper(collect_data_fn, args.n_samples, 10)
+    collect_data_restart_wrapper(collect_data_fn, args.n_samples, 200000)
