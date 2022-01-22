@@ -225,6 +225,9 @@ class GlobalPlanner():
             dist_i = distance_vehicle(
                     waypoint, vehicle_transform)
             # print("i:{0}, dist : {1}".format(i, dist_i))
+            if(i > 20):
+                break
+
             if dist_i < self._min_distance:
                 passed = False
                 if len(self._waypoints_queue) - i > 1:
