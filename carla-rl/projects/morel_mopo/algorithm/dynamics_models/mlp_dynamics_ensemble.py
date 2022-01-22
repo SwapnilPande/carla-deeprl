@@ -378,8 +378,11 @@ class MLPDynamicsEnsemble(nn.Module):
             for metric_name, value in metric_dict.items():
                 self.logger.log_scalar(metric_name, value, step)
 
-    def train_model(self, epochs, n_incremental_models = 10):
-        train_dataloader = self.data_module.train_dataloader()
+    def train_model(self, epochs, n_incremental_models = 10, fine_tune = False):
+        if(not fine_tune):
+            train_dataloader = self.data_module.train_dataloader()
+        else:
+            train_dataloader = self.data_module.train_dataloader(only_new_datasets = True)
         val_dataloader = self.data_module.val_dataloader()
 
         num_train_batches = len(train_dataloader)
@@ -497,7 +500,7 @@ class MLPDynamicsEnsemble(nn.Module):
         self.logger.torch_save(self.state_dict(), MLPDynamicsEnsemble.model_log_dir, model_name)
 
     @classmethod
-    def load(cls, logger, model_name, gpu, data_config):
+    def load(cls, logger, model_name, gpu, data_config = None):
         # To load the model, we first need to build an instance of this class
         # We want to keep the same config parameters, so we will build it from the pickled config
         # Also, we will load the dimensional parameters of the model from the saved dimensions
