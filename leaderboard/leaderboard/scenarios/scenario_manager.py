@@ -22,7 +22,7 @@ from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 from srunner.scenariomanager.timer import GameTime
 from srunner.scenariomanager.watchdog import Watchdog
 
-from leaderboard.autoagents.agent_wrapper import AgentWrapper, AgentError
+from leaderboard.autoagents.agent_wrapper import AgentWrapper, AgentError, KillSimulator
 from leaderboard.envs.sensor_interface import SensorReceivedNoData
 from leaderboard.utils.result_writer import ResultOutputProvider
 
@@ -156,11 +156,14 @@ class ScenarioManager(object):
             except SensorReceivedNoData as e:
                 raise RuntimeError(e)
 
+            except KillSimulator as e:
+                raise Exception("Received kill command from code")
+
             except Exception as e:
                 raise AgentError(e)
 
             self.ego_vehicles[0].apply_control(ego_action)
-
+            # print(f"Ego Vehicle: {self.ego_vehicles[0].is_alive}")
             # Tick scenario
             self.scenario_tree.tick_once()
 
