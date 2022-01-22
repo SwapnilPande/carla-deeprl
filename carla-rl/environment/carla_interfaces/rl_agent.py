@@ -134,8 +134,8 @@ class RLAgent(AutonomousAgent):
             {'type': 'sensor.lane_invasion', 'id': 'lane_invasion_sensor'},
             # {'type': 'sensor.stitch_camera.rgb', 'x': self.camera_x, 'y': 0, 'z': self.camera_z, 'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
             # 'width': 160, 'height': 240, 'fov': 60, 'id': f'Wide_RGB'},
-            # {'type': 'sensor.camera.rgb', 'x': self.camera_x, 'y': 0, 'z': self.camera_z, 'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
-            # 'width': 384, 'height': 240, 'fov': 50, 'id': f'Narrow_RGB'},
+            {'type': 'sensor.camera.rgb', 'x': 8, 'y': 0, 'z': 20, 'roll': 0.0, 'pitch': 270, 'yaw': 0.0,
+            'width': 512, 'height': 512, 'fov': 90, 'id': "sensor.camera.rgb/top"},
         ]
 
         return sensors
@@ -165,6 +165,8 @@ class RLAgent(AutonomousAgent):
             'num_lane_intersections' : self.num_lane_invasions,
             "out_of_road" : input_data["lane_invasion_sensor"][1]
         }
+
+        sensor_readings["sensor.camera.rgb/top"] = {'image': input_data["sensor.camera.rgb/top"][1]}
 
         #TODO Add camera data
 
