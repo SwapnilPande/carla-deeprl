@@ -40,12 +40,28 @@ class MixedDeterministicMLPDataModuleConfig(BaseDataModuleConfig):
             self.normalize_data = True
             self.dataset_type = data_modules.OfflineCarlaDataModule
 
+
+class ObstaclesNoisyExpertDeterministicMLPDataModuleConfig(BaseDataModuleConfig):
+        def __init__(self):
+            super().__init__()
+            self.dataset_paths = [
+                "/zfsauton/datasets/ArgoRL/swapnilp/carla-rl_datasets/no_crash_dense_noisy_policy_traffic_lights",
+            ]
+
+            self.batch_size = 512
+            self.frame_stack = 2
+            self.num_workers = 10
+            self.train_val_split = 0.95
+            self.normalize_data = True
+            self.dataset_type = data_modules.OfflineCarlaDataModule
+
+
 class ObstaclesMixedDeterministicMLPDataModuleConfig(BaseDataModuleConfig):
         def __init__(self):
             super().__init__()
             self.dataset_paths = [
-                "/zfsauton/datasets/ArgoRL/swapnilp/carla-rl_datasets/no_crash_dense_noisy_policy",
-                "/zfsauton/datasets/ArgoRL/swapnilp/carla-rl_datasets/no_crash_empty_random_policy"
+                "/zfsauton/datasets/ArgoRL/swapnilp/carla-rl_datasets/no_crash_dense_noisy_policy_traffic_lights",
+                "/zfsauton/datasets/ArgoRL/swapnilp/carla-rl_datasets/no_crash_empty_random_policy_new"
             ]
 
             self.batch_size = 512

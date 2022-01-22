@@ -42,7 +42,7 @@ class DefaultMLPMOPOConfig(BaseMOPOConfig):
 
         self.fake_env_config.populate_config(
             observation_config = "VehicleDynamicsNoCameraConfig",
-            action_config = "MergedSpeedTanhConfig",
+            action_config = "MergedSpeedScaledTanhConfig",
             reward_config="Simple2RewardConfig"
         )
 
@@ -66,7 +66,7 @@ class DefaultMLPObstaclesMOPOConfig(BaseMOPOConfig):
 
         self.fake_env_config.populate_config(
             observation_config = "VehicleDynamicsObstacleNoCameraConfig",
-            action_config = "MergedSpeedTanhConfig",
+            action_config = "MergedSpeedScaledTanhConfig",
             reward_config="Simple2RewardConfig"
         )
 
@@ -90,7 +90,7 @@ class DefaultProbMLPMOPOConfig(BaseMOPOConfig):
 
         self.fake_env_config.populate_config(
             observation_config = "VehicleDynamicsNoCameraConfig",
-            action_config = "MergedSpeedTanhConfig",
+            action_config = "MergedSpeedScaledTanhConfig",
             reward_config="Simple2RewardConfig"
         )
 
@@ -114,7 +114,7 @@ class DefaultProbGRUMOPOConfig(BaseMOPOConfig):
 
         self.fake_env_config.populate_config(
             observation_config = "VehicleDynamicsNoCameraConfig",
-            action_config = "MergedSpeedTanhConfig",
+            action_config = "MergedSpeedScaledTanhConfig",
             reward_config="Simple2RewardConfig"
         )
 
