@@ -48,7 +48,7 @@ from carla.libcarla import Rotation
 
 
 class CarlaEnv(gym.Env):
-    def __init__(self, config=None, vis_wrapper=None, vis_wrapper_vae=None, logger=None, log_dir=''):
+    def __init__(self, config=None, vis_wrapper=None, vis_wrapper_vae=None, logger=None, log_dir='env'):
         self.carla_interface = None
 
         # Save and verify config
@@ -57,10 +57,22 @@ class CarlaEnv(gym.Env):
         self.config = config
         # self.config.verify()
 
-        if 'challenge' in self.config.scenario_config.scenarios:
-            self.carla_interface = LeaderboardInterface(config, log_dir)
+        self.logger = logger
+
+        if(self.logger is not None):
+            self.log_dir = os.path.join(self.logger.log_dir, "env")
         else:
-            self.carla_interface = Carla910Interface(config, log_dir)
+            self.log_dir = log_dir
+        if(not os.path.isdir(self.log_dir)):
+            os.makedirs(self.log_dir)
+
+
+
+
+        if 'challenge' in self.config.scenario_config.scenarios:
+            self.carla_interface = LeaderboardInterface(config, self.log_dir, logger = self.logger)
+        else:
+            self.carla_interface = Carla910Interface(config, self.log_dir, logger = self.logger)
 
         ################################################
         # Elements connected to car
@@ -250,15 +262,15 @@ class CarlaEnv(gym.Env):
 
             # Additional state vectors storing the position of the vehicle
             # TODO CHANGED
-            # self.episode_measurements["ego_vehicle_x"] = carla_obs["ego_vehicle_location"][0]#.location.x
-            # self.episode_measurements["ego_vehicle_y"] = carla_obs["ego_vehicle_location"][1]#.location.y
-            # self.episode_measurements["ego_vehicle_theta"] = carla_obs["ego_vehicle_location"][2]#.rotation.yaw
-            # self.episode_measurements["waypoints"] = carla_obs["waypoints"]
+            self.episode_measurements["ego_vehicle_x"] = carla_obs["ego_vehicle_location"][0]#.location.x
+            self.episode_measurements["ego_vehicle_y"] = carla_obs["ego_vehicle_location"][1]#.location.y
+            self.episode_measurements["ego_vehicle_theta"] = carla_obs["ego_vehicle_location"][2]#.rotation.yaw
+            self.episode_measurements["waypoints"] = carla_obs["waypoints"]
             # next_waypoints = [(wp.transform.location.x, wp.transform.location.y, wp.transform.location.z) for wp in carla_obs['next_waypoints']]
             # self.episode_measurements["next_waypoints"] = next_waypoints
 
             # State data about the positions of all other actors in the environment
-            # self.episode_measurements["npc_poses"] = carla_obs["npc_poses"]
+            self.episode_measurements["npc_poses"] = carla_obs.get("npc_poses")
 
 
             self.num_steps += 1
@@ -509,7 +521,6 @@ class CarlaEnv(gym.Env):
         #             self.vis_wrapper_vae.remove_images()
 
 
-        # return gym_obs, float(reward), done, deepcopy(self.episode_measurements)
         return gym_obs, float(reward), done, deepcopy(self.episode_measurements)
 
     def _add_to_stacked_queue(self, object_queue, object_to_add):
@@ -541,7 +552,7 @@ class CarlaEnv(gym.Env):
         for key, val in carla_obs["obstacles"].items():
             episode_measurements[key] = val
 
-        episode_measurements['symbolic_features'] = carla_obs['symbolic_features']
+        episode_measurements["symbolic_features"] = carla_obs.get("symbolic_features")
 
         return episode_measurements
 
@@ -811,6 +822,7 @@ class CarlaEnv(gym.Env):
 
             obstacle_dist = self.episode_measurements['obstacle_dist']
             obstacle_speed = self.episode_measurements['obstacle_speed']
+            light = self.episode_measurements['red_light_dist']
             # normalization
 
             if obstacle_dist != -1:
@@ -823,8 +835,53 @@ class CarlaEnv(gym.Env):
             else:
                 obstacle_speed = self.config.obs_config.default_obs_traffic_val
 
+            if light != -1:
+                light /= 20.0
+            else:
+                light = self.config.obs_config.default_obs_traffic_val
+
+            # We see both an obstacle and the light
+            if(light != self.config.obs_config.default_obs_traffic_val):
+                unnorm_obs_dist = obstacle_dist * self.config.obs_config.vehicle_proximity_threshold
+                unnorm_light = light * 20
+
+                # If the light is further do nothing
+                if(obstacle_dist != self.config.obs_config.default_obs_traffic_val and unnorm_light > unnorm_obs_dist):
+                    pass
+                else:
+                    # import ipdb; ipdb.set_trace()
+                    obstacle_dist = light
+                    obstacle_speed = 0
+
             obs_output = np.concatenate((np.array([self.episode_measurements['next_orientation']]), np.array([speed]), np.array([steer]), np.array([ldist]), np.array([obstacle_dist]), np.array([obstacle_speed])))
 
+        elif self.config.obs_config.input_type in ['wp_obstacle_speed_steer_light']:
+            speed = self.episode_measurements['speed'] / 10
+            steer = self.episode_measurements['steer_angle']
+            ldist = self.episode_measurements['dist_to_trajectory']
+
+            obstacle_dist = self.episode_measurements['obstacle_dist']
+            obstacle_speed = self.episode_measurements['obstacle_speed']
+            light = self.episode_measurements['red_light_dist']
+
+            # normalization
+
+            if obstacle_dist != -1:
+                obstacle_dist = obstacle_dist / self.config.obs_config.vehicle_proximity_threshold
+            else:
+                obstacle_dist = self.config.obs_config.default_obs_traffic_val
+
+            if obstacle_speed != -1:
+                obstacle_speed = obstacle_speed / 20
+            else:
+                obstacle_speed = self.config.obs_config.default_obs_traffic_val
+
+            if light != -1:
+                light /= self.config.obs_config.traffic_light_proximity_threshold
+            else:
+                light = self.config.obs_config.default_obs_traffic_val
+
+            obs_output = np.concatenate((np.array([self.episode_measurements['next_orientation']]), np.array([speed]), np.array([steer]), np.array([ldist]), np.array([obstacle_dist]), np.array([obstacle_speed]), np.array([light])))
 
         elif self.config.obs_config.input_type == "wp_obs_info_speed_steer":
             speed = self.episode_measurements['speed'] / 10
@@ -899,7 +956,6 @@ class CarlaEnv(gym.Env):
         #     obs['rv_semantic_image'] = rv_semantic_image
 
     def create_observations(self, carla_obs):
-
         # Components of state space which are semantic
         # For ex: curr agent velocity, traffic light presence(either queried or from a separate classifier)
         scalars_obs = self.create_observations_scalar()
@@ -966,7 +1022,7 @@ class CarlaEnv(gym.Env):
         self.episode_measurements['initial_dist_to_red_light'] = -1
 
 
-        self.episode_measurements["autopilot_action"] = np.array(carla_obs["autopilot_action"])
+        self.episode_measurements["autopilot_action"] = np.array(carla_obs.get("autopilot_action")
 
         # TODO: fix bug with no sensor_image. empty image for now
         # x_res = int(self.config["sensor_x_res"])
@@ -998,9 +1054,11 @@ class CarlaEnv(gym.Env):
         if self.unseen:
             self.total_distance += carla_obs["distance_to_goal_trajec"]
         self.episode_measurements['dist_to_trajectory'] = carla_obs["dist_to_trajectory"]
-        # self.next_waypoints = carla_obs["next_waypoints"]
-        # next_waypoints = [(wp.transform.location.x, wp.transform.location.y, wp.transform.location.z) for wp in carla_obs['next_waypoints']]
-        # self.episode_measurements["next_waypoints"] = next_waypoints
+
+
+        self.next_waypoints = carla_obs.get("next_waypoints")
+        next_waypoints = [(wp.transform.location.x, wp.transform.location.y, wp.transform.location.z) for wp in carla_obs.get('next_waypoints', [])]
+        self.episode_measurements["next_waypoints"] = next_waypoints
 
 
         # Retrieve data about traffic lights and obstacles
