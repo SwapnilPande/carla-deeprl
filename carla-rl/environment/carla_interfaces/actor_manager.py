@@ -306,53 +306,19 @@ class ActorManager910():
                 break
 
     def pick_npc_spawn_points(self, number_of_vehicles, unseen):
-        if self.config.scenario_config.scenarios == "straight_dynamic":
-            # vehicle spawn_points corresponding to 84, 40
-            spawn_points = [Transform(Location(x=-2.4200193881988525, y=187.97000122070312, z=1.32), Rotation(yaw=89.9996109008789)),
-                        Transform(Location(x=1.5599803924560547, y=187.9700164794922, z=1.32), Rotation(yaw=-90.00040435791016))]
-
-            # vehicle spawn_points corresponding to 96, 140
-            # spawn_points = [Transform(Location(x=88.61997985839844, y=249.42999267578125, z=1.32), Rotation(yaw=90.00004577636719)),
-            # Transform(Location(x=92.10997772216797, y=249.42999267578125, z=1.32), Rotation(yaw=-90.00029754638672))]
-        elif self.config.scenario_config.scenarios == "crowded":
-            spawn_points = scenarios.get_crowded_npcs(number_of_vehicles)
-            print('CROWDED SPAWNING: ', spawn_points)
-        elif self.config.scenario_config.scenarios in ["long_straight", "long_straight_junction"]:
-            spawn_points_1 = scenarios.get_long_straight_npcs()
-            if unseen:
-                if self.config.test_fixed_spawn_points:
-                    spawn_points = self.spawn_points_fixed_order
-                else:
-                    spawn_points = self.spawn_points
-                    random.shuffle(spawn_points)
+        # Testing
+        if unseen:
+            if self.config.test_fixed_spawn_points:
+                spawn_points = self.spawn_points_fixed_order
             else:
-                if self.config.train_fixed_spawn_points:
-                    spawn_points = self.spawn_points_fixed_order
-                else:
-                    spawn_points = self.spawn_points
-                    random.shuffle(spawn_points)
-
-        elif self.config.scenario_config.scenarios == "straight_crowded":
-            spawn_points = scenarios.get_straight_crowded_npcs(number_of_vehicles)
-            print('STRAIGHT CROWDED SPAWNING: ', spawn_points)
-        elif self.config.scenario_config.scenarios == "town3":
-            spawn_points = scenarios.get_curved_town03_npcs(number_of_vehicles)
-            print('TOWN 3 SPAWNING: ', spawn_points)
-
+                spawn_points = self.spawn_points
+                random.shuffle(spawn_points)
         else:
-            # Testing
-            if unseen:
-                if self.config.test_fixed_spawn_points:
-                    spawn_points = self.spawn_points_fixed_order
-                else:
-                    spawn_points = self.spawn_points
-                    random.shuffle(spawn_points)
+            if self.config.train_fixed_spawn_points:
+                spawn_points = self.spawn_points_fixed_order
             else:
-                if self.config.train_fixed_spawn_points:
-                    spawn_points = self.spawn_points_fixed_order
-                else:
-                    spawn_points = self.spawn_points
-                    random.shuffle(spawn_points)
+                spawn_points = self.spawn_points
+                random.shuffle(spawn_points)
 
 
         if self.config.verbose:
@@ -409,13 +375,18 @@ class ActorManager910_Leaderboard():
         # Spawn points
         ################################################
         self.spawn_points = self.world.get_map().get_spawn_points()
+
+
         # Only randomize order of spawn points if testing
-        if self.config.testing:
-            self.spawn_points_fixed_order =  [self.spawn_points[i] for i in self.config.spawn_points_fixed_idx]
-        else:
-            spawn_pt_idx = np.random.permutation(len(self.spawn_points))
-            np.save(os.path.join(log_dir, "spawn_pt_order"), spawn_pt_idx)
-            self.spawn_points_fixed_order =  [self.spawn_points[i] for i in spawn_pt_idx]
+        # if self.config.testing:
+            # self.spawn_points_fixed_order =  [self.spawn_points[i] for i in self.config.spawn_points_fixed_idx]
+        # else:
+            # spawn_pt_idx = np.random.permutation(len(self.spawn_points))
+            # np.save(os.path.join(log_dir, "spawn_pt_order"), spawn_pt_idx)
+            # self.spawn_points_fixed_order =  [self.spawn_points[i] for i in spawn_pt_idx]
+        # Removed above, always load the spawn points in the fixed order
+        self.spawn_points_fixed_order =  [self.spawn_points[i] for i in self.config.spawn_points_fixed_idx]
+
 
         ################################################
         # Blueprints
