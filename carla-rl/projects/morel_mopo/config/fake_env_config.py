@@ -98,3 +98,11 @@ class DefaultFakeEnvConfig(BaseFakeEnvConfig):
 
         self.uncertainty_coeff = 1
         self.timeout_steps = 100
+
+# Use this config to stop the FakeEnv from terminating due to timeouts
+class NoTimeoutFakeEnvConfig(BaseFakeEnvConfig):
+    def __init__(self):
+        super().__init__()
+
+        self.uncertainty_coeff = 1
+        self.timeout_steps = 10000
