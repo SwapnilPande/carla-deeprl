@@ -68,6 +68,8 @@ class MOPOPolicy:
     def __call__(self, obs):
         return self.mopo.policy_predict(np.expand_dims(obs, axis = 0))
 
+    def policy_predict(self, obs):
+        return self(obs)
 ################################################################################
 
 def generate_video(logger, image_path, save_path, name, path):
@@ -690,15 +692,432 @@ def eval_policy_obs(exp_name, logger, fake_env, policies, num_episodes, n = 50):
             generate_video(logger, image_save_dir, video_save_dir, str(vid_num), "")
             vid_num += 1
 
+def dataset_eval(exp_name, logger, fake_env, policy, n_rollouts):
+    """Generates images plotting multiple trajectories sampled from the dynamics model against ground truth
+    """
+    # Get the number of stacked frames fake_env needs
+    frame_stack = fake_env.frame_stack
+
+    image_save_dir = logger.prep_dir(os.path.join("policy_obs_eval/images", exp_name))
+    video_save_dir = logger.prep_dir(os.path.join("policy_obs_eval/videos", exp_name))
+
+
+    total_steps = 0
+    real_done = False
+    vid_num = 0
+    cum_reward = [0]
+    terminations = {}
+    for i in range(n_rollouts):
+
+        real_rollout_steps = 0
+        img_idx = 0
+
+        print("Experiment: {}, Episode {}".format(exp_name, i))
+        real_dynamics_pose = None
+
+        # Reset environment and get real observation
+        obs = fake_env.reset()
+        policy_obs_list = [obs]
+        policy_actions_list = [np.array([0,0])]
+        policy_log_std_list = [np.array([0,0])]
+        policy_means_list = [np.array([0,0])]
+        npc_poses = fake_env.npc_poses.cpu().numpy()
+        wps = fake_env.waypoints.cpu().numpy()
+        rollout_pose_list = [fake_env.vehicle_pose.cpu().numpy()]
+        wp_x = wps[:,0]
+        wp_y = wps[:,1]
+
+
+        done = False
+        rollout_steps = 0
+
+        img_idx = 0
+        while not done:
+
+            action = policy.policy_predict(np.expand_dims(obs, axis = 0))
+            # import ipdb; ipdb.set_trace()
+            # log_std = action[1]
+            # policy_mean = action[2]
+
+            # action = action[0]
+            # action[0, 1] = 1.0
+            policy_actions_list.append(action[0])
+            # policy_log_std_list.append(log_std[0])
+            # policy_means_list.append(policy_mean[0])
+
+            obs, reward, done, info = fake_env.step(action)
+            cum_reward.append(cum_reward[-1] + reward)
+
+            rollout_pose_list.append(fake_env.vehicle_pose.cpu().numpy())
+            policy_obs_list.append(obs)
+
+            # rollout_pose = np.array(rollout_pose_list)
+
+            # x = rollout_pose[:,0]
+            # y = rollout_pose[:,1]
+
+            # policy_obs = np.array(policy_obs_list)
+            # policy_actions = np.array(policy_actions_list)
+
+            # # Plot obs dist
+            # fig = plt.figure()
+            # canvas = FigureCanvas(fig)
+            # ax = fig.subplots()
+            # ax.plot(policy_obs[:, 4])
+            # ax.set_xlim(0,n)
+            # ax.set_ylim(-.1, 1.2)
+            # ax.set_title("Obstacle Dist")
+            # canvas.draw()
+            # obs_dist_plot = np.array(canvas.renderer.buffer_rgba())
+            # width = int(obs_dist_plot.shape[1] * 0.5)
+            # height = int(obs_dist_plot.shape[0] * 0.5)
+            # dim = (width, height)
+            # obs_dist_plot = cv2.resize(obs_dist_plot,dim)
+            # plt.close(fig)
+
+            # # Plot obs vel
+            # fig = plt.figure()
+            # canvas = FigureCanvas(fig)
+            # ax = fig.subplots()
+            # ax.plot(policy_obs[:, 5])
+            # ax.set_xlim(0,n)
+            # ax.set_ylim(-.1, 1.2)
+            # ax.set_title("Obstacle Velocity")
+            # canvas.draw()
+            # obs_vel_plot = np.array(canvas.renderer.buffer_rgba())
+            # width = int(obs_vel_plot.shape[1] * 0.5)
+            # height = int(obs_vel_plot.shape[0] * 0.5)
+            # dim = (width, height)
+            # obs_vel_plot = cv2.resize(obs_vel_plot,dim)
+            # plt.close(fig)
+
+
+            # # Plot angle error
+            # fig = plt.figure()
+            # canvas = FigureCanvas(fig)
+            # ax = fig.subplots()
+            # ax.plot(policy_obs[:, 0])
+            # ax.set_xlim(0,n)
+            # ax.set_ylim(-np.pi, np.pi)
+            # ax.set_title("Angle Error")
+            # canvas.draw()
+            # angle_plot = np.array(canvas.renderer.buffer_rgba())
+            # width = int(angle_plot.shape[1] * 0.5)
+            # height = int(angle_plot.shape[0] * 0.5)
+            # dim = (width, height)
+            # angle_plot = cv2.resize(angle_plot,dim)
+            # plt.close(fig)
+
+            # # Plot trajectory error
+            # fig = plt.figure()
+            # canvas = FigureCanvas(fig)
+            # ax = fig.subplots()
+            # ax.plot(policy_obs[:, 3])
+            # ax.set_xlim(0, n)
+            # ax.set_ylim(-2,2)
+            # ax.set_title("Trajectory Error")
+            # canvas.draw()
+            # dist_to_trajec_plot = np.array(canvas.renderer.buffer_rgba())
+            # width = int(dist_to_trajec_plot.shape[1] * 0.5)
+            # height = int(dist_to_trajec_plot.shape[0] * 0.5)
+            # dim = (width, height)
+            # dist_to_trajec_plot = cv2.resize(dist_to_trajec_plot,dim)
+            # plt.close(fig)
+
+            # # Plot vehicle position
+            # fig = plt.figure()
+            # canvas = FigureCanvas(fig)
+            # ax = fig.subplots()
+
+            # # Draw waypoints
+            # ax.scatter(wp_x, wp_y, color = 'red')
+
+            # # Draw vehicle heading vector
+            # ax.arrow(
+            #         rollout_pose[-1][0],
+            #         rollout_pose[-1][1],
+            #         np.cos(np.deg2rad(rollout_pose[j][2])),
+            #         np.sin(np.deg2rad(rollout_pose[j][2])))
+
+            # # Center the plot on the vehicle
+            # ax.set_xlim(rollout_pose[-1][0] - 30, rollout_pose[-1][0] + 30)
+            # ax.set_ylim(rollout_pose[-1][1] - 30, rollout_pose[-1][1] + 30)
+
+            # # Plot the other vehicles
+            # if(npc_poses.shape[1] > 0):
+            #     ax.scatter(npc_poses[-1, :, 0], npc_poses[-1, :, 1], color = 'green')
+
+            # ax.set_title(termination)
+            # canvas.draw()
+            # wp_plot = np.array(canvas.renderer.buffer_rgba())
+            # width = int(wp_plot.shape[1] * 0.5)
+            # height = int(wp_plot.shape[0] * 0.5)
+            # dim = (width, height)
+            # wp_plot = cv2.resize(wp_plot,dim)
+            # plt.close(fig)
+
+
+            # # Plot action
+            # fig = plt.figure()
+            # canvas = FigureCanvas(fig)
+            # ax = fig.subplots()
+            # ax.plot(policy_actions[:, 0])
+            # ax.set_xlim(0,n)
+            # ax.set_ylim(-1,1)
+            # ax.set_title("Action - Steer")
+            # canvas.draw()
+            # action_plot = np.array(canvas.renderer.buffer_rgba())
+            # width = int(action_plot.shape[1] * 0.5)
+            # height = int(action_plot.shape[0] * 0.5)
+            # dim = (width, height)
+            # action_plot = cv2.resize(action_plot,dim)
+            # plt.close(fig)
+
+            # # Plot cumulative rewards
+            # fig = plt.figure()
+            # canvas = FigureCanvas(fig)
+            # ax = fig.subplots()
+            # ax.plot(cum_reward[:])
+            # ax.set_xlim(0,n)
+            # ax.set_title("Cumulative Reward")
+            # canvas.draw()
+            # reward_plot = np.array(canvas.renderer.buffer_rgba())
+            # width = int(reward_plot.shape[1] * 0.5)
+            # height = int(reward_plot.shape[0] * 0.5)
+            # dim = (width, height)
+            # reward_plot = cv2.resize(reward_plot,dim)
+            # plt.close(fig)
+
+            # # Plot uncertainty
+            # fig = plt.figure()
+            # canvas = FigureCanvas(fig)
+            # ax = fig.subplots()
+            # ax.plot(policy_actions[:, 1])
+            # ax.set_xlim(0,n)
+            # ax.set_ylim(-1,1)
+            # ax.set_title("Action - Speed")
+            # canvas.draw()
+            # uncertain_plot = np.array(canvas.renderer.buffer_rgba())
+            # width = int(uncertain_plot.shape[1] * 0.5)
+            # height = int(uncertain_plot.shape[0] * 0.5)
+            # dim = (width, height)
+            # uncertain_plot = cv2.resize(uncertain_plot,dim)
+            # plt.close(fig)
+
+            # wp_plot = cv2.vconcat([wp_plot, action_plot])
+            # reward_plots = cv2.vconcat([reward_plot, uncertain_plot])
+            # obstacle_plots = cv2.vconcat([obs_dist_plot, obs_vel_plot])
+            # img = cv2.vconcat([angle_plot, dist_to_trajec_plot])
+            # img = cv2.hconcat([wp_plot, img, reward_plots, obstacle_plots])
+
+            # cv2.imwrite(os.path.join(image_save_dir, f"{j:04d}.png"), img)
+
+        termination = info['termination']
+        print(f"Episode {i} terminated with {termination}")
+        if(termination in terminations):
+            terminations[termination] += 1
+        else:
+            terminations[termination] = 1
+
+        if(termination == 'front_collision'):
+            rollout_pose = np.array(rollout_pose_list)
+
+            x = rollout_pose[:,0]
+            y = rollout_pose[:,1]
+
+            img_idx += 1
+
+            n = len(rollout_pose_list)
+            policy_obs = np.array(policy_obs_list)
+            policy_actions = np.array(policy_actions_list)
+            policy_log_std = np.array(policy_log_std_list)
+            policy_log_std = np.exp(policy_log_std)
+            policy_means = np.array(policy_means_list)
+            # import ipdb; ipdb.set_trace()
+            for j in range(len(rollout_pose_list)):
+
+                # Plot obs dist
+                fig = plt.figure()
+                canvas = FigureCanvas(fig)
+                ax = fig.subplots()
+                ax.plot(policy_obs[:j, 4])
+                ax.set_xlim(0,n)
+                ax.set_ylim(-.1, 1.2)
+                ax.set_title("Obstacle Dist")
+                canvas.draw()
+                obs_dist_plot = np.array(canvas.renderer.buffer_rgba())
+                width = int(obs_dist_plot.shape[1] * 0.5)
+                height = int(obs_dist_plot.shape[0] * 0.5)
+                dim = (width, height)
+                obs_dist_plot = cv2.resize(obs_dist_plot,dim)
+                plt.close(fig)
+
+                # Plot obs vel
+                fig = plt.figure()
+                canvas = FigureCanvas(fig)
+                ax = fig.subplots()
+                ax.plot(policy_obs[:j, 5])
+                ax.set_xlim(0,n)
+                ax.set_ylim(-.1, 1.2)
+                ax.set_title("Obstacle Velocity")
+                canvas.draw()
+                obs_vel_plot = np.array(canvas.renderer.buffer_rgba())
+                width = int(obs_vel_plot.shape[1] * 0.5)
+                height = int(obs_vel_plot.shape[0] * 0.5)
+                dim = (width, height)
+                obs_vel_plot = cv2.resize(obs_vel_plot,dim)
+                plt.close(fig)
+
+
+                # Plot angle error
+                fig = plt.figure()
+                canvas = FigureCanvas(fig)
+                ax = fig.subplots()
+                ax.plot(policy_obs[:j, 0])
+                ax.set_xlim(0,n)
+                ax.set_ylim(-np.pi, np.pi)
+                ax.set_title("Angle Error")
+                canvas.draw()
+                angle_plot = np.array(canvas.renderer.buffer_rgba())
+                width = int(angle_plot.shape[1] * 0.5)
+                height = int(angle_plot.shape[0] * 0.5)
+                dim = (width, height)
+                angle_plot = cv2.resize(angle_plot,dim)
+                plt.close(fig)
+
+                # Plot trajectory error
+                fig = plt.figure()
+                canvas = FigureCanvas(fig)
+                ax = fig.subplots()
+                ax.plot(policy_obs[:j, 3])
+                ax.set_xlim(0, n)
+                ax.set_ylim(-2,2)
+                ax.set_title("Trajectory Error")
+                canvas.draw()
+                dist_to_trajec_plot = np.array(canvas.renderer.buffer_rgba())
+                width = int(dist_to_trajec_plot.shape[1] * 0.5)
+                height = int(dist_to_trajec_plot.shape[0] * 0.5)
+                dim = (width, height)
+                dist_to_trajec_plot = cv2.resize(dist_to_trajec_plot,dim)
+                plt.close(fig)
+
+                # Plot vehicle position
+                fig = plt.figure()
+                canvas = FigureCanvas(fig)
+                ax = fig.subplots()
+
+                # Draw waypoints
+                ax.scatter(wp_x, wp_y, color = 'red')
+
+                # Draw vehicle heading vector
+                ax.arrow(
+                        rollout_pose[j][0],
+                        rollout_pose[j][1],
+                        np.cos(np.deg2rad(rollout_pose[j][2])),
+                        np.sin(np.deg2rad(rollout_pose[j][2])))
+
+                # Center the plot on the vehicle
+                ax.set_xlim(rollout_pose[j][0] - 30, rollout_pose[j][0] + 30)
+                ax.set_ylim(rollout_pose[j][1] - 30, rollout_pose[j][1] + 30)
+
+                # Plot the other vehicles
+                if(npc_poses.shape[1] > 0):
+                    ax.scatter(npc_poses[j, :, 0], npc_poses[j, :, 1], color = 'green')
+
+                ax.set_title(termination)
+                canvas.draw()
+                wp_plot = np.array(canvas.renderer.buffer_rgba())
+                width = int(wp_plot.shape[1] * 0.5)
+                height = int(wp_plot.shape[0] * 0.5)
+                dim = (width, height)
+                wp_plot = cv2.resize(wp_plot,dim)
+                plt.close(fig)
+
+
+                # Plot action
+                fig = plt.figure()
+                canvas = FigureCanvas(fig)
+                ax = fig.subplots()
+                ax.plot(policy_actions[:j, 0], 'orange')
+                # ax.plot(policy_means[:j, 0], 'blue')
+                # ax.fill_between(np.arange(j), policy_means[:j, 0] - policy_log_std[:j, 0], policy_means[:j, 0] + policy_log_std[:j, 0],
+                    # color='blue', alpha=0.2)
+                ax.set_xlim(0,n)
+                ax.set_ylim(-3,3)
+                ax.set_title("Action - Steer")
+                canvas.draw()
+                action_plot = np.array(canvas.renderer.buffer_rgba())
+                width = int(action_plot.shape[1] * 0.5)
+                height = int(action_plot.shape[0] * 0.5)
+                dim = (width, height)
+                action_plot = cv2.resize(action_plot,dim)
+                plt.close(fig)
+
+                # Plot cumulative rewards
+                fig = plt.figure()
+                canvas = FigureCanvas(fig)
+                ax = fig.subplots()
+                ax.plot(cum_reward[:j])
+                ax.set_xlim(0,n)
+                ax.set_title("Cumulative Reward")
+                canvas.draw()
+                reward_plot = np.array(canvas.renderer.buffer_rgba())
+                width = int(reward_plot.shape[1] * 0.5)
+                height = int(reward_plot.shape[0] * 0.5)
+                dim = (width, height)
+                reward_plot = cv2.resize(reward_plot,dim)
+                plt.close(fig)
+
+                # Plot uncertainty
+                fig = plt.figure()
+                canvas = FigureCanvas(fig)
+                ax = fig.subplots()
+                ax.plot(policy_actions[:j, 1], 'orange')
+                # ax.plot(policy_means[:j, 1], 'blue')
+                # ax.fill_between(np.arange(j), policy_means[:j, 1] - policy_log_std[:j, 1], policy_means[:j, 1] + policy_log_std[:j, 1],
+                    # color='blue', alpha=0.2)
+
+                ax.set_xlim(0,n)
+                ax.set_ylim(-3,3)
+                ax.set_title("Action - Speed")
+                canvas.draw()
+                uncertain_plot = np.array(canvas.renderer.buffer_rgba())
+                width = int(uncertain_plot.shape[1] * 0.5)
+                height = int(uncertain_plot.shape[0] * 0.5)
+                dim = (width, height)
+                uncertain_plot = cv2.resize(uncertain_plot,dim)
+                plt.close(fig)
+
+                wp_plot = cv2.vconcat([wp_plot, action_plot])
+                reward_plots = cv2.vconcat([reward_plot, uncertain_plot])
+                obstacle_plots = cv2.vconcat([obs_dist_plot, obs_vel_plot])
+                img = cv2.vconcat([angle_plot, dist_to_trajec_plot])
+                img = cv2.hconcat([wp_plot, img, reward_plots, obstacle_plots])
+
+                cv2.imwrite(os.path.join(image_save_dir, f"{j:04d}.png"), img)
+
+
+            generate_video(logger, image_save_dir, video_save_dir, str(vid_num), "")
+            vid_num += 1
+
+    # Output the various termination conditions
+    print("Termination Counts:")
+    for key, value in terminations.items():
+        print(f"{key}: {value/ n_rollouts}")
+
+
+
+
+
 class DynamicsEvaluationConf:
     def __init__(self):
         self.model_name = "final"
-        self.experiment_key = "cb248318a263406795aaabc4e8a51a3f"
+        self.experiment_key = "e1a27faf07f9450a87e6e6c10f29b0d8"
 
 class MOPOEvaluationConf:
     def __init__(self):
-        self.policy_model_name = "policy_checkpoint__7000000_steps.zip"
-        self.experiment_key = "cb248318a263406795aaabc4e8a51a3f"
+        self.policy_model_name = "best_model_1400000.zip"
+        self.experiment_key = "38f3b017f89147489449d1beba29a25d"
         self.policy_only = True
 
 
@@ -711,15 +1130,15 @@ def main(args):
 
     logger = CometLogger(logger_conf)
 
-    ### Create the real environment
-    env_config = DefaultMainConfig()
-    env_config.populate_config(
-        observation_config = "VehicleDynamicsNoCameraConfig",
-        action_config = "MergedSpeedTanhConfig",
-        reward_config = "Simple2RewardConfig",
-        testing = False,
-        carla_gpu = args.gpu
-    )
+    # ### Create the real environment
+    # env_config = DefaultMainConfig()
+    # env_config.populate_config(
+    #     observation_config = "VehicleDynamicsNoCameraConfig",
+    #     action_config = "MergedSpeedTanhConfig",
+    #     reward_config = "Simple2RewardConfig",
+    #     testing = False,
+    #     carla_gpu = args.gpu
+    # )
 
 
 
@@ -732,12 +1151,11 @@ def main(args):
     # data_module_config = None
     ### Create the fake environment
     dynamics = dynamics_config.dynamics_model_type.load(logger, dynamics_evaluation_conf.model_name, gpu = args.gpu, data_config = data_module_config)
+    # dynamics = dynamics_config.dynamics_model_type.load(logger, dynamics_evaluation_conf.model_name, gpu = args.gpu)
 
 
 
     dynamics_config.dynamics_model_config = dynamics.config
-
-
 
     # env setup (obs, action, reward)
     #TODO Fix conflict between fake env Default and Real Env Default
@@ -753,11 +1171,20 @@ def main(args):
                 config=fake_env_config,
                 logger = logger)
 
-    mopo_evaluation_conf = MOPOEvaluationConf()
-    policy = MOPOPolicy(logger, mopo_evaluation_conf)
-    autopilot_policy = AutopilotPolicy(fake_env)
 
-    eval_policy_obs("test", logger, fake_env, [policy, autopilot_policy], 10, 50)
+
+    mopo_evaluation_conf = MOPOEvaluationConf()
+
+    logger_conf = ExistingCometLoggerConfig()
+    logger_conf.experiment_key = mopo_evaluation_conf.experiment_key
+
+    logger = CometLogger(logger_conf)
+    policy = MOPOPolicy(logger, mopo_evaluation_conf)
+    # autopilot_policy = AutopilotPolicy(fake_env)
+
+    dataset_eval("test_dataset", logger, fake_env, policy, 100)
+
+    # eval_policy_obs("test", logger, fake_env, [policy, autopilot_policy], 10, 50)
     exit()
 
     # Run desired experiments

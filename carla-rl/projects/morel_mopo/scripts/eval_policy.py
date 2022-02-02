@@ -23,7 +23,8 @@ from stable_baselines3.common.env_util import DummyVecEnv
 from environment.env import CarlaEnv
 from environment.config.config import DefaultMainConfig
 from environment.config.observation_configs import VehicleDynamicsOnlyConfig, VehicleDynamicsObstacleConfig
-from environment.config.scenario_configs import NoCrashRegularTown01Config, NoCrashDenseTown01Config
+from environment.config.scenario_configs import NoCrashEmptyTown01Config, NoCrashEmptyTown02Config, NoCrashDenseTown01Config, LeaderboardConfig
+from environment.config.action_configs import MergedSpeedTanhConfig
 
 
 
@@ -42,6 +43,20 @@ class AutopilotPolicy:
     def policy_predict(self, obs):
         return self.env.get_autopilot_action()
 
+class AutopilotNoisePolicy:
+    def __init__(self, env, steer_noise_std, speed_noise_std):
+        self.env = env
+        self.steer_noise_std = steer_noise_std
+        self.speed_noise_std = speed_noise_std
+
+    def __call__(self, obs):
+        res = self.env.get_autopilot_action()
+        res[0] += np.random.normal(loc=0.0, scale=self.steer_noise_std, size=1)[0]
+        res[1] += np.random.normal(loc=0.0, scale=self.speed_noise_std, size=1)[0]
+        return res
+
+    def policy_predict(self, obs):
+        return self(obs)
 
 
 
@@ -64,37 +79,54 @@ def generate_video(logger, image_path, save_path, name):
 
 
 
-def generate_rollouts(logger, env, policy, n_rollouts = 10, timeout = 500):
+def generate_rollouts(logger, env, policy, n_rollouts = 25, timeout = 10000):
     image_save_dir = logger.prep_dir("policy_eval/images")
     video_save_dir = logger.prep_dir("policy_eval/videos")
 
     global_idx = 0
-
-    for rollout in range(n_rollouts):
+    success_eps = 0
+    for rollout in tqdm(range(n_rollouts)):
         print(f"Rollout #{rollout}")
-
+        # import ipdb; ipdb.set_trace()
         obs = env.reset()
-        for i in tqdm(range(timeout)):
+        for i in range(100):
+            print("Rolling out to stabilize")
+            obs, _, _, _ = env.step(np.array([0.0,-1.0]))
+
+        # for i in range(10):
+        #     obs, _, _, _ = env.step(np.array([0.0,0.0]))
+
+        done = False
+        while not done:
+        # for i in range(timeout):
             action = policy.policy_predict(obs)
 
             obs, reward, done, info = env.step(action)
-            print(obs[0][3])
+            # print(obs[0][3])
 
             image = info["sensor.camera.rgb/top"]
 
             im_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            cv2.imwrite(os.path.join(image_save_dir, "{:04d}.png".format(global_idx)), image)
+            cv2.imwrite(os.path.join(image_save_dir, "{:04d}.png".format(i)), im_rgb)
+            # save_dir = os.path.join(image_save_dir, "{:04d}.png".format(i))
+            # print(f"Image to")
 
             global_idx += 1
+            print(f"Step #{global_idx}")
 
             if done:
+                if(info["termination_state"] == "success"):
+                    success_eps += 1
                 break
-                pass
-
-    generate_video(logger = logger,
+        term_state = info["termination_state"]
+        generate_video(logger = logger,
                     image_path = image_save_dir,
                     save_path = video_save_dir,
-                    name = "rollouts.mp4")
+                    name = f"{rollout}_{term_state}.mp4")
+
+
+
+    print(f"Success rate: {success_eps/n_rollouts}")
 
 
 def closed_loop_eval(exp_name, logger, env, fake_env, policy, n_rollouts):
@@ -253,10 +285,12 @@ def closed_loop_eval(exp_name, logger, env, fake_env, policy, n_rollouts):
             print(fake_done)
 
 
+
+
 class MOPOEvaluationConf:
     def __init__(self):
-        self.policy_model_name = "best_model_1800000.zip"
-        self.experiment_key = "aa2787f0101e4a119906ca92fc0c5838"
+        self.policy_model_name = "best_model_200000.zip"
+        self.experiment_key = "8f0092e0bf54446f9dc4f20ff9a5a9c8"
         self.policy_only = True
         # self.dynamics_model_name = "final"
         self.dynamics_model_name = None
@@ -281,13 +315,19 @@ def main(args):
     mopo.config.eval_env_config.render_server = True
     mopo.config.eval_env_config.carla_gpu = args.gpu
     mopo.config.eval_env_config.obs_config = VehicleDynamicsObstacleConfig() # VehicleDynamicsOnlyConfig()
-    mopo.config.eval_env_config.scenario_config = NoCrashDenseTown01Config()
-    env = CarlaEnv(config = mopo.config.eval_env_config, logger = logger, log_dir = logger.log_dir)
+    mopo.config.eval_env_config.action_config = MergedSpeedTanhConfig()
+    mopo.config.eval_env_config.scenario_config = LeaderboardConfig()
+    mopo.config.eval_env_config.scenario_config.set_parameter("disable_traffic_light", False)
+    mopo.config.eval_env_config.scenario_config.set_parameter("disable_static", True)
+
+    env = CarlaEnv(config = mopo.config.eval_env_config, log_dir = logger.log_dir)
+    eval_env = env.get_eval_env(1)
 
     # autopilot_policy = AutopilotPolicy(env)
+    policy = AutopilotNoisePolicy(env, 0.1, 0.1)
     # closed_loop_eval("test", logger, env, mopo.fake_env, mopo, 5)
 
-    generate_rollouts(logger = logger, env = env, policy = mopo)
+    generate_rollouts(logger = logger, env = eval_env, policy = policy, n_rollouts = 25)
 
 
 if __name__ == "__main__":
