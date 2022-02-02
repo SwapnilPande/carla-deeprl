@@ -14,6 +14,8 @@ from gym.spaces import Box, Discrete, Tuple
 from projects.morel_mopo.algorithm.reward import compute_reward
 from projects.morel_mopo.algorithm.fake_envs import fake_env_utils as feutils
 from projects.morel_mopo.algorithm.fake_envs import fake_env_scenarios as fescenarios
+DIST = 0.5
+
 
 class PIDLateralController():
     """
@@ -171,7 +173,19 @@ class BaseFakeEnv(gym.Env):
             ((obs, action, _, _, _, vehicle_pose), waypoints, npc_poses) = self.sample()
             self.state.normalized = obs[:,:2]
             self.past_action.normalized = action
-            self.npc_poses = torch.stack(npc_poses)
+            try:
+                self.npc_poses = torch.stack(npc_poses)
+            except:
+                self.npc_poses = torch.empty(SAMPLE_STEPS, 0)
+
+            # Bring back traffic lights
+            # try:
+            #     self.traffic_light_locs = torch.stack(traffic_light_locs)
+            #     self.traffic_light_states = torch.stack(traffic_light_states)
+            # except:
+            #     print("FAKE_ENV: No npc poses ------------------------------------------")
+            #     self.traffic_light_locs = torch.empty(SAMPLE_STEPS, 0)
+            #     self.traffic_light_states = torch.empty(SAMPLE_STEPS, 0)
 
         else:
             (obs, action, vehicle_pose, waypoints, npc_poses) = inp
@@ -199,23 +213,24 @@ class BaseFakeEnv(gym.Env):
             # state only includes speed, steer
             self.state.unnormalized =  obs[:,:2]
             self.past_action.unnormalized = action
-            self.npc_poses = npc_poses
 
         self.waypoints = feutils.filter_waypoints(waypoints).to(self.device)
 
         if(not isinstance(self.npc_poses, torch.Tensor)):
-            self.npc_poses = torch.Tensor(self.npc_poses)
+            self.npc_poses = torch.Tensor(self.npc_poses).to(self.device)
         remove_indices = []
         # Loop over all poses at the first time step
         for i in range(self.npc_poses.shape[1]):
-            if(torch.all(self.npc_poses[0,i] == torch.zeros(self.npc_poses[0,i].shape))):
+            if(torch.all(self.npc_poses[0,i] == torch.zeros(self.npc_poses[0,i].shape)).to(self.device)):
                 remove_indices.append(i)
                 # print(f"Removing {i}\t {self.npc_poses[0,i]}")
-
-        remove_mask = np.ones(self.npc_poses.shape[1], dtype=bool)
-        remove_mask[remove_indices] = False
-        self.npc_poses = self.npc_poses[:, remove_mask, :]
-        self.npc_poses = self.npc_poses.to(self.device)
+        if(len(remove_indices) > 0):
+            remove_mask = np.ones(self.npc_poses.shape[1], dtype=bool)
+            remove_mask[remove_indices] = False
+            self.npc_poses = self.npc_poses[:, remove_mask, :]
+            self.npc_poses = self.npc_poses.to(self.device)
+        else:
+            self.npc_poses = self.npc_poses.to(self.device)
 
 
         if(len(self.waypoints) == 2):
@@ -230,11 +245,13 @@ class BaseFakeEnv(gym.Env):
             self.last_waypoint = None
         self.previous_waypoint = None
 
-
+        # self.traffic_light_locs = self.traffic_light_locs.to(self.device)
+        # self.traffic_light_states = self.traffic_light_states.to(self.device)
 
         self.vehicle_pose = vehicle_pose.to(self.device)
 
         self.steps_elapsed = 0
+        self.episode_uncertainty = 0
 
         self.model_idx = np.random.choice(self.dynamics.n_models)
         # Reset hidden state
@@ -317,12 +334,17 @@ class BaseFakeEnv(gym.Env):
                 obstacle_dist /= self.config.obs_config.vehicle_proximity_threshold
                 obstacle_vel /= 20
 
-            # for i in range(cur_npc_poses.shape[0]):
-            #     d_bool, norm_target = feutils.is_within_distance_ahead(cur_npc_poses[i], self.vehicle_pose, self.config.obs_config.vehicle_proximity_threshold)
+            return torch.cat([angle, state[1:2] / 10, state[0:1], dist_to_trajectory, torch.tensor([obstacle_dist]).to(self.device), torch.tensor([obstacle_vel]).to(self.device)], dim=0).float().to(self.device), dist_to_trajectory, angle
 
-            #     if(d_bool):
-            #         obstacle_dist = norm_target/self.config.obs_config.vehicle_proximity_threshold
-            #         obstacle_vel = cur_npc_poses[i][3] / 20
+        elif(self.config.obs_config.input_type == "wp_obstacle_speed_steer"):
+            cur_npc_poses = self.npc_poses[self.steps_elapsed]
+            obstacle_dist, obstacle_vel = self.get_obstacle_states(cur_npc_poses, self.waypoints)
+            if(obstacle_dist == -1):
+                obstacle_dist = 1
+                obstacle_vel = 1
+            else:
+                obstacle_dist /= self.config.obs_config.vehicle_proximity_threshold
+                obstacle_vel /= 20
 
             return torch.cat([angle, state[1:2] / 10, state[0:1], dist_to_trajectory, torch.tensor([obstacle_dist]).to(self.device), torch.tensor([obstacle_vel]).to(self.device)], dim=0).float().to(self.device), dist_to_trajectory, angle
 
@@ -344,16 +366,13 @@ class BaseFakeEnv(gym.Env):
         # Calculate normalized dot product - heading vector is a unit vector, so don't need to divide by that
         norm_dot = torch.dot(heading_vector, vec_to_other_vehicle) / torch.norm(vec_to_other_vehicle)
 
+
         if(norm_dot > car_corner_angle):
             front_collision = torch.norm(vec_to_other_vehicle) < front_collision_threshold
-            if(front_collision):
-                print("FRONT COLLISION HAS OCCURED Whatevs")
-            return torch.norm(vec_to_other_vehicle) < front_collision_threshold
+            return torch.norm(vec_to_other_vehicle) < front_collision_threshold, False
         else:
             side_collision = torch.norm(vec_to_other_vehicle) < side_collision_threshold
-            if(side_collision):
-                print("SIDE COLLISION HAS OCCURED OMG")
-            return torch.norm(vec_to_other_vehicle) < side_collision_threshold
+            return torch.norm(vec_to_other_vehicle) < side_collision_threshold, True
 
 
     def get_obstacle_states(self, cur_npc_poses, next_waypoints):
@@ -454,8 +473,6 @@ class BaseFakeEnv(gym.Env):
             elif(self.vehicle_pose[2] > 180):
                 self.vehicle_pose[2] -= 360
 
-            # import ipdb; ipdb.set_trace()
-
             # update next state
             self.state.unnormalized = self.update_next_state(self.state, delta_state)
 
@@ -466,19 +483,31 @@ class BaseFakeEnv(gym.Env):
             ################## calc reward with penalty for uncertainty ##############################
             collision = False
             cur_npc_poses = self.npc_poses[self.steps_elapsed]
-            # Check for collisions with any vehicle
-            collision = any([self.check_collision(other_vehicle) for other_vehicle in cur_npc_poses])
 
-            out_of_lane = torch.abs(dist_to_trajectory) > 1.5
 
+            # Check each collision independently
+            side_collision = False
+            front_collision = False
+
+            for other_vehicle_pose in cur_npc_poses:
+                collision, is_side = self.check_collision(other_vehicle_pose)
+
+                side_collision = side_collision or (collision and is_side)
+                front_collision = front_collision or (collision and not is_side)
+
+            out_of_lane = torch.abs(dist_to_trajectory) > DIST
+
+            success = len(self.waypoints) == 1
             reward_out = compute_reward(self.state.unnormalized[0], dist_to_trajectory, collision or out_of_lane, self.config)
 
             uncertain =  self.usad(self.deltas.normalized.detach().cpu().numpy())
             reward_out[0] = reward_out[0] - uncertain * self.uncertainty_coeff
             reward_out = torch.squeeze(reward_out)
+            self.episode_uncertainty += uncertain
 
             # advance time
             self.steps_elapsed += 1
+            self.cum_step += 1
             timeout = self.steps_elapsed >= self.timeout_steps
 
             # log
@@ -497,38 +526,59 @@ class BaseFakeEnv(gym.Env):
             info = {
                         "delta" : self.deltas.normalized[self.model_idx].cpu().numpy(),
                         "uncertain" : self.uncertainty_coeff * uncertain,
-                        "predictions": vehicle_poses.cpu().numpy()
+                        "predictions": vehicle_poses.cpu().numpy(),
+                        "num_remaining_waypoints" : len(self.waypoints),
                     }
 
             # Check done condition
-
-            done = (len(self.waypoints) == 0 or
+            # done = (success or
+                    # out_of_lane or
+                    # collision or
+                    # self.steps_elapsed >= len(self.npc_poses))
+            done = (success or
                     out_of_lane or
-                    collision or
-                    self.steps_elapsed >= len(self.npc_poses) or
-                    timeout)
+                    front_collision or
+                    side_collision or
+                    self.steps_elapsed >= len(self.npc_poses))
+
 
             # If done, print the termination type
-            if(done):
-                if(timeout):
-                    print("Timeout")
-                elif(out_of_lane):
-                    print("Out of lane")
-                elif(collision):
-                    print("Collision")
-                elif(len(self.waypoints) == 0):
-                    print("No waypoints")
-                else:
-                    print("Unknown")
+            # if(done):
+            #     # if(timeout):t
+            #     #     print("Timeout")
+            #     #     info["termination"] = "timeout"
+            #     if(out_of_lane):
+            #         print("Out of lane")
+            #         info["termination"] = "out_of_lane"
+            #     elif(front_collision):
+            #         print("Collision")
+            #         info["termination"] = "front_collision"
+            #     elif(side_collision):
+            #         print("Side Collision")
+            #         info["termination"] = "side_collision"
+            #     elif(success):
+            #         print("Success")
+            #         info["termination"] = "Success"
+            #     elif(self.steps_elapsed >= len(self.npc_poses)):
+            #         print("Not enough NPC poses")
+            #         info["termination"] = "NPC"
+
+            #     else:
+            #         print("Unknown")
+            #         info["termination"] = "unknown"
+            #         print(len(self.npc_poses))
 
             res = policy_obs.cpu().numpy(), float(reward_out.item()), done, info
 
 
             #Logging
             if(done and self.logger is not None):
+                # Log how the episode terminated
                 self.logger.log_scalar('rollout/obstacle_collision', int(collision), self.cum_step)
-
-            self.cum_step += 1
+                self.logger.log_scalar('rollout/out_of_lane', int(out_of_lane), self.cum_step)
+                self.logger.log_scalar('rollout/success', int(success), self.cum_step)
+                # Log average uncertainty over the episode
+                self.logger.log_scalar('rollout/average_uncertainty', self.episode_uncertainty / self.steps_elapsed, self.cum_step)
 
             return res
 
