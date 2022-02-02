@@ -21,8 +21,12 @@ def main(args):
     logger_conf.populate(experiment_name = args.exp_name, tags = ["MOPO", "uncertainty_sweep"])
     logger = CometLogger(logger_conf)
 
+    # Load the dynamics from a pre-verified dynamics model
     config = DefaultMLPObstaclesMOPOConfig()
-    config.populate_config(gpu = args.gpu, policy_algorithm = "PPO")
+    config.populate_config(gpu = args.gpu,
+                           policy_algorithm = "PPO",
+                           pretrained_dynamics_model_key = "e1a27faf07f9450a87e6e6c10f29b0d8",
+                           pretrained_dynamics_model_name = "final")
 
     # config.populate_config(gpu = args.gpu, policy_algorithm = "SAC")
 
