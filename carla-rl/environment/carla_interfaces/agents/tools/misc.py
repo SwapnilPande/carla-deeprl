@@ -64,7 +64,13 @@ def is_within_distance_ahead(target_location, current_location, orientation, max
 
     forward_vector = np.array(
         [math.cos(math.radians(orientation)), math.sin(math.radians(orientation))])
-    d_angle = math.degrees(math.acos(np.dot(forward_vector, target_vector) / norm_target))
+    try:
+        d_angle = math.degrees(math.acos(np.dot(forward_vector, target_vector) / norm_target))
+    except:
+        if(np.dot(forward_vector, target_vector) / norm_target > 1):
+            d_angle = 0
+        else:
+            d_angle = 180
 
     return d_angle < 90.0
 
@@ -160,7 +166,7 @@ SEMANTIC_COLOR_MAP_ARRAY = np.array([
     [0, 0, 142],
     [102, 102, 156],
     [220, 220, 0]
-]) 
+])
 
 CLASS_REMAP = {
     0	: 0,
@@ -283,7 +289,7 @@ def convert_to_one_hot(labels, num_classes):
     one_hot = np.zeros((flattened_labels.shape[0], num_classes))
     one_hot[np.arange(flattened_labels.shape[0]), flattened_labels] = 1
     one_hot = one_hot.reshape((h, w, -1))
-    
+
     return one_hot
 
 def convert_from_one_hot(one_hot):
@@ -305,7 +311,7 @@ def convert_to_rgb_old(semantic_image, reduced_classes=False):
             semantic_rgb_image[i, j, 0] = rgb_tuple[0]
             semantic_rgb_image[i, j, 1] = rgb_tuple[1]
             semantic_rgb_image[i, j, 2] = rgb_tuple[2]
-    
+
     return semantic_rgb_image
 
 def convert_to_rgb(semantic_image, reduced_classes=False, binarized_image=False):
@@ -319,7 +325,7 @@ def convert_to_rgb(semantic_image, reduced_classes=False, binarized_image=False)
             semantic_map = REDUCED_SEMANTIC_COLOR_MAP_ARRAY
     else:
         semantic_map = SEMANTIC_COLOR_MAP_ARRAY
-    
+
     f = lambda x : semantic_map[x]
 
     semantic_rgb_image = f(semantic_image.reshape(-1))
