@@ -13,9 +13,8 @@ class PretrainedDynamicsModelConfig(BaseConfig):
         super().__init__()
         self.key = None
         self.name = None
-        self.gpu = None
 
-    def populate(self, key, name, gpu):
+    def populate(self, key, name):
         self.key = key
         self.name = name
         self.gpu = gpu
@@ -58,7 +57,7 @@ class BaseMOPOConfig(BaseConfig):
 
         ## Config for the dynamics model
         # If pretrained dynamics model is not None, we will load it from comet
-        self.pretrained_dynamics_model = None
+        self.pretrained_dynamics_model_config = None
         # Else, we will train a new dynamics model using the dynamics_config passed
         self.dynamics_config = None
 
@@ -76,13 +75,11 @@ class BaseMOPOConfig(BaseConfig):
         # Setup dynamics config
         # Use pretrained model if available. Else, use the dynamics_config passed
         if(pretrained_dynamics_model_key is not None):
-            # self.dynamics_config = DefaultMLPObstaclesMOPOConfig()
-            self.pretrained_dynamics_model = PretrainedDynamicsModelConfig()
-            self.pretrained_dynamics_model.populate(key = pretrained_dynamics_model_key,
-                                                    name = pretrained_dynamics_model_name,
-                                                    gpu = gpu)
-
+            self.pretrained_dynamics_model_config = PretrainedDynamicsModelConfig()
+            self.pretrained_dynamics_model_config.populate(key = pretrained_dynamics_model_key,
+                                                    name = pretrained_dynamics_model_name)
             self.dynamics_config = None
+
 
         else:
             self.dynamics_config.populate_config(gpu = gpu)
@@ -171,7 +168,6 @@ class DefaultProbMLPMOPOConfig(BaseMOPOConfig):
             action_config = "MergedSpeedScaledTanhConfig",
             reward_config = "Simple2RewardConfig",
             scenario_config = "NoCrashEmptyTown01Config",
-            testing = False,
             carla_gpu = self.gpu
         )
 

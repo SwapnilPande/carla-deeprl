@@ -521,6 +521,7 @@ class MLPDynamicsEnsemble(nn.Module):
 
         data_module = None
         if(data_config is not None):
+            data_config.set_parameter("normalization_stats", norm_stats)
             data_module = data_config.dataset_type(data_config)
 
         # Create a configured dynamics ensemble object

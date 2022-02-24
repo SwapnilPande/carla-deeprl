@@ -8,7 +8,6 @@ sys.path.append(os.path.abspath(os.path.join('../../../')))
 
 from environment.env import CarlaEnv
 
-
 # Stable baselines PPO
 from stable_baselines3.common.env_util import DummyVecEnv
 
@@ -47,7 +46,6 @@ class MOPO():
 
         self.dynamics = None
         self.load_data = load_data
-
 
         self.fake_env = None
 
@@ -96,31 +94,28 @@ class MOPO():
         # Setup dynamics model
         # If we are using a pretrained dynamics model, we need to load it
         # Else, we need to train a new dynamics model
-        if(self.config.pretrained_dynamics_model is not None):
+        if(self.config.pretrained_dynamics_model_config is not None):
             print("MOPO: Using pretrained dynamics model")
 
             # Construct a logger temporarily to load the dynamics model
             logger_conf = ExistingCometLoggerConfig()
-            logger_conf.experiment_key = self.config.pretrained_dynamics_model.key
+            logger_conf.experiment_key = self.config.pretrained_dynamics_model_config.key
             temp_logger = CometLogger(logger_conf)
 
             # Load dynamics config
             temp_config = temp_logger.pickle_load("mopo", "config.pkl")
             self.dynamics_config = temp_config.dynamics_config
 
-            print(f"MOPO: Loading dynamics model {self.config.pretrained_dynamics_model.name} from experiment {self.config.pretrained_dynamics_model.key}")
+            print(f"MOPO: Loading dynamics model {self.config.pretrained_dynamics_model_config.name} from experiment {self.config.pretrained_dynamics_model_config.key}")
             # Load dataset, only if we need it
             #TODO: We need to be able to pass the norm statistics, in case the datasets are not exactly the same
             if(self.load_data):
                 self.dynamics_config.dataset_config
                 self.dynamics = self.dynamics_config.dynamics_model_type.load(
                             logger = temp_logger,
-                            model_name = self.config.pretrained_dynamics_model.name,
-                            gpu = self.config.gpu,
+                            model_name = self.config.pretrained_dynamics_model_config.name,
+                            gpu = self.dynamics_config.gpu,
                             data_config = self.dynamics_config.dataset_config)
-
-
-
                 self.data_module = self.dynamics.data_module #self.dynamics_config.dataset_config.dataset_type(self.dynamics_config.dataset_config)
             else:
                 print("MOPO: Skipping Loading dataset")
@@ -210,3 +205,5 @@ class MOPO():
                         logger = logger)
 
         return mopo
+
+
