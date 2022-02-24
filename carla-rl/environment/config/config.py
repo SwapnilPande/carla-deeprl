@@ -129,7 +129,7 @@ class BaseMainConfig(BaseConfig):
         self.action_config = None
 
         # Are we testing?
-        self.testing = None
+        # self.testing = None
 
 
         #### Server Setup ####
@@ -149,9 +149,9 @@ class BaseMainConfig(BaseConfig):
         self.render_res_y = None
 
         # Input X Res (Default set to Atari)
-        self.x_res = None
+        # self.x_res = None
         # Input Y Res (Default set to Atari)
-        self.y_res = None
+        # self.y_res = None
 
         #### Logging related parameters ####
         self.print_obs = None
