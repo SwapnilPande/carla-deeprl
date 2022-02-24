@@ -31,7 +31,7 @@ class Agent(object):
     Base class to define agents in CARLA
     """
 
-    def __init__(self, vehicle, proximity_threshold=10.0, traffic_light_proximity_threshold=10.0, vehicle_proximity_threshold=15.0):
+    def __init__(self, vehicle, proximity_threshold=10.0, traffic_light_proximity_threshold=15.0, vehicle_proximity_threshold=17.0):
         """
 
         :param vehicle: actor to apply to local planner logic onto
