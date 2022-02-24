@@ -22,6 +22,14 @@ from projects.morel_mopo.algorithm.fake_envs.fake_env_utils import filter_waypoi
 
 
 class FakeEnv(BaseFakeEnv):
+    def __init__(self, dynamics,
+                        config,
+                        logger = None):
+
+        # This is the order in which new observations/actions are added to the history
+        # New first means the newest observation/action is at the front of the list
+        self.NEW_FIRST = True
+        super(FakeEnv, self).__init__(dynamics, config, logger)
 
     '''
     Updates state vector according to dynamics prediction
@@ -31,25 +39,30 @@ class FakeEnv(BaseFakeEnv):
     def update_next_state(self, prev_state, delta_state):
         # import ipdb; ipdb.set_trace()
         # calculate newest state
-        newest_state = prev_state.unnormalized[0, :] + delta_state
+        newest_state = prev_state.unnormalized[..., 0, :] + delta_state
 
         # insert newest state at front
-        return torch.cat([newest_state.unsqueeze(0), prev_state.unnormalized[:-1, :]], dim=0)
+        return torch.cat([newest_state.unsqueeze(-2), prev_state.unnormalized[..., :-1, :]], dim=-2)
 
     def update_action(self, prev_action, new_action):
         # insert new action at front, delete oldest action
-        return torch.cat([new_action.unsqueeze(0), prev_action.unnormalized[:-1, :]])
+        try:
+            return torch.cat(
+                        [new_action.unsqueeze(-2),
+                        prev_action.unnormalized[..., :-1, :]],
+                        dim = -2
+                )
+        except:
+            import ipdb; ipdb.set_trace()
 
     def make_prediction(self, past_state, past_action):
         # Get predictions across all models
         try:
             states, rewards = self.dynamics.predict(past_state.normalized, past_action.normalized)
+            states = torch.stack(states)
+            return states
         except:
             import ipdb; ipdb.set_trace()
-        states = torch.stack(states).squeeze(dim = 1)
-        return states
-
-
 
 if __name__ == "__main__":
     dm_config = MixedProbabilisticGRUDataModuleConfig()

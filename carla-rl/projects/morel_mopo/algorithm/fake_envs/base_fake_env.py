@@ -1,12 +1,9 @@
-from re import S
 import numpy as np
-from numpy.lib.arraysetops import isin
 from tqdm import tqdm
 import scipy.spatial
 from collections import deque
 
 import torch
-from torch.utils.data import Dataset, DataLoader, IterableDataset
 import gym
 from gym.spaces import Box, Discrete, Tuple
 
@@ -14,6 +11,7 @@ from gym.spaces import Box, Discrete, Tuple
 from projects.morel_mopo.algorithm.reward import compute_reward
 from projects.morel_mopo.algorithm.fake_envs import fake_env_utils as feutils
 from projects.morel_mopo.algorithm.fake_envs import fake_env_scenarios as fescenarios
+from projects.morel_mopo.algorithm.fake_envs.agent import ActorManager, HomogeneousActorGroup, AutopilotActor
 DIST = 0.5
 
 
@@ -78,14 +76,16 @@ class BaseFakeEnv(gym.Env):
                         config,
                         logger = None):
 
+        # Check if self.NEW_FIRST exists
+        if(not hasattr(self, 'NEW_FIRST')):
+            raise Exception("NEW_FIRST must be defined in the child class")
+
         # Save logger
         self.logger = logger
 
         # Save and verify config
         self.config = config
         self.config.verify()
-
-
 
         ################################################
         # Dynamics parameters
@@ -132,6 +132,27 @@ class BaseFakeEnv(gym.Env):
         self.state = feutils.NormalizedTensor(self.norm_stats["obs"]["mean"], self.norm_stats["obs"]["std"], self.device)
         self.past_action = feutils.NormalizedTensor(self.norm_stats["action"]["mean"], self.norm_stats["action"]["std"], self.device)
         self.deltas = feutils.NormalizedTensor(self.norm_stats["delta"]["mean"], self.norm_stats["delta"]["std"], self.device)
+        self.combined_state = feutils.NormalizedTensor(self.norm_stats["obs"]["mean"], self.norm_stats["obs"]["std"], self.device)
+        self.combined_past_action = feutils.NormalizedTensor(self.norm_stats["action"]["mean"], self.norm_stats["action"]["std"], self.device)
+        self.combined_deltas = feutils.NormalizedTensor(self.norm_stats["delta"]["mean"], self.norm_stats["delta"]["std"], self.device)
+
+        ################################################
+        # Actor Manager
+        ################################################
+        self.actor_manager = ActorManager(self.config,
+                                          self.frame_stack,
+                                          self.norm_stats,
+                                          self.NEW_FIRST,
+                                          self.device,
+                                        )
+        # Add an autopilot actor group to the actor manager
+        self.actor_manager.add_actor_group(
+            HomogeneousActorGroup(
+                AutopilotActor,
+                self.config
+            ),
+            1.0
+        )
 
         ################################################
         # MOPO hyperparameters
@@ -233,6 +254,13 @@ class BaseFakeEnv(gym.Env):
         else:
             self.npc_poses = self.npc_poses.to(self.device)
 
+        # Reset the actor_manager to instatiate the new agents
+        #TODO This does not currently inlcude the ego actor
+        # How do we handle that properly?
+        self.actor_states, \
+        self.actor_poses, \
+        self.actor_actions, \
+        self.actor_new_actions = self.actor_manager.reset(self.npc_poses)
 
         if(len(self.waypoints) == 2):
             self.second_last_waypoint = self.waypoints[0]
@@ -301,8 +329,6 @@ class BaseFakeEnv(gym.Env):
     def get_policy_obs(self, state):
         angle, \
         dist_to_trajectory, \
-        next_waypoints,\
-        _, _, \
         remaining_waypoints, \
         self.second_last_waypoint, \
         self.last_waypoint, \
@@ -312,6 +338,9 @@ class BaseFakeEnv(gym.Env):
                                                         second_last_waypoint = self.second_last_waypoint,
                                                         last_waypoint = self.last_waypoint,
                                                         previous_waypoint = self.previous_waypoint)
+              # next_waypoints,\
+        # _, _, \
+
 
         # convert to tensors
         self.waypoints = torch.FloatTensor(remaining_waypoints)
@@ -426,11 +455,37 @@ class BaseFakeEnv(gym.Env):
             if(not isinstance(new_action, torch.Tensor)):
                 new_action = torch.FloatTensor(new_action)
 
+            ### EGO ACTOR
             # clamp new action to safe range
-            #TODO Switch to using action space to clamp
+            ## TODO: Switch to using action space to clamp
             new_action = torch.squeeze(torch.clamp(new_action, -1, 1)).to(self.device)
 
+
             self.past_action.unnormalized = self.update_action(self.past_action, new_action)
+            ### EGO ACTOR
+
+            ### ACTOR MANAGER
+            # Clamp actions passed from actor manager
+            actor_new_actions = torch.clamp(
+                                    self.actor_new_actions,
+                                    -1, 1
+                                ).to(self.device)
+
+            # Update actions for actor manager
+            self.actor_actions.unnormalized = self.update_action(self.actor_actions,
+                                                                 actor_new_actions)
+            ### ACTOR MANAGER
+
+            # Combine state and actions from ego actor and actor manager
+            self.combined_state.unnormalized = torch.cat(
+                [self.state.unnormalized.unsqueeze(0), self.actor_states.unnormalized],
+                dim=0
+            )
+
+            self.combined_past_action.unnormalized = torch.cat(
+                [self.past_action.unnormalized.unsqueeze(0), self.actor_actions.unnormalized],
+                dim = 0
+            )
 
             ############ feed obs, action into dynamics model for prediction ##############
 
@@ -443,17 +498,45 @@ class BaseFakeEnv(gym.Env):
 
             # Delta: prediction from one randomly selected model
             # [Δx_t+1, Δy_t+1, Δtheta_t+1, Δspeed_t+1, Δsteer_t+1]
-            self.deltas.normalized = torch.clone(self.make_prediction(self.state, self.past_action))
+            self.combined_deltas.normalized = torch.clone(
+                self.make_prediction(
+                    self.combined_state,
+                    self.combined_past_action
+                )
+            )
+            self.deltas.unnormalized = self.combined_deltas.unnormalized[...,0,:]
 
-            # predicted change in x, y, th
-            delta_vehicle_poses = self.deltas.unnormalized[:,:3]
+
+
+            ############ feed obs, action into dynamics model for prediction ##############
+            # predicted change in x, y, theta
+            #TODO: This will only save the poses for the sampled model
+            # This is fine for execution, but not for visualization/debugging
+            # Need to find a way to print all poses
+            combined_delta_vehicle_poses = self.combined_deltas.unnormalized[self.model_idx, ...,:3]
 
 
             # change in steer, speed
-            delta_state        = self.deltas.unnormalized[self.model_idx,3:5]
+            #TODO Use the same model for all vehicles - might want to sample an array of idxs
+            combined_delta_state = self.combined_deltas.unnormalized[self.model_idx, ...,3:5]
+
+            # import ipdb; ipdb.set_trace()
+            combined_poses = torch.cat(
+                        [self.vehicle_pose.unsqueeze(0), self.actor_poses]
+                        , dim = 0
+                    )
 
             # update vehicle pose
-            vehicle_loc_delta = torch.transpose(torch.tensordot(feutils.rot(torch.deg2rad(self.vehicle_pose[2])).to(self.device), delta_vehicle_poses[:,0:2], dims = ([1], [1])), 0, 1)
+            # Compute the new vehicle pose for all vehicles
+            # combined_poses: [1 + num_npcs, 3]
+            # delta_vehicle_poses: [1 + num_npcs, 2]
+            # Output: [1 + num_npcs, 2]
+            combined_loc_delta = torch.squeeze(
+                    torch.bmm(
+                        feutils.rot(torch.deg2rad(combined_poses[:,2])),
+                        combined_delta_vehicle_poses[... ,0:2][...,None]
+                    )
+            )
 
             # print("FAKE DELTA: {:4f} {:4f} {:4f}".format(vehicle_loc_delta.squeeze()[0].cpu().item(),
             #                                             vehicle_loc_delta.squeeze()[1].cpu().item(),
@@ -461,21 +544,44 @@ class BaseFakeEnv(gym.Env):
             # print("FAKE TRANSFORMED: {:4f} {:4f} {:4f}".format(delta_vehicle_poses.squeeze()[0].cpu().item(),
             #                                             delta_vehicle_poses.squeeze()[1].cpu().item(),
             #                                             delta_vehicle_poses.squeeze()[2].cpu().item()))
+            combined_loc = combined_poses[:,0:2] + combined_loc_delta
+            combined_rot = combined_poses[:,2] + combined_delta_vehicle_poses[...,2]
+            combined_rot = torch.unsqueeze(combined_rot, dim = -1)
 
-            vehicle_loc = self.vehicle_pose[0:2] + vehicle_loc_delta
-            vehicle_rot = self.vehicle_pose[2] + delta_vehicle_poses[:,2]
-            vehicle_rot = torch.unsqueeze(vehicle_rot, dim = 1)
+            combined_poses = torch.cat([combined_loc, combined_rot], dim = -1)
 
-            vehicle_poses = torch.cat([vehicle_loc, vehicle_rot], dim = 1)
-            self.vehicle_pose = vehicle_poses[self.model_idx]
+            # Constrain theta to be between -180 and 180
+            combined_poses[combined_poses[...,2] < -180] += 360
+            combined_poses[combined_poses[...,2] > 180] -= 360
 
-            if(self.vehicle_pose[2] < -180):
-                self.vehicle_pose[2] += 360
-            elif(self.vehicle_pose[2] > 180):
-                self.vehicle_pose[2] -= 360
+            # Ego vehicle pose is the first pose in the combined poses
+            self.vehicle_pose = combined_poses[0]
 
-            # update next state
-            self.state.unnormalized = self.update_next_state(self.state, delta_state)
+            # Update ego vehicle state
+            self.state.unnormalized = self.update_next_state(self.state, combined_delta_state[0])
+
+            # Update NPC poses
+            self.actor_poses = combined_poses[1:]
+
+            # Update NPC states
+            self.actor_states.unnormalized = self.update_next_state(
+                                                    self.actor_states,
+                                                    combined_delta_state[1:]
+                                                )
+            # Pass data back to the actor manager, and get the next states/actions from it
+            #TODO: The actor manager just passes the states and actor poses through
+            # without actually updating them, do we need to pass them around like this???
+            #
+            self.actor_states, \
+            self.actor_poses, \
+            self.actor_actions, \
+            self.actor_new_actions = self.actor_manager.step(self.actor_states,
+                                                             self.actor_poses,
+                                                             self.actor_actions)
+
+
+            ############ feed obs, action into dynamics model for prediction ##############
+
 
             ###################### calculate waypoint features (in global frame)  ##############################
 
@@ -524,18 +630,16 @@ class BaseFakeEnv(gym.Env):
             # Policy input (unnormalized): dist_to_trajectory, next orientation, speed, steer
             # policy_input = torch.cat([dist_to_trajectory, angle, torch.flatten(self.state.unnormalized[0, :])], dim=0).float().to(self.device)
 
+            # TODO: predictions should return ALL pose predictions, but currently only keeps
+            # the sampled one
             info = {
                         "delta" : self.deltas.normalized[self.model_idx].cpu().numpy(),
                         "uncertain" : self.uncertainty_coeff * uncertain,
-                        "predictions": vehicle_poses.cpu().numpy(),
+                        "predictions": self.vehicle_pose.cpu().numpy(),
                         "num_remaining_waypoints" : len(self.waypoints),
                     }
 
             # Check done condition
-            # done = (success or
-                    # out_of_lane or
-                    # collision or
-                    # self.steps_elapsed >= len(self.npc_poses))
             done = (success or
                     out_of_lane or
                     front_collision or
@@ -569,7 +673,6 @@ class BaseFakeEnv(gym.Env):
             #         print(len(self.npc_poses))
 
             res = policy_obs.cpu().numpy(), float(reward_out.item()), done, info
-
 
             #Logging
             if(done and self.logger is not None):

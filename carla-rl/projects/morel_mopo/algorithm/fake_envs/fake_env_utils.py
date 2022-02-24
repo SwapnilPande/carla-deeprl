@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+from collections import deque
 
 class NormalizedTensor:
     def __init__(self, mean, std, device):
@@ -70,6 +71,14 @@ class NormalizedTensor:
 
         self._unnormalized_array = self.unnormalize_array(normalized_arr)
 
+    @property
+    def shape(self):
+        if(self._unnormalized_array is None):
+            return None
+
+        return self._unnormalized_array.shape
+
+
     def normalize_array(self, array):
         return (array - self.mean)/self.std
 
@@ -80,6 +89,12 @@ class NormalizedTensor:
     def __str__(self):
         return str(self._unnormalized_array)
 
+def normalized_tensor_like(tensor):
+    '''
+    Returns a normalized tensor with the same normalization parameters as the input tensor
+    '''
+
+    return NormalizedTensor(tensor.mean, tensor.std, tensor.device)
 
 def distance_vehicle(waypoint, vehicle_pose, device):
     '''
@@ -207,7 +222,7 @@ def check_if_waypoint_crossed(vehicle_pose, waypoint1, waypoint2, device):
     vehicle_vector = vehicle_pose[:2] - torch.tensor(waypoint1[0:2]).to(device)
 
     # Check if dot product is positive
-    return torch.dot(wp_vector, vehicle_vector) > 0
+    return torch.dot(wp_vector, vehicle_vector) >= 0
 
 
 def process_waypoints(waypoints, vehicle_pose, device, second_last_waypoint = None, last_waypoint = None, previous_waypoint = None):
@@ -235,8 +250,8 @@ def process_waypoints(waypoints, vehicle_pose, device, second_last_waypoint = No
     # Minimum distance to waypoint before we delete it
     # This number is taken from GlobalPlanner
     MIN_REMOVE_DISTANCE = 1.8
-
-    for i, waypoint in enumerate(waypoints):
+    # import ipdb; ipdb.set_trace()
+    for i, waypoint in enumerate(waypoints[:5]):
         # find wp that yields min dist between itself and car
         dist_i = distance_vehicle(waypoint, vehicle_pose, device)
         # print(f'wp {i},  {waypoint}, dist: {dist_i}')
@@ -255,6 +270,7 @@ def process_waypoints(waypoints, vehicle_pose, device, second_last_waypoint = No
     wp_len = len(waypoints)
     if(wp_len < 2 and second_last_waypoint is None):
         print("JUST AS I HAD SUSPECTED")
+        # import ipdb; ipdb.set_trace()
     if min_dist_index >= 0:
         # pop waypoints up until the one with min distance to vehicle
         for i in range(min_dist_index + 1):
@@ -270,14 +286,21 @@ def process_waypoints(waypoints, vehicle_pose, device, second_last_waypoint = No
 
     remaining_waypoints = waypoints
     # only keep next N waypoints
-    for i, waypoint in enumerate(waypoints[:num_next_waypoints]):
+    # for i, waypoint in enumerate(waypoints[:num_next_waypoints]):
+
+    def get_angles(waypoint):
         # dist to waypoint
         dot, angle, w_vec = get_dot_product_and_angle(vehicle_pose, waypoint, device)
 
-        # add back waypoints
-        next_waypoints_angles.append(angle)
-        next_waypoints.append(waypoint)
-        next_waypoints_vectors.append(w_vec)
+        return angle
+        # # add back waypoints
+        # next_waypoints_angles.append(angle)
+        # next_waypoints.append(waypoint)
+        # next_waypoints_vectors.append(w_vec)
+
+    next_waypoints_angles = [get_angles(waypoint) for waypoint in waypoints[:num_next_waypoints]]
+
+
 
     # get mean of all angles to figure out which direction to turn
     if len(next_waypoints_angles) > 0:
@@ -288,29 +311,29 @@ def process_waypoints(waypoints, vehicle_pose, device, second_last_waypoint = No
 
 
 
-    if len(next_waypoints) > 1:
+    if len(remaining_waypoints) > 1:
         if(previous_waypoint is not None):
             # get dist from vehicle to a line formed by the next two wps
             dist_to_trajectory = vehicle_to_line_distance(
                                     vehicle_pose,
                                     previous_waypoint,
-                                    next_waypoints[0],
+                                    remaining_waypoints[0],
                                     device)
         else:
             dist_to_trajectory = vehicle_to_line_distance(
                                     vehicle_pose,
-                                    next_waypoints[0],
-                                    next_waypoints[1],
+                                    remaining_waypoints[0],
+                                    remaining_waypoints[1],
                                     device)
 
 
     # if only one next waypoint, use it and second to last
-    elif len(next_waypoints) == 1:
+    elif len(remaining_waypoints) == 1:
         if second_last_waypoint:
             dist_to_trajectory = vehicle_to_line_distance(
                                     vehicle_pose,
                                     second_last_waypoint,
-                                    next_waypoints[0],
+                                    remaining_waypoints[0],
                                     device)
         else:
             print("CODE BROKE HERE UH OH _----------------------")
@@ -328,13 +351,33 @@ def process_waypoints(waypoints, vehicle_pose, device, second_last_waypoint = No
             print("CODE BROKE HERE UH OH _----------------------")
             dist_to_trajectory = 0.0
 
-    return angle, dist_to_trajectory, next_waypoints, next_waypoints_angles, next_waypoints_vectors, remaining_waypoints, second_last_waypoint, last_waypoint, previous_waypoint
+    return (angle,
+           dist_to_trajectory,
+        #    torch.tensor(next_waypoints),
+        #    next_waypoints_angles,
+        #    next_waypoints_vectors,
+           torch.tensor(remaining_waypoints),
+           second_last_waypoint,
+           last_waypoint,
+           previous_waypoint)
 
 
 
 def rot(theta):
-    R = torch.Tensor([[ torch.cos(theta), -torch.sin(theta)],
-                      [ torch.sin(theta), torch.cos(theta)]])
+
+    # Old implementation that could only take one theta as input
+    # R = torch.Tensor([[ torch.cos(theta), -torch.sin(theta)],
+    #                   [ torch.sin(theta), torch.cos(theta)]])
+    # New implementation that can take a list of thetas
+    # Returns a list of rot matrices
+    cos_theta = torch.cos(theta)
+    sin_theta = torch.sin(theta)
+
+    row1 = torch.stack([cos_theta, -sin_theta], dim=-1)
+    row2 = torch.stack([sin_theta,  cos_theta], dim=-1)
+
+    R = torch.stack([row1, row2], dim=-2)
+
     return R
 
 
@@ -370,14 +413,13 @@ def check_if_vehicle_in_same_lane(target_vehicle, next_waypoints, dist_to_trajec
     # Get the dist to trajectory for the target vehicle
     _, \
     dist_to_trajectory, \
-    _,\
-    _, _, \
     _, \
     _, \
     _, _ = process_waypoints(next_waypoints,
                                                     target_vehicle,
                                                     device)
-
+    #     _,\
+    # _, _, \
     if(not isinstance(dist_to_trajectory, torch.Tensor)):
         dist_to_trajectory = torch.Tensor([dist_to_trajectory]).to(device)
 
@@ -389,4 +431,97 @@ def check_if_vehicle_in_same_lane(target_vehicle, next_waypoints, dist_to_trajec
     return torch.abs(dist_to_trajectory) < dist_to_trajec_threshold
 
 
+def get_waypoints(vehicle_trajectory):
+    """Returns a sequence of waypoints constructed """
 
+    waypoints = []
+
+    # First, set the first waypoint to be the initial pose
+    waypoints.append(vehicle_trajectory[0, 0:2])
+
+    # Now, iterate through the rest of the poses and add them to the waypoints
+    cur_pose_idx = 1
+    while cur_pose_idx < len(vehicle_trajectory):
+        # Retrieve current pose and previous pose
+        cur_pose = vehicle_trajectory[cur_pose_idx, 0:2]
+        prev_waypoint = waypoints[-1]
+
+        # Compute distance between current pose and previous pose
+        dist = torch.norm(cur_pose - prev_waypoint)
+
+        if dist > 2:
+            # Now, compute how much past two meters we are
+            dist_past_two = dist - 2
+
+            # Do linear interpolation between the previous waypoint and the current pose to get the new waypoint
+            new_waypoint = prev_waypoint + (cur_pose - prev_waypoint) * (2 / dist)
+
+            # Add the new waypoint to the list of waypoints
+            waypoints.append(new_waypoint)
+
+        cur_pose_idx += 1
+
+
+    return torch.stack(waypoints, dim = 0)
+
+
+
+class PIDLateralController():
+    """
+    PIDLateralController implements lateral control using a PID.
+    """
+
+    def __init__(self, K_P=1.0, K_D=0.0, K_I=0.0, dt=0.03):
+        """
+        :param K_P: Proportional term
+        :param K_D: Differential term
+        :param K_I: Integral term
+        :param dt: time differential in seconds
+        """
+        self._K_P = K_P
+        self._K_D = K_D
+        self._K_I = K_I
+        self._dt = dt
+        self._e_buffer = deque(maxlen=10)
+
+    def pid_control(self, vehicle_pose, waypoint):
+        """
+        Estimate the steering angle of the vehicle based on the PID equations
+
+        :param waypoint: target waypoint
+        :param vehicle_transform: current transform of the vehicle
+        :return: steering control in the range [-1, 1]
+        """
+        v_begin = vehicle_pose[0:2]
+        theta = vehicle_pose[2]
+
+        v_end = v_begin + np.array([np.cos(np.radians(theta)),
+                                         np.sin(np.radians(theta))])
+
+        v_vec = np.array([v_end[0] - v_begin[0], v_end[1] - v_begin[1], 0.0])
+        w_vec = np.array([waypoint[0] -
+                          v_begin[0],
+                          waypoint[1] -
+                          v_begin[1], 0.0])
+        _dot = np.arccos(np.clip(np.dot(w_vec, v_vec) /
+                                 (np.linalg.norm(w_vec) * np.linalg.norm(v_vec)), -1.0, 1.0))
+
+        _cross = np.cross(v_vec, w_vec)
+        if _cross[2] < 0:
+            _dot *= -1.0
+
+        self._e_buffer.append(_dot)
+        if len(self._e_buffer) >= 2:
+            _de = (self._e_buffer[-1] - self._e_buffer[-2]) / self._dt
+            _ie = sum(self._e_buffer) * self._dt
+        else:
+            _de = 0.0
+            _ie = 0.0
+
+        output =  np.clip((self._K_P * _dot) + (self._K_D * _de /
+                                             self._dt) + (self._K_I * _ie * self._dt), -1.0, 1.0)
+
+        # if(np.isnan(output)):
+        #     import ipdb; ipdb.set_trace()
+
+        return output
