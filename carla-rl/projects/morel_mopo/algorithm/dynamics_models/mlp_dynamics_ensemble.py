@@ -8,6 +8,8 @@ import scipy.spatial
 import os
 from tqdm import tqdm
 
+from projects.morel_mopo.algorithm.dynamics_models.dynamics_base_classes import PredictionWrapper
+
 class DynamicsMLP(nn.Module):
     def __init__(self,
                 state_dim_in,
@@ -540,7 +542,33 @@ class MLPDynamicsEnsemble(nn.Module):
 
         return model
 
+    def get_prediction_wrapper(self, state_update_func):
+        return DeterministicMLPPredictionWrapper(self, state_update_func)
 
+
+class DeterministicMLPPredictionWrapper(PredictionWrapper):
+    """Extend PredictionWrapper to define the state update and action update functions
+
+    The DeterministicMLP accepts the frame stack with the newest time step first
+    """
+
+    def update_state(self, delta_state: torch.Tensor):
+        newest_state = self.states.unnormalized[..., 0, :] + delta_state
+
+        # insert newest state at front
+        self.states.unnormalized = torch.cat([newest_state.unsqueeze(-2), self.states.unnormalized[..., :-1, :]], dim=-2)
+
+    def update_action(self, new_action: torch.Tensor):
+        # insert new action at front, delete oldest action
+
+        try:
+            self.actions.unnormalized = torch.cat(
+                        [new_action.unsqueeze(-2),
+                        self.actions.unnormalized[..., :-1, :]],
+                        dim = -2
+                )
+        except:
+            import ipdb; ipdb.set_trace()
 
 
 
