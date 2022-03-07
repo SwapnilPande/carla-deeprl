@@ -176,7 +176,7 @@ class BaseFakeEnv(gym.Env):
             try:
                 self.npc_poses = torch.stack(npc_poses)
             except:
-                self.npc_poses = torch.empty(SAMPLE_STEPS, 0)
+                self.npc_poses = torch.empty(self.timeout_steps, 0)
 
             # Bring back traffic lights
             # try:
@@ -213,6 +213,7 @@ class BaseFakeEnv(gym.Env):
             # state only includes speed, steer
             self.state.unnormalized =  obs[:,:2]
             self.past_action.unnormalized = action
+            self.npc_poses = npc_poses
 
         self.waypoints = feutils.filter_waypoints(waypoints).to(self.device)
 
@@ -497,7 +498,7 @@ class BaseFakeEnv(gym.Env):
 
             out_of_lane = torch.abs(dist_to_trajectory) > DIST
 
-            success = len(self.waypoints) == 1
+            success = len(self.waypoints) <= 1 or (self.steps_elapsed >= len(self.npc_poses) - 1)
             reward_out = compute_reward(self.state.unnormalized[0], dist_to_trajectory, collision or out_of_lane, self.config)
 
             uncertain =  self.usad(self.deltas.normalized.detach().cpu().numpy())
@@ -538,8 +539,7 @@ class BaseFakeEnv(gym.Env):
             done = (success or
                     out_of_lane or
                     front_collision or
-                    side_collision or
-                    self.steps_elapsed >= len(self.npc_poses))
+                    side_collision)
 
 
             # If done, print the termination type

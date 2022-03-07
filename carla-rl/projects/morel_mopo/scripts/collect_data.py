@@ -133,7 +133,7 @@ class DataCollector():
 
         fname = '_'.join(map(lambda x: '%02d' % x, (now.month, now.day, now.hour, now.minute, now.second, salt)))
         save_path = os.path.join(self.path, fname)
-        # rgb_path = os.path.join(save_path, 'rgb')
+        rgb_path = os.path.join(save_path, 'rgb')
         # topdown_path = os.path.join(save_path, 'topdown')
         measurements_path = os.path.join(save_path, 'measurements')
         print("Saving measurements to: ", measurements_path)
@@ -174,7 +174,7 @@ class DataCollector():
             experience.update(info)
             # save as json
             if save_to_json:
-                # self.save_env_state(experience, save_path, step, topdown = topdown['sensor.camera.semantic_segmentation/top']['image'])
+                # self.save_env_state(experience, save_path, step, rgb = info['sensor.camera.rgb/top'])
                 self.save_env_state(experience, save_path, step)
             if done:
                 break
@@ -208,24 +208,27 @@ if __name__ == "__main__":
     parser.add_argument('--path', type=str)
     args = parser.parse_args()
 
-    def collect_data_fn(restart_interval):
-        data_collector = DataCollector()
+    # def collect_data_fn(restart_interval):
+    data_collector = DataCollector()
 
-        config = DefaultMainConfig()
-        config.populate_config(
-                observation_config = "VehicleDynamicsObstacleNoCameraConfig",
-                action_config = "MergedSpeedScaledTanhConfig",
-                reward_config = "Simple2RewardConfig",
-                scenario_config = "LeaderboardConfig",
-                testing = False,
-                carla_gpu = args.gpu
-            )
+    config = DefaultMainConfig()
+    config.populate_config(
+            observation_config = "VehicleDynamicsObstacleNoCameraConfig",
+            action_config = "MergedSpeedScaledTanhConfig",
+            reward_config = "Simple2RewardConfig",
+            scenario_config = "NoCrashDenseTown01Config",
+            carla_gpu = args.gpu,
+            render_server = False
+        )
+    # Set speed to 40 km/h
+    config.action_config.set_parameter("target_velocity", 40)
 
-        env = CarlaEnv(config = config)
+    # config.scenario_config.set_parameter("disable_traffic_light", True)
+    env = CarlaEnv(config = config)
 
-        policy = AutopilotNoisePolicy(env, 0.1, 0.1)
-        # policy = RandomPolicy(env)
+    policy = AutopilotNoisePolicy(env, 0.1, 0.1)
+    # policy = RandomPolicy(env)
 
-        data_collector.collect_data(env = env, policy = policy, path = args.path, n_samples = restart_interval, carla_gpu = args.gpu)
+    data_collector.collect_data(env = env, policy = policy, path = args.path, n_samples = args.n_samples, carla_gpu = args.gpu)
 
-    collect_data_restart_wrapper(collect_data_fn, args.n_samples, 200000)
+    # collect_data_restart_wrapper(collect_data_fn, args.n_samples, 200000)

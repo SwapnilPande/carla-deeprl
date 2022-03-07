@@ -18,6 +18,7 @@ class PretrainedDynamicsModelConfig(BaseConfig):
     def populate(self, key, name, gpu):
         self.key = key
         self.name = name
+        self.gpu = gpu
 
 class BaseMOPOConfig(BaseConfig):
     def __init__(self):
@@ -27,7 +28,7 @@ class BaseMOPOConfig(BaseConfig):
 
         ## Config for the dynamics model
         # If pretrained dynamics model is not None, we will load it from comet
-        self.pretrianed_dynamics_model = None
+        self.pretrained_dynamics_model = None
         # Else, we will train a new dynamics model using the dynamics_config passed
         self.dynamics_config = None
 
@@ -38,15 +39,18 @@ class BaseMOPOConfig(BaseConfig):
         self.policy_algorithm = None
 
     def populate_config(self, gpu = 0, policy_algorithm = "PPO", pretrained_dynamics_model_key = None, pretrained_dynamics_model_name = None):
-        self.gpu = 0
+        self.gpu = gpu
 
         # Setup dynamics config
         # Use pretrained model if available. Else, use the dynamics_config passed
         if(pretrained_dynamics_model_key is not None):
-            self.dynamics_config = NoneDefaultMLPObstaclesMOPOConfig
+            # self.dynamics_config = DefaultMLPObstaclesMOPOConfig()
             self.pretrained_dynamics_model = PretrainedDynamicsModelConfig()
             self.pretrained_dynamics_model.populate(key = pretrained_dynamics_model_key,
-                                                    name = pretrained_dynamics_model_name)
+                                                    name = pretrained_dynamics_model_name,
+                                                    gpu = gpu)
+
+            self.dynamics_config = None
 
         else:
             self.dynamics_config.populate_config(gpu = gpu)
@@ -56,7 +60,11 @@ class BaseMOPOConfig(BaseConfig):
 
         self.policy_algorithm = getattr(stable_baselines3, policy_algorithm)
 
-        self.verify()
+        if(pretrained_dynamics_model_key is not None):
+            ignore_keys = ["dynamics_config"]
+        else:
+            ignore_keys = ["pretrained_dynamics_model_config"]
+        self.verify(ignore_keys = ignore_keys)
 
 
 class DefaultMLPMOPOConfig(BaseMOPOConfig):
@@ -65,7 +73,7 @@ class DefaultMLPMOPOConfig(BaseMOPOConfig):
 
         self.dynamics_config = dynamics_config.DefaultMLPDynamicsConfig()
 
-        self.fake_env_config = fake_env_config.DefaultFakeEnvConfig()
+        self.fake_env_config = fake_env_config.NoTimeoutFakeEnvConfig()
 
         self.fake_env_config.populate_config(
             observation_config = "VehicleDynamicsNoCameraConfig",
@@ -89,7 +97,7 @@ class DefaultMLPObstaclesMOPOConfig(BaseMOPOConfig):
 
         self.dynamics_config = dynamics_config.ObstaclesMLPDynamicsConfig()
 
-        self.fake_env_config = fake_env_config.DefaultFakeEnvConfig()
+        self.fake_env_config = fake_env_config.NoTimeoutFakeEnvConfig()
 
         self.fake_env_config.populate_config(
             observation_config = "VehicleDynamicsObstacleNoCameraConfig",
@@ -103,10 +111,10 @@ class DefaultMLPObstaclesMOPOConfig(BaseMOPOConfig):
             action_config = "MergedSpeedScaledTanhConfig",
             reward_config = "Simple2RewardConfig",
             scenario_config = "NoCrashDenseTown01Config",
-            testing = False,
             carla_gpu = self.gpu
         )
-
+        # Disable traffic lights
+        self.eval_env_config.scenario_config.set_parameter("disable_traffic_light", True)
 class DefaultProbMLPMOPOConfig(BaseMOPOConfig):
     def __init__(self):
         super().__init__()

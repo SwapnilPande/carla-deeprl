@@ -46,6 +46,21 @@ class WaypointModule():
     def get_waypoints(self, idx):
         return self.waypoints[idx]
 
+class TrafficLightModule():
+    ''' init waypoints '''
+    def __init__(self):
+        self.traffic_light_locs = []
+        self.traffic_light_states = []
+    def store_waypoints(self, loc, state):
+        self.traffic_light_locs.append(loc)
+        self.traffic_light_states.append(state)
+    def get_traffic_light(self, idx):
+        # Return poses if idx is valid
+        if(idx < len(self.traffic_light_locs)):
+            return self.traffic_light_locs  [idx : idx + rollout_len], self.traffic_light_states[idx : idx + rollout_len]
+
+        return None, None
+
 class NPCModule():
     ''' init waypoints '''
     def __init__(self):
@@ -107,6 +122,7 @@ class OfflineCarlaDataset(Dataset):
 
         self.waypoint_module = WaypointModule()
         self.npc_module = NPCModule()
+        self.traffic_light_module = TrafficLightModule()
 
         # Keys to accesss values in the dataset
         steer_key = "steer_angle"
@@ -119,6 +135,8 @@ class OfflineCarlaDataset(Dataset):
         done_key = "done"
         action_key = "action"
         npc_pose_key = "npc_poses"
+        traffic_light_loc_key = "nearest_traffic_actor_location"
+        traffic_light_state_key = "nearest_traffic_light_state"
 
         print("Loading data from: {}".format(path))
         # Don't calculate gradients for descriptive statistics
@@ -217,6 +235,18 @@ class OfflineCarlaDataset(Dataset):
                     waypoints = torch.FloatTensor(samples[i][waypoints_key])
                     self.waypoint_module.store_waypoints(waypoints)
 
+                    # if(traffic_light_loc_key in samples[i] and samples[i][traffic_light_loc_key] is not None):
+                    #     traffic_light_loc = torch.FloatTensor(samples[i][traffic_light_loc_key])
+                    #     traffic_light_state = samples[i][traffic_light_state_key]
+                    #     if(traffic_light_state == "Green"):
+                    #         self.traffic_light_state = torch.FLoatTensor([0])
+                    #     else:
+                    #         self.traffic_light_state = torch.FLoatTensor([1])
+                    #     self.traffic_light_module.store_traffic_light_loc(traffic_light_loc, traffic_light_state)
+
+                    # else:
+                    #     self.traffic_light_module.store_traffic_light_loc(torch.FloatTensor(([-1,-1])), 0)
+
                     # get npc poses for current timestep
                     if(npc_pose_key in samples[i]):
                         npc_poses = torch.FloatTensor(samples[i][npc_pose_key])
@@ -264,7 +294,10 @@ class OfflineCarlaDataset(Dataset):
 
     ''' randomly sample from dataset '''
     def sample_with_waypoints(self, idx, rollout_len):
-        return self[idx], self.waypoint_module.get_waypoints(idx), self.npc_module.get_poses(idx, rollout_len)
+        # traffic_light_loc, traffic_light_state = self.traffic_light_module.get_traffic_light(idx, rollout_len)
+        return (self[idx],
+                self.waypoint_module.get_waypoints(idx),
+                self.npc_module.get_poses(idx, rollout_len))
 
 
 class OfflineCarlaDataModule():
@@ -281,19 +314,23 @@ class OfflineCarlaDataModule():
         self.datasets = None
         self.train_data = None
         self.val_data = None
-        self.normalization_stats = {
-            "obs": None,
-            "additional_state" : None,
-            "delta" : None,
-            "action" : None
-        }
+        if(hasattr(cfg, "normalization_stats")):
+            self.normalization_stats = cfg.normalization_stats
+        else:
+            self.normalization_stats = {
+                "obs": None,
+                "additional_state" : None,
+                "delta" : None,
+                "action" : None
+            }
+
+        self.new_paths = []
     # Updates dataset with newly-collected trajectories saved to new_path
     def update(self, new_path):
         self.setup(new_path)
 
 
     def setup(self, new_path = None):
-
         # Create a dataset for each trajectory
         print('DATAMODULES SETUP: self.paths', self.paths)
 
@@ -301,9 +338,15 @@ class OfflineCarlaDataModule():
         # If new_path passed in, simply add newly collected data to existing datasets
         if new_path is not None:
             # import pdb; pdb.set_trace();
-
+            self.new_paths.append(new_path)
             self.datasets.append(OfflineCarlaDataset(path=new_path, frame_stack=self.frame_stack))
+            self.datasets[-1].obs= (self.datasets[-1].obs - self.normalization_stats["obs"]["mean"]) / self.normalization_stats["obs"]["std"]
+            # self.datasets[i].additional_state = (self.datasets[i].additional_state - self.normalization_stats["additional_state"]["mean"]) / self.normalization_stats["additional_state"]["std"]
+            self.datasets[-1].actions =  (self.datasets[-1].actions - self.normalization_stats["action"]["mean"]) / self.normalization_stats["action"]["std"]
+            self.datasets[-1].delta = (self.datasets[-1].delta - self.normalization_stats["delta"]["mean"]) / self.normalization_stats["delta"]["std"]
             self.num_paths += 1
+
+            self.new_data = torch.utils.data.ConcatDataset(self.datasets[-1 * self.num_new_paths:])
         else:
             self.datasets = [OfflineCarlaDataset(path=path, frame_stack=self.frame_stack) for path in self.paths]
 
@@ -377,12 +420,17 @@ class OfflineCarlaDataModule():
 
 
     ''' This is used for dynamics training (no waypoint input needed, batch size set)'''
-    def train_dataloader(self, weighted = True, batch_size_override = None):
-        weights = torch.ones(size = (len(self.train_data),))
+    def train_dataloader(self, weighted = True, batch_size_override = None, only_new_datasets = False):
+        if only_new_datasets:
+            dataset = self.new_data
+        else:
+            dataset = self.train_data
+
+        weights = torch.ones(size = (len(dataset),))
         sampler = None
         if(weighted):
-            for i in tqdm(range(len(self.train_data))):
-                _, _, _, delta, _, _ = self.train_data[i]
+            for i in tqdm(range(len(dataset))):
+                _, _, _, delta, _, _ = dataset[i]
                 weight = torch.sqrt(torch.square(delta[...,3]) + torch.square(delta[...,4]))
                 weights[i] = weights[i] + weight
 
@@ -404,7 +452,7 @@ class OfflineCarlaDataModule():
         else:
             batch_size = batch_size_override
 
-        return DataLoader(self.train_data,
+        return DataLoader(dataset,
                             batch_size=batch_size,
                             num_workers=self.num_workers,
                             sampler = sampler)

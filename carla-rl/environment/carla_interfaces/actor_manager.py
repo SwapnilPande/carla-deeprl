@@ -43,12 +43,7 @@ class ActorManager910():
         ################################################
         self.spawn_points = self.world.get_map().get_spawn_points()
         # Only randomize order of spawn points if testing
-        if self.config.testing:
-            self.spawn_points_fixed_order =  [self.spawn_points[i] for i in self.config.spawn_points_fixed_idx]
-        else:
-            spawn_pt_idx = np.random.permutation(len(self.spawn_points))
-            # np.save(os.path.join(log_dir, "spawn_pt_order"), spawn_pt_idx)
-            self.spawn_points_fixed_order =  [self.spawn_points[i] for i in spawn_pt_idx]
+
 
         ################################################
         # Blueprints
@@ -69,6 +64,13 @@ class ActorManager910():
         self.actor_list = []
 
     def spawn(self, source_transform, unseen):
+        # Set spawn points correctly depending on whether we are using validation or training routes
+        # if unseen:
+        #     self.spawn_points_fixed_order =  [self.spawn_points[i] for i in self.config.spawn_points_fixed_idx]
+        # else:
+        spawn_pt_idx = np.random.permutation(len(self.spawn_points))
+        # np.save(os.path.join(log_dir, "spawn_pt_order"), spawn_pt_idx)
+        self.spawn_points_fixed_order =  [self.spawn_points[i] for i in spawn_pt_idx]
 
         # Parameters for ego vehicle
         self.ego_vehicle = self.spawn_ego_vehicle(source_transform)

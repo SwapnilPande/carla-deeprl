@@ -18,6 +18,7 @@ def main(args):
     ########################################## logger  ####################################
 
     logger_conf = CometLoggerConfig()
+    # logger_conf.disable = True
     logger_conf.populate(experiment_name = args.exp_name, tags = ["MOPO", "uncertainty_sweep"])
     logger = CometLogger(logger_conf)
 

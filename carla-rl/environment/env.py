@@ -836,14 +836,14 @@ class CarlaEnv(gym.Env):
                 obstacle_speed = self.config.obs_config.default_obs_traffic_val
 
             if light != -1:
-                light /= 20.0
+                light /= 25.0
             else:
                 light = self.config.obs_config.default_obs_traffic_val
 
             # We see both an obstacle and the light
             if(light != self.config.obs_config.default_obs_traffic_val):
                 unnorm_obs_dist = obstacle_dist * self.config.obs_config.vehicle_proximity_threshold
-                unnorm_light = light * 20
+                unnorm_light = light * 25
 
                 # If the light is further do nothing
                 if(obstacle_dist != self.config.obs_config.default_obs_traffic_val and unnorm_light > unnorm_obs_dist):
@@ -1022,7 +1022,7 @@ class CarlaEnv(gym.Env):
         self.episode_measurements['initial_dist_to_red_light'] = -1
 
 
-        self.episode_measurements["autopilot_action"] = np.array(carla_obs.get("autopilot_action")
+        self.episode_measurements["autopilot_action"] = np.array(carla_obs.get("autopilot_action"))
 
         # TODO: fix bug with no sensor_image. empty image for now
         # x_res = int(self.config["sensor_x_res"])
