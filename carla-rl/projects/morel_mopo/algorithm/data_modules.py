@@ -8,6 +8,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader, IterableDataset
 from tqdm import tqdm
+from typing import Tuple
 
 """
 Offline dataset handling
@@ -100,7 +101,7 @@ class NPCModule():
         """Initializes a new trajectory."""
         self.pose_sequence.append([])
 
-    def get_poses(self, idx, rollout_len):
+    def get_poses(self, idx, rollout_len) -> torch.Tensor:
         """Returns the sequence of poses of all NPCs in the dataset, for the remaining length of the trajectory.
 
         If rollout_len is greater than the remaining length of the trajectory, the remaining poses will be returned. Else, the poses will be
@@ -343,11 +344,10 @@ class OfflineCarlaDataset(Dataset):
         return len(self.rewards)
 
     ''' randomly sample from dataset '''
-    def sample_with_waypoints(self, idx, rollout_len):
-        # traffic_light_loc, traffic_light_state = self.traffic_light_module.get_traffic_light(idx, rollout_len)
-        return (self[idx],
-                self.waypoint_module.get_waypoints(idx),
-                self.npc_module.get_poses(idx, rollout_len))
+    def sample_with_waypoints(self, idx, rollout_len) -> Tuple[Tuple[
+        torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor,
+        torch.Tensor, torch.Tensor], torch.Tensor, torch.Tensor]:
+        return self[idx], self.waypoint_module.get_waypoints(idx), self.npc_module.get_poses(idx, rollout_len)
 
 
 class OfflineCarlaDataModule():
