@@ -2,6 +2,7 @@ import numpy as np
 from tqdm import tqdm
 import scipy.spatial
 from collections import deque
+import itertools
 
 import torch
 import gym
@@ -11,7 +12,7 @@ from gym.spaces import Box, Discrete, Tuple
 from projects.morel_mopo.algorithm.reward import compute_reward
 from projects.morel_mopo.algorithm.fake_envs import fake_env_utils as feutils
 from projects.morel_mopo.algorithm.fake_envs import fake_env_scenarios as fescenarios
-from projects.morel_mopo.algorithm.fake_envs.agent import ActorManager, HomogeneousActorGroup, AutopilotActor
+from projects.morel_mopo.algorithm.fake_envs.agent import ActorManager
 DIST = 0.5
 
 
@@ -76,10 +77,6 @@ class BaseFakeEnv(gym.Env):
                         config,
                         logger = None):
 
-        # Check if self.NEW_FIRST exists
-        if(not hasattr(self, 'NEW_FIRST')):
-            raise Exception("NEW_FIRST must be defined in the child class")
-
         # Save logger
         self.logger = logger
 
@@ -101,7 +98,7 @@ class BaseFakeEnv(gym.Env):
         self.input_dim = self.dynamics.state_dim_in
         self.output_dim = self.dynamics.state_dim_out
         self.action_dim = self.dynamics.action_dim
-        print(f'Input dim: {self.input_dim}, Output dim: {self.output_dim}')
+        print(f'Input dim: {self.input_dim}, Output dim : {self.output_dim}')
 
         ################################################
         # Creating Action and Observation spaces
@@ -109,50 +106,22 @@ class BaseFakeEnv(gym.Env):
         self.action_space = self.config.action_config.action_space
         self.observation_space = self.config.obs_config.observation_space
 
-        self.state = None
-        self.vehicle_pose = None
-        self.waypoints = None
-
         ################################################
         # Dataset comes from dynamics
         ################################################
-        # Get norm stats and frame_stack from dynamics
-        # This will be the same as the norm stats from the original dataset, on which the dynamics model was trained
-        self.norm_stats = self.dynamics.normalization_stats
-        self.frame_stack = self.dynamics.frame_stack
-
+        ## Testing a handcrafted scenario
         # self.offline_data_module = fescenarios.StraightWithStaticObstacle(self.frame_stack, self.norm_stats)#self.dynamics.data_module
         self.offline_data_module = self.dynamics.data_module
         if(self.offline_data_module is None):
             print("FAKE_ENV: Data module does not have associated dataset. Reset must be called with an initial state input.")
 
         ################################################
-        # State variables for the fake env
-        ################################################
-        self.state = feutils.NormalizedTensor(self.norm_stats["obs"]["mean"], self.norm_stats["obs"]["std"], self.device)
-        self.past_action = feutils.NormalizedTensor(self.norm_stats["action"]["mean"], self.norm_stats["action"]["std"], self.device)
-        self.deltas = feutils.NormalizedTensor(self.norm_stats["delta"]["mean"], self.norm_stats["delta"]["std"], self.device)
-        self.combined_state = feutils.NormalizedTensor(self.norm_stats["obs"]["mean"], self.norm_stats["obs"]["std"], self.device)
-        self.combined_past_action = feutils.NormalizedTensor(self.norm_stats["action"]["mean"], self.norm_stats["action"]["std"], self.device)
-        self.combined_deltas = feutils.NormalizedTensor(self.norm_stats["delta"]["mean"], self.norm_stats["delta"]["std"], self.device)
-
-        ################################################
         # Actor Manager
         ################################################
         self.actor_manager = ActorManager(self.config,
-                                          self.frame_stack,
-                                          self.norm_stats,
-                                          self.NEW_FIRST,
+                                          self.dynamics,
                                           self.device,
                                         )
-        # Add an autopilot actor group to the actor manager
-        self.actor_manager.add_actor_group(
-            HomogeneousActorGroup(
-                AutopilotActor,
-                self.config
-            ),
-            1.0
-        )
 
         ################################################
         # MOPO hyperparameters
@@ -182,22 +151,20 @@ class BaseFakeEnv(gym.Env):
     def sample(self):
         return self.offline_data_module.sample_with_waypoints(self.timeout_steps)
 
-    ''' Resets environment. If no input is passed in, sample from dataset '''
+
     def reset(self, inp=None):
+        ''' Resets environment. If no input is passed in, sample from dataset '''
 
         self.test = False
         # print("FAKE_ENV: Resetting environment...\n")
 
         if inp is None:
+            # Raise error if no dataset is loaded AND no input is passed
             if(self.offline_data_module is None):
                 raise Exception("FAKE_ENV: Cannot sample from dataset since dynamics model does not have associated dataset.")
-            ((obs, action, _, _, _, vehicle_pose), waypoints, npc_poses) = self.sample()
-            self.state.normalized = obs[:,:2]
-            self.past_action.normalized = action
-            try:
-                self.npc_poses = torch.stack(npc_poses)
-            except:
-                self.npc_poses = torch.empty(self.timeout_steps, 0)
+
+            # Draw a sample from the dataset
+            ((obs, action, _, _, _, ego_pose), waypoints, npc_poses) = self.sample()
 
             # Bring back traffic lights
             # try:
@@ -209,95 +176,68 @@ class BaseFakeEnv(gym.Env):
             #     self.traffic_light_states = torch.empty(SAMPLE_STEPS, 0)
 
         else:
-            (obs, action, vehicle_pose, waypoints, npc_poses) = inp
+            (obs, action, ego_pose, waypoints, npc_poses) = inp
 
-            # Convert numpy arrays, or lists, to torch tensors
-            if(not isinstance(obs, torch.Tensor)):
-                obs = torch.FloatTensor(obs)
+        # Convert numpy arrays, or lists, to torch tensors
+        obs = feutils.tensorify(obs, self.device)
+        action = feutils.tensorify(action, self.device)
+        ego_pose = feutils.tensorify(ego_pose, self.device)
+        waypoints = feutils.tensorify(waypoints, self.device)
+        npc_poses = feutils.tensorify(npc_poses, self.device)
 
-            # Convert numpy arrays, or lists, to torch tensors
-            if(not isinstance(action, torch.Tensor)):
-                action = torch.FloatTensor(action)
+        # This removes duplicate waypoints from the waypoints list'
+        # TODO Revisit this - shouldn't be needed
+        waypoints = feutils.filter_waypoints(waypoints).to(self.device)
 
-            # Convert numpy arrays, or lists, to torch tensors
-            if(not isinstance(vehicle_pose, torch.Tensor)):
-                vehicle_pose = torch.FloatTensor(vehicle_pose)
-
-            # Convert numpy arrays, or lists, to torch tensors
-            if(not isinstance(waypoints, torch.Tensor)):
-                waypoints = torch.FloatTensor(waypoints)
-
-            # Convert numpy arrays, or lists, to torch tensors
-            if(not isinstance(waypoints, torch.Tensor)):
-                waypoints = torch.FloatTensor(waypoints)
-
-            # state only includes speed, steer
-            self.state.unnormalized =  obs[:,:2]
-            self.past_action.unnormalized = action
-            self.npc_poses = npc_poses
-
-        self.waypoints = feutils.filter_waypoints(waypoints).to(self.device)
-
-        if(not isinstance(self.npc_poses, torch.Tensor)):
-            self.npc_poses = torch.Tensor(self.npc_poses).to(self.device)
-        remove_indices = []
-        # Loop over all poses at the first time step
-        for i in range(self.npc_poses.shape[1]):
-            if(torch.all(self.npc_poses[0,i] == torch.zeros(self.npc_poses[0,i].shape)).to(self.device)):
-                remove_indices.append(i)
-                # print(f"Removing {i}\t {self.npc_poses[0,i]}")
-        if(len(remove_indices) > 0):
-            remove_mask = np.ones(self.npc_poses.shape[1], dtype=bool)
-            remove_mask[remove_indices] = False
-            self.npc_poses = self.npc_poses[:, remove_mask, :]
-            self.npc_poses = self.npc_poses.to(self.device)
-        else:
-            self.npc_poses = self.npc_poses.to(self.device)
+        ## Remove any actors located at (0,0)
+        npc_poses = feutils.remove_bad_actors(npc_poses)
 
         # Reset the actor_manager to instatiate the new agents
-        #TODO This does not currently inlcude the ego actor
-        # How do we handle that properly?
-        self.actor_states, \
-        self.actor_poses, \
-        self.actor_actions, \
-        self.actor_new_actions = self.actor_manager.reset(self.npc_poses)
+        self.actor_manager_state = self.actor_manager.reset(
+            ego_pose,
+            obs,
+            action,
+            waypoints,
+            npc_poses
+        )
 
-        if(len(self.waypoints) == 2):
-            self.second_last_waypoint = self.waypoints[0]
-            self.last_waypoint = self.waypoints[1]
-        else:
-            self.second_last_waypoint = None
+        self.num_actors = self.actor_manager.num_actors
 
-        if(len(self.waypoints) == 1):
-            self.last_waypoint = self.waypoints[0]
-        else:
-            self.last_waypoint = None
-        self.previous_waypoint = None
+        # Save these in separate variables for easy access
+        self.speeds = self.actor_manager_state['speeds']
+        self.steers = self.actor_manager_state['steers']
+        self.poses = self.actor_manager_state['poses']
+        self.waypoints = self.actor_manager_state['waypoints']
 
+        # TODO: Add handling of the last few waypoints back
+        # if(len(self.waypoints) == 2):
+        #     self.second_last_waypoint = self.waypoints[0]
+        #     self.last_waypoint = self.waypoints[1]
+        # else:
+        #     self.second_last_waypoint = None
+
+        # if(len(self.waypoints) == 1):
+        #     self.last_waypoint = self.waypoints[0]
+        # else:
+        #     self.last_waypoint = None
+        # self.previous_waypoint = None
+
+        # TODO: Add traffic lights back
         # self.traffic_light_locs = self.traffic_light_locs.to(self.device)
         # self.traffic_light_states = self.traffic_light_states.to(self.device)
-
-        self.vehicle_pose = vehicle_pose.to(self.device)
 
         self.steps_elapsed = 0
         self.episode_uncertainty = 0
 
-        self.model_idx = np.random.choice(self.dynamics.n_models)
-        # Reset hidden state
+        # Return policy observation for all actors
+        return self.get_policy_obs().cpu().numpy()
 
-        #TODO Return policy features, not dynamics features
-        policy_obs, _, _ = self.get_policy_obs(self.state.unnormalized[0])
-
-
-        return policy_obs.cpu().numpy()
-
-    def get_current_state(self):
-        return (self.state.unnormalized,
-                self.past_action.unnormalized,
-                self.vehicle_pose,
-                self.waypoints,
-                self.npc_poses)
-
+    # def get_current_state(self):
+    #     return (self.state.unnormalized,
+    #             self.past_action.unnormalized,
+    #             self.vehicle_pose,
+    #             self.waypoints,
+    #             self.npc_poses)
 
     def calc_disc(self, predictions):
         # Compute the pairwise distances between all predictions
@@ -311,52 +251,38 @@ class BaseFakeEnv(gym.Env):
         # If maximum is greater than threshold, return true
         return np.amax(self.calc_disc(predictions))
 
-
-    '''
-    Updates state vector according to dynamics prediction
-    # @params: delta      [Δspeed, Δsteer]
-    # @return new state:  [[speed_t+1, steer_t+1], [speed_t, steer_t], speed_t-1, steer_t-1]]
-    '''
-    def update_next_state(self, past_state, delta_state):
-        raise NotImplementedError
-
-    def update_action(self, prev_action, new_action):
-        raise NotImplementedError
-
-    def make_prediction(self, past_state, past_action):
-        raise NotImplementedError
-
-    def get_policy_obs(self, state):
+    def get_policy_obs_single_actor(self, agent_idx) -> torch.Tensor:
         angle, \
         dist_to_trajectory, \
         remaining_waypoints, \
         self.second_last_waypoint, \
         self.last_waypoint, \
-        self.previous_waypoint = feutils.process_waypoints(self.waypoints,
-                                                        self.vehicle_pose,
-                                                        self.device,
-                                                        second_last_waypoint = self.second_last_waypoint,
-                                                        last_waypoint = self.last_waypoint,
-                                                        previous_waypoint = self.previous_waypoint)
+        self.previous_waypoint = feutils.process_waypoints(self.waypoints[agent_idx],
+                                                        self.poses[agent_idx],
+                                                        self.device)
+        #TODO: Fix handling of waypoints at the end of the route
+
+                                 #                       second_last_waypoint = self.second_last_waypoint,
+                                  #                      last_waypoint = self.last_waypoint,
+                                                        #previous_waypoint = self.previous_waypoint)
               # next_waypoints,\
         # _, _, \
 
 
         # convert to tensors
-        self.waypoints = torch.FloatTensor(remaining_waypoints)
+        self.waypoints[agent_idx] = torch.FloatTensor(remaining_waypoints)
         dist_to_trajectory = torch.Tensor([dist_to_trajectory]).to(self.device)
         angle              = torch.Tensor([angle]).to(self.device)
 
 
         if(self.config.obs_config.input_type == "wp_obs_info_speed_steer"):
-            return torch.cat([angle, state[1:2] / 10, state[0:1], dist_to_trajectory], dim=0).float().to(self.device), dist_to_trajectory, angle
+            return torch.cat([angle, self.speeds[agent_idx] / 10, self.steers[agent_idx], dist_to_trajectory], dim=0).float().to(self.device)#, dist_to_trajectory, angle
 
 
 
         elif(self.config.obs_config.input_type == "wp_obstacle_speed_steer"):
             #TODO Check config here
-            cur_npc_poses = self.npc_poses[self.steps_elapsed]
-            obstacle_dist, obstacle_vel = self.get_obstacle_states(cur_npc_poses, self.waypoints)
+            obstacle_dist, obstacle_vel = self.get_obstacle_states(agent_idx)
             if(obstacle_dist == -1):
                 obstacle_dist = 1
                 obstacle_vel = 1
@@ -364,11 +290,10 @@ class BaseFakeEnv(gym.Env):
                 obstacle_dist /= self.config.obs_config.vehicle_proximity_threshold
                 obstacle_vel /= 20
 
-            return torch.cat([angle, state[1:2] / 10, state[0:1], dist_to_trajectory, torch.tensor([obstacle_dist]).to(self.device), torch.tensor([obstacle_vel]).to(self.device)], dim=0).float().to(self.device), dist_to_trajectory, angle
+            return torch.cat([angle, self.speeds[agent_idx] / 10, self.steers[agent_idx], dist_to_trajectory, torch.tensor([obstacle_dist]).to(self.device), torch.tensor([obstacle_vel]).to(self.device)], dim=0).float().to(self.device)#dist_to_trajectory, angle
 
         elif(self.config.obs_config.input_type == "wp_obstacle_speed_steer"):
-            cur_npc_poses = self.npc_poses[self.steps_elapsed]
-            obstacle_dist, obstacle_vel = self.get_obstacle_states(cur_npc_poses, self.waypoints)
+            obstacle_dist, obstacle_vel = self.get_obstacle_states(agent_idx)
             if(obstacle_dist == -1):
                 obstacle_dist = 1
                 obstacle_vel = 1
@@ -376,9 +301,16 @@ class BaseFakeEnv(gym.Env):
                 obstacle_dist /= self.config.obs_config.vehicle_proximity_threshold
                 obstacle_vel /= 20
 
-            return torch.cat([angle, state[1:2] / 10, state[0:1], dist_to_trajectory, torch.tensor([obstacle_dist]).to(self.device), torch.tensor([obstacle_vel]).to(self.device)], dim=0).float().to(self.device), dist_to_trajectory, angle
+            return torch.cat([angle, self.speeds[agent_idx] / 10, self.steers[agent_idx], dist_to_trajectory, torch.tensor([obstacle_dist]).to(self.device), torch.tensor([obstacle_vel]).to(self.device)], dim=0).float().to(self.device) #dist_to_trajectory, angle
 
-    def check_collision(self, other_vehicle_pose):
+        # Only for type hints to be happy
+        return torch.Tensor()
+
+    def get_policy_obs(self) -> torch.tensor:
+        test = [self.get_policy_obs_single_actor(i).cpu().numpy() for i in range(self.num_actors)]
+        return torch.stack([self.get_policy_obs_single_actor(i) for i in range(self.num_actors)])
+
+    def check_collision(self, actor_1_pose, actor_2_pose):
         # This is cos(theta) from the centroid of our vehicle to one of the corners
         # any value larger than this signifies that the vehicle collision would be with the front of the car
         # any value smaller than this signifies that the vehicle collision would be with the back of the car
@@ -388,24 +320,31 @@ class BaseFakeEnv(gym.Env):
         side_collision_threshold = 2 # meters
 
         # Vector for current heading of vehicle
-        heading_vector = torch.tensor([torch.cos(torch.deg2rad(self.vehicle_pose[2])), torch.sin(torch.deg2rad(self.vehicle_pose[2]))]).to(self.device)
+        heading_vector_actor_1 = torch.tensor([torch.cos(torch.deg2rad(actor_1_pose[2])), torch.sin(torch.deg2rad(actor_1_pose[2]))]).to(self.device)
+        heading_vector_actor_2 = torch.tensor([torch.cos(torch.deg2rad(actor_2_pose[2])), torch.sin(torch.deg2rad(actor_2_pose[2]))]).to(self.device)
 
-        # Vector between the other vehicle and our vehicle
-        vec_to_other_vehicle = other_vehicle_pose[0:2] - self.vehicle_pose[0:2]
+        vec_to_other_vehicle_actor_1 = actor_2_pose[0:2] - actor_1_pose[0:2]
+        vec_to_other_vehicle_actor_2 = -vec_to_other_vehicle_actor_1
 
         # Calculate normalized dot product - heading vector is a unit vector, so don't need to divide by that
-        norm_dot = torch.dot(heading_vector, vec_to_other_vehicle) / torch.norm(vec_to_other_vehicle)
+        norm_dot_actor_1 = torch.dot(heading_vector_actor_1, vec_to_other_vehicle_actor_1) / torch.norm(vec_to_other_vehicle_actor_1)
+        norm_dot_actor_2 = torch.dot(heading_vector_actor_2, vec_to_other_vehicle_actor_2) / torch.norm(vec_to_other_vehicle_actor_2)
+
+        # Compute collision threshold based on heading of vehicle
+        if(torch.abs(norm_dot_actor_1) > car_corner_angle and torch.abs(norm_dot_actor_2) > car_corner_angle):
+            collision_threshold = front_collision_threshold
+        elif(torch.abs(norm_dot_actor_1) > car_corner_angle or torch.abs(norm_dot_actor_2) > car_corner_angle):
+            collision_threshold = side_collision_threshold
+        else: # Both are colliding on the side
+            collision_threshold = side_collision_threshold
+
+        # Vector between the other vehicle and our vehicle
+        vec_to_other_vehicle = actor_2_pose[0:2] - actor_1_pose[0:2]
+
+        return torch.norm(vec_to_other_vehicle) < collision_threshold
 
 
-        if(norm_dot > car_corner_angle):
-            front_collision = torch.norm(vec_to_other_vehicle) < front_collision_threshold
-            return torch.norm(vec_to_other_vehicle) < front_collision_threshold, False
-        else:
-            side_collision = torch.norm(vec_to_other_vehicle) < side_collision_threshold
-            return torch.norm(vec_to_other_vehicle) < side_collision_threshold, True
-
-
-    def get_obstacle_states(self, cur_npc_poses, next_waypoints):
+    def get_obstacle_states(self, agent_idx):
         obstacle_state = {}
         obstacle_state['obstacle_visible'] = False
         obstacle_state['obstacle_orientation'] = -1
@@ -413,16 +352,21 @@ class BaseFakeEnv(gym.Env):
         min_obs_distance = 100000000
         found_obstacle = False
 
+        cur_actor_pose = self.poses[agent_idx]
+        next_waypoints = self.waypoints[agent_idx]
+
         # try:
-        for i in range(cur_npc_poses.shape[0]):
+        for i in range(self.num_actors):
+            if(i == agent_idx):
+                continue
 
             # if the object is not in our lane it's not an obstacle
-            d_bool, distance = feutils.is_within_distance_ahead(cur_npc_poses[i], self.vehicle_pose, self.config.obs_config.vehicle_proximity_threshold)
+            d_bool, distance = feutils.is_within_distance_ahead(self.poses[i], cur_actor_pose, self.config.obs_config.vehicle_proximity_threshold)
 
             if not d_bool:
                 continue
             else:
-                if not feutils.check_if_vehicle_in_same_lane(cur_npc_poses[i], next_waypoints, 1.3, self.device):
+                if not feutils.check_if_vehicle_in_same_lane(self.poses[i], next_waypoints, 1.3, self.device):
                     continue
 
                 found_obstacle = True
@@ -430,7 +374,7 @@ class BaseFakeEnv(gym.Env):
 
                 if distance < min_obs_distance:
                     obstacle_state['obstacle_dist'] = distance
-                    obstacle_state['obstacle_speed'] = cur_npc_poses[i][3]
+                    obstacle_state['obstacle_speed'] = self.speeds[i]
 
                     min_obs_distance = distance
 
@@ -440,250 +384,143 @@ class BaseFakeEnv(gym.Env):
 
         return obstacle_state['obstacle_dist'], obstacle_state['obstacle_speed']
 
-
-
     '''
     Takes one step according to action
     @ params: new_action
     @ returns next_obs, reward_out, (uncertain or timeout), {"delta" : delta, "uncertain" : 100*uncertain}
     '''
-    def step(self, new_action):
-        # print('Stepping with action', new_action)
-        with torch.no_grad():
+    def step(self, new_actions):
 
-            # Convert numpy arrays, or lists, to torch tensors
-            if(not isinstance(new_action, torch.Tensor)):
-                new_action = torch.FloatTensor(new_action)
+        new_actions = feutils.tensorify(new_actions, self.device)
 
-            ### EGO ACTOR
-            # clamp new action to safe range
-            ## TODO: Switch to using action space to clamp
-            new_action = torch.squeeze(torch.clamp(new_action, -1, 1)).to(self.device)
+        # Clamp actions
+        #TODO: Clamp according to action space
+        new_actions = torch.clamp(
+                        new_actions,
+                        -1, 1
+                    ).to(self.device)
 
+        ## Step actor manager to get new states
+        self.actor_manager_state = self.actor_manager.step(new_actions)
 
-            self.past_action.unnormalized = self.update_action(self.past_action, new_action)
-            ### EGO ACTOR
-
-            ### ACTOR MANAGER
-            # Clamp actions passed from actor manager
-            actor_new_actions = torch.clamp(
-                                    self.actor_new_actions,
-                                    -1, 1
-                                ).to(self.device)
-
-            # Update actions for actor manager
-            self.actor_actions.unnormalized = self.update_action(self.actor_actions,
-                                                                 actor_new_actions)
-            ### ACTOR MANAGER
-
-            # Combine state and actions from ego actor and actor manager
-            self.combined_state.unnormalized = torch.cat(
-                [self.state.unnormalized.unsqueeze(0), self.actor_states.unnormalized],
-                dim=0
-            )
-
-            self.combined_past_action.unnormalized = torch.cat(
-                [self.past_action.unnormalized.unsqueeze(0), self.actor_actions.unnormalized],
-                dim = 0
-            )
-
-            ############ feed obs, action into dynamics model for prediction ##############
-
-            # input [[speed_t, steer_t, Δtime_t, action_t], [speed_t-1, steer_t-1, Δt-1, action_t-1]]
-            # unsqueeze to form batch dimension for dynamics input
-
-            # print(f'Curr vehicle pose: {self.vehicle_pose}')
-
-            # print(f'State: {self.state.unnormalized}, Action: {self.past_action.unnormalized}')
-
-            # Delta: prediction from one randomly selected model
-            # [Δx_t+1, Δy_t+1, Δtheta_t+1, Δspeed_t+1, Δsteer_t+1]
-            self.combined_deltas.normalized = torch.clone(
-                self.make_prediction(
-                    self.combined_state,
-                    self.combined_past_action
-                )
-            )
-            self.deltas.unnormalized = self.combined_deltas.unnormalized[...,0,:]
+        # Break actor_manager state into separate variables
+        self.poses = self.actor_manager_state['poses']
+        self.speeds = self.actor_manager_state['speeds']
+        self.steers = self.actor_manager_state['steers']
+        self.waypoints = self.actor_manager_state['waypoints']
 
 
+        ###################### calculate waypoint features (in global frame)  ##############################
+        policy_obs = self.get_policy_obs()
 
-            ############ feed obs, action into dynamics model for prediction ##############
-            # predicted change in x, y, theta
-            #TODO: This will only save the poses for the sampled model
-            # This is fine for execution, but not for visualization/debugging
-            # Need to find a way to print all poses
-            combined_delta_vehicle_poses = self.combined_deltas.unnormalized[self.model_idx, ...,:3]
-
-
-            # change in steer, speed
-            #TODO Use the same model for all vehicles - might want to sample an array of idxs
-            combined_delta_state = self.combined_deltas.unnormalized[self.model_idx, ...,3:5]
-
-            # import ipdb; ipdb.set_trace()
-            combined_poses = torch.cat(
-                        [self.vehicle_pose.unsqueeze(0), self.actor_poses]
-                        , dim = 0
-                    )
-
-            # update vehicle pose
-            # Compute the new vehicle pose for all vehicles
-            # combined_poses: [1 + num_npcs, 3]
-            # delta_vehicle_poses: [1 + num_npcs, 2]
-            # Output: [1 + num_npcs, 2]
-            combined_loc_delta = torch.squeeze(
-                    torch.bmm(
-                        feutils.rot(torch.deg2rad(combined_poses[:,2])),
-                        combined_delta_vehicle_poses[... ,0:2][...,None]
-                    )
-            )
-
-            # print("FAKE DELTA: {:4f} {:4f} {:4f}".format(vehicle_loc_delta.squeeze()[0].cpu().item(),
-            #                                             vehicle_loc_delta.squeeze()[1].cpu().item(),
-            #                                             delta_vehicle_poses.squeeze()[2].cpu().item()))
-            # print("FAKE TRANSFORMED: {:4f} {:4f} {:4f}".format(delta_vehicle_poses.squeeze()[0].cpu().item(),
-            #                                             delta_vehicle_poses.squeeze()[1].cpu().item(),
-            #                                             delta_vehicle_poses.squeeze()[2].cpu().item()))
-            combined_loc = combined_poses[:,0:2] + combined_loc_delta
-            combined_rot = combined_poses[:,2] + combined_delta_vehicle_poses[...,2]
-            combined_rot = torch.unsqueeze(combined_rot, dim = -1)
-
-            combined_poses = torch.cat([combined_loc, combined_rot], dim = -1)
-
-            # Constrain theta to be between -180 and 180
-            combined_poses[combined_poses[...,2] < -180] += 360
-            combined_poses[combined_poses[...,2] > 180] -= 360
-
-            # Ego vehicle pose is the first pose in the combined poses
-            self.vehicle_pose = combined_poses[0]
-
-            # Update ego vehicle state
-            self.state.unnormalized = self.update_next_state(self.state, combined_delta_state[0])
-
-            # Update NPC poses
-            self.actor_poses = combined_poses[1:]
-
-            # Update NPC states
-            self.actor_states.unnormalized = self.update_next_state(
-                                                    self.actor_states,
-                                                    combined_delta_state[1:]
-                                                )
-            # Pass data back to the actor manager, and get the next states/actions from it
-            #TODO: The actor manager just passes the states and actor poses through
-            # without actually updating them, do we need to pass them around like this???
-            #
-            self.actor_states, \
-            self.actor_poses, \
-            self.actor_actions, \
-            self.actor_new_actions = self.actor_manager.step(self.actor_states,
-                                                             self.actor_poses,
-                                                             self.actor_actions)
-
-
-            ############ feed obs, action into dynamics model for prediction ##############
-
-
-            ###################### calculate waypoint features (in global frame)  ##############################
-
-            policy_obs, dist_to_trajectory, angle = self.get_policy_obs(self.state.unnormalized[0])
-
-            ################## calc reward with penalty for uncertainty ##############################
-            collision = False
-            cur_npc_poses = self.npc_poses[self.steps_elapsed]
-
-
+        ################## Calculate reward with penalty for uncertainty ##############################
+        # Only need to compute collisions between every combination of vehicles
+        # This halves computation
+        # Get all combinations of actors
+        collisions = torch.zeros(self.num_actors, self.num_actors, dtype=torch.bool).to(self.device)
+        for actor_i, actor_j in itertools.combinations(range(self.num_actors), 2):
             # Check each collision independently
             side_collision = False
             front_collision = False
 
-            for other_vehicle_pose in cur_npc_poses:
-                collision, is_side = self.check_collision(other_vehicle_pose)
+            collision = self.check_collision(self.poses[actor_i], self.poses[actor_j])
 
-                side_collision = side_collision or (collision and is_side)
-                front_collision = front_collision or (collision and not is_side)
+            # Store collision for each actor
+            # If previously collided, continue to set collision to true
+            collisions[actor_i] = collisions[actor_i] | collision
+            collisions[actor_j] = collisions[actor_j] | collision
 
-            out_of_lane = torch.abs(dist_to_trajectory) > DIST
-
-            success = len(self.waypoints) <= 1 or (self.steps_elapsed >= len(self.npc_poses) - 1)
-            reward_out = compute_reward(self.state.unnormalized[0], dist_to_trajectory, side_collision or front_collision or out_of_lane, self.config)
-
-            uncertain =  self.usad(self.deltas.normalized.detach().cpu().numpy())
-            reward_out[0] = reward_out[0] - uncertain * self.uncertainty_coeff
-            reward_out = torch.squeeze(reward_out)
-            self.episode_uncertainty += uncertain
-
-            # advance time
-            self.steps_elapsed += 1
-            self.cum_step += 1
-            timeout = self.steps_elapsed >= self.timeout_steps
-
-            # log
-            if(uncertain and self.logger is not None):
-                # self.logger.get_metric("average_halt")
-                self.logger.log_hyperparameters({"halts" : 1})
-            elif(timeout and self.logger is not None):
-                self.logger.log_hyperparameters({"halts" : 0})
+            # side_collision = side_collision or (collision and is_side)
+            # front_collision = front_collision or (collision and not is_side)
 
 
-            ######################### build policy input ##########################
+        dist_to_trajectories = policy_obs[:,3] * self.config.obs_config.vehicle_proximity_threshold
 
-            # Policy input (unnormalized): dist_to_trajectory, next orientation, speed, steer
-            # policy_input = torch.cat([dist_to_trajectory, angle, torch.flatten(self.state.unnormalized[0, :])], dim=0).float().to(self.device)
+        out_of_lanes = torch.abs(dist_to_trajectories) > DIST
 
-            # TODO: predictions should return ALL pose predictions, but currently only keeps
-            # the sampled one
-            info = {
-                        "delta" : self.deltas.normalized[self.model_idx].cpu().numpy(),
-                        "uncertain" : self.uncertainty_coeff * uncertain,
-                        "predictions": self.vehicle_pose.cpu().numpy(),
-                        "num_remaining_waypoints" : len(self.waypoints),
-                    }
+        #TODO: Change this back to when number of waypoints is 1
+        # success = len(self.waypoints) == 1 or self.steps_elapsed >= len(self.npc_poses)
+        successes = torch.tensor([len(waypoints) <= 3 for waypoints in self.waypoints])# or self.steps_elapsed >= len(self.npc_poses)
 
-            # Check done condition
-            done = (success or
-                    out_of_lane or
-                    front_collision or
-                    side_collision)
+        rewards = compute_reward(self.speeds, dist_to_trajectories, torch.logical_or(collisions, out_of_lanes), self.config)
+
+        #TODO: Determine if uncertainty should be added
+        # uncertain =  self.usad(self.deltas.normalized.detach().cpu().numpy())
+        # reward_out[0] = reward_out[0]# - uncertain * self.uncertainty_coeff
+        # reward_out = torch.squeeze(reward_out)
+        # self.episode_uncertainty += uncertain
+
+        # advance time
+        self.steps_elapsed += 1
+        self.cum_step += 1
+        timeout = self.steps_elapsed >= self.timeout_steps
+
+        # log
+        # if(uncertain and self.logger is not None):
+        #     # self.logger.get_metric("average_halt")
+        #     self.logger.log_hyperparameters({"halts" : 1})
+        # elif(timeout and self.logger is not None):
+        #     self.logger.log_hyperparameters({"halts" : 0})
 
 
-            # If done, print the termination type
-            # if(done):
-            #     # if(timeout):t
-            #     #     print("Timeout")
-            #     #     info["termination"] = "timeout"
-            #     if(out_of_lane):
-            #         print("Out of lane")
-            #         info["termination"] = "out_of_lane"
-            #     elif(front_collision):
-            #         print("Collision")
-            #         info["termination"] = "front_collision"
-            #     elif(side_collision):
-            #         print("Side Collision")
-            #         info["termination"] = "side_collision"
-            #     elif(success):
-            #         print("Success")
-            #         info["termination"] = "Success"
-            #     elif(self.steps_elapsed >= len(self.npc_poses)):
-            #         print("Not enough NPC poses")
-            #         info["termination"] = "NPC"
+        ######################### build policy input ##########################
 
-            #     else:
-            #         print("Unknown")
-            #         info["termination"] = "unknown"
-            #         print(len(self.npc_poses))
+        # Policy input (unnormalized): dist_to_trajectory, next orientation, speed, steer
+        # policy_input = torch.cat([dist_to_trajectory, angle, torch.flatten(self.state.unnormalized[0, :])], dim=0).float().to(self.device)
 
-            res = policy_obs.cpu().numpy(), float(reward_out.item()), done, info
+        # TODO: predictions should return ALL pose predictions, but currently only keeps
+        # the sampled one
+        info = {
+                    # "delta" : self.deltas.normalized[self.model_idx].cpu().numpy(),
+                    # "uncertain" : self.uncertainty_coeff * uncertain,
+                    # "predictions": self.vehicle_pose.cpu().numpy(),
+                    # "num_remaining_waypoints" : len(self.waypoints),
+                }
 
-            #Logging
-            if(done and self.logger is not None):
-                # Log how the episode terminated
-                self.logger.log_scalar('rollout/obstacle_collision', int(front_collision or side_collision), self.cum_step)
-                self.logger.log_scalar('rollout/out_of_lane', int(out_of_lane), self.cum_step)
-                self.logger.log_scalar('rollout/success', int(success), self.cum_step)
-                # Log average uncertainty over the episode
-                self.logger.log_scalar('rollout/average_uncertainty', self.episode_uncertainty / self.steps_elapsed, self.cum_step)
+        # Check done condition
+        dones = torch.logical_or(successes, out_of_lanes.cpu())
+        dones = torch.logical_or(dones, collisions.cpu())
 
-            return res
+
+
+        # If done, print the termination type
+        # if(done):
+        #     # if(timeout):t
+        #     #     print("Timeout")
+        #     #     info["termination"] = "timeout"
+        #     if(out_of_lane):
+        #         print("Out of lane")
+        #         info["termination"] = "out_of_lane"
+        #     elif(front_collision):
+        #         print("Collision")
+        #         info["termination"] = "front_collision"
+        #     elif(side_collision):
+        #         print("Side Collision")
+        #         info["termination"] = "side_collision"
+        #     elif(success):
+        #         print("Success")
+        #         info["termination"] = "Success"
+        #     elif(self.steps_elapsed >= len(self.npc_poses)):
+        #         print("Not enough NPC poses")
+        #         info["termination"] = "NPC"
+
+        #     else:
+        #         print("Unknown")
+        #         info["termination"] = "unknown"
+        #         print(len(self.npc_poses))
+
+        res = policy_obs.cpu().numpy(), rewards.cpu().numpy(), dones.cpu().numpy(), info
+
+        #Logging
+        # if(done and self.logger is not None):
+        #     # Log how the episode terminated
+        #     self.logger.log_scalar('rollout/obstacle_collision', int(collision), self.cum_step)
+        #     self.logger.log_scalar('rollout/out_of_lane', int(out_of_lane), self.cum_step)
+        #     self.logger.log_scalar('rollout/success', int(success), self.cum_step)
+        #     # Log average uncertainty over the episode
+        #     self.logger.log_scalar('rollout/average_uncertainty', self.episode_uncertainty / self.steps_elapsed, self.cum_step)
+
+        return res
 
     def get_autopilot_action(self, target_speed=0.5):
         waypoint = self.waypoints[0]
