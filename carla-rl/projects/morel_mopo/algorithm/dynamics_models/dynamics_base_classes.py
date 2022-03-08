@@ -11,7 +11,7 @@ class PredictionWrapper():
     for the particular model.
     """
 
-    def __init__(self, dynamics, state_update_func):
+    def __init__(self, dynamics, delta_update_func, current_idx):
         self.dynamics = dynamics
 
         # Retrieve important parameters from the dynamics model
@@ -39,7 +39,9 @@ class PredictionWrapper():
             self.device
         )
 
-        self.state_update_func = state_update_func
+        self.delta_update_func = delta_update_func
+
+        self.current_idx = current_idx
 
     def reset(self, initial_states: torch.Tensor, initial_actions: torch.Tensor):
         """ Reset the state of the dynamics model.
@@ -55,9 +57,14 @@ class PredictionWrapper():
         assert (initial_actions.shape[-2] == self.frame_stack and
                 initial_actions.shape[-1] == self.dynamics.action_dim)
 
-
+        # Save states in NormalizedTensors
         self.states.unnormalized = initial_states
         self.actions.unnormalized = initial_actions
+
+        # Sample a model_idx for this rollout
+        self.model_idx = torch.randint(0, self.dynamics.n_models, (1,)).item()
+
+        return self.actions.unnormalized[:, self.current_idx, :], self.states.unnormalized[:, self.current_idx, :]
 
 
     def update_state(self, delta_state: torch.Tensor):
@@ -87,8 +94,7 @@ class PredictionWrapper():
 
         # Get predictions across all models
         try:
-            deltas, rewards = self.dynamics.predict(self.states.normalized, self.actions.normalized)
-            deltas = torch.stack(deltas)
+            deltas, rewards = self.dynamics.predict(self.states.normalized, self.actions.normalized, model_idx = self.model_idx)
             return deltas
         except:
             import ipdb; ipdb.set_trace()
@@ -117,13 +123,13 @@ class PredictionWrapper():
             )
 
             # Compute new state from deltas
-            state_delta, additional_output = self.state_update_func(self.deltas.normalized)
+            state_delta, additional_output = self.delta_update_func(self.deltas)
 
             # Update the state buffer
             self.update_state(state_delta)
 
             # Return the new state
-            return self.states.unnormalized, additional_output
+            return self.states.unnormalized[:, self.current_idx, :], additional_output
 
 
 

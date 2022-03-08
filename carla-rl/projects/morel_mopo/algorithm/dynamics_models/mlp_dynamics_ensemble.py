@@ -7,8 +7,10 @@ import numpy as np
 import scipy.spatial
 import os
 from tqdm import tqdm
+from typing import Type
 
 from projects.morel_mopo.algorithm.dynamics_models.dynamics_base_classes import PredictionWrapper
+import projects.morel_mopo.algorithm.fake_envs.fake_env_utils as feutils
 
 class DynamicsMLP(nn.Module):
     def __init__(self,
@@ -470,12 +472,12 @@ class MLPDynamicsEnsemble(nn.Module):
 
         self.save("final")
 
-    def predict(self, obs, actions):
+    def predict(self, obs, actions, model_idx = None):
         self.eval()
 
         feed = self.prepare_feed(obs, actions)
 
-        return self.forward(feed)
+        return self.forward(feed, model_idx)
 
 
 
@@ -523,7 +525,7 @@ class MLPDynamicsEnsemble(nn.Module):
 
         data_module = None
         if(data_config is not None):
-            data_config.set_parameter("normalization_stats", norm_stats)
+            # data_config.set_parameter("normalization_stats", norm_stats)
             data_module = data_config.dataset_type(data_config)
 
         # Create a configured dynamics ensemble object
@@ -542,8 +544,8 @@ class MLPDynamicsEnsemble(nn.Module):
 
         return model
 
-    def get_prediction_wrapper(self, state_update_func):
-        return DeterministicMLPPredictionWrapper(self, state_update_func)
+    def get_prediction_wrapper(self, delta_update_func):
+        return DeterministicMLPPredictionWrapper(self, delta_update_func)
 
 
 class DeterministicMLPPredictionWrapper(PredictionWrapper):
@@ -551,9 +553,15 @@ class DeterministicMLPPredictionWrapper(PredictionWrapper):
 
     The DeterministicMLP accepts the frame stack with the newest time step first
     """
+    def __init__(self, dynamics, delta_update_func):
+        # Call super with additional argument current_idx
+        # For the MLP dynamics, the first time step is the newest
+        super(DeterministicMLPPredictionWrapper, self).__init__(dynamics, delta_update_func, current_idx = 0)
 
-    def update_state(self, delta_state: torch.Tensor):
-        newest_state = self.states.unnormalized[..., 0, :] + delta_state
+
+
+    def update_state(self, delta_state: Type[feutils.NormalizedTensor]):
+        newest_state = self.states.unnormalized[..., 0, :] + delta_state.unnormalized
 
         # insert newest state at front
         self.states.unnormalized = torch.cat([newest_state.unsqueeze(-2), self.states.unnormalized[..., :-1, :]], dim=-2)
