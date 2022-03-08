@@ -1,6 +1,8 @@
 import torch
 import numpy as np
 from collections import deque
+from typing import Union, Type
+
 
 class NormalizedTensor:
     def __init__(self, mean, std, device):
@@ -28,11 +30,11 @@ class NormalizedTensor:
         self._unnormalized_array = None
 
     @property
-    def unnormalized(self):
+    def unnormalized(self) -> torch.Tensor:
         return self._unnormalized_array
 
     @unnormalized.setter
-    def unnormalized(self, unnormalized_arr):
+    def unnormalized(self, unnormalized_arr: torch.Tensor):
         if(not isinstance(unnormalized_arr, torch.Tensor)):
             if(not isinstance(unnormalized_arr, (np.ndarray, list))):
                 raise Exception("Input must be torch tensor, list, or numpy array")
@@ -48,14 +50,14 @@ class NormalizedTensor:
         self._unnormalized_array = unnormalized_arr
 
     @property
-    def normalized(self):
+    def normalized(self) -> torch.Tensor:
         if(self._unnormalized_array is None):
             return None
 
         return self.normalize_array(self._unnormalized_array)
 
     @normalized.setter
-    def normalized(self, normalized_arr):
+    def normalized(self, normalized_arr: torch.Tensor):
         if(not isinstance(normalized_arr, torch.Tensor)):
             if(not isinstance(normalized_arr, (np.ndarray, list))):
                 raise Exception("Input must be torch tensor, list, or numpy array")
@@ -77,6 +79,22 @@ class NormalizedTensor:
             return None
 
         return self._unnormalized_array.shape
+
+    def __getitem__(self, item):
+        # Apply indexing/slice operation to both mean and std
+        # if tuple is passed, only apply last dim to mean, std
+        if(isinstance(item, tuple)):
+            params_op = item[-1]
+        else:
+            params_op = item
+
+        new_mean = self.mean[params_op]
+        new_std = self.std[params_op]
+
+        new_tensor = NormalizedTensor(new_mean, new_std, self.device)
+        new_tensor.unnormalized = self.unnormalized[item]
+
+        return new_tensor
 
 
     def normalize_array(self, array):
@@ -525,3 +543,25 @@ class PIDLateralController():
         #     import ipdb; ipdb.set_trace()
 
         return output
+
+def tensorify(inp, device):
+    if(not isinstance(inp, torch.Tensor)):
+        return torch.FloatTensor(inp, device = device)
+
+    return inp.to(device)
+
+def remove_bad_actors(npc_poses: torch.Tensor) -> torch.Tensor:
+    # These are a bug, unclear why these exist
+    remove_indices = []
+    # Loop over all poses at the first time step to find any actors at (0,0)
+    for i in range(npc_poses.shape[1]):
+        if(torch.all(npc_poses[0,i] == torch.zeros(npc_poses[0,i].shape).to(npc_poses.device))):
+            remove_indices.append(i)
+            # print(f"Removing {i}\t {self.npc_poses[0,i]}")
+    # If actors were found, remove them
+    if(len(remove_indices) > 0):
+        remove_mask = torch.ones(npc_poses.shape[1], dtype=bool)
+        remove_mask[remove_indices] = False
+        npc_poses = npc_poses[:, remove_mask, :]
+
+    return npc_poses
