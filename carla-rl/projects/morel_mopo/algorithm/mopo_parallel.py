@@ -2,8 +2,11 @@
 import sys, os
 import numpy as np
 from tqdm import tqdm
+from collections import deque
+import copy
 import time
 import torch
+import random
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 
 import projects.morel_mopo.algorithm.dist_utils as dist
@@ -307,6 +310,7 @@ class MOPO():
             carla_logger = self.logger,
             device = self.dynamics.device,
         )
+        policy_collections = deque(maxlen=100)
 
         # self.N_S = self.policy.observation_space.shape[0]
         # self.N_A = self.policy.action_space.shape[0]
@@ -321,10 +325,23 @@ class MOPO():
         # )
         glb_stats = self.update_parameters()
         print(312, glb_stats)
+
+        # policy_collections.append(copy.deepcopy(self.policy))
+        policy_collections.append(copy.deepcopy(self.policy.get_parameters()))
+
         prev_obs = fake_env.reset()
         for i in range(10):
             self.num_steps_since_update += 1
-            actions = torch.zeros(prev_obs.shape[0], 2)
+            # actions = torch.zeros(prev_obs.shape[0], 2)
+            # get actions from sampling old policies
+            action_list = []
+            for idx in range(prev_obs.shape[0]):
+                _policy_param = random.choice(policy_collections)
+                self.policy.set_parameters(_policy_param)
+                # print(341, self.policy.predict(prev_obs[idx, None]))
+                action_list.append(torch.tensor(self.policy.predict(prev_obs[idx, None])[0]))
+            actions = torch.vstack(action_list)
+            print(340, prev_obs.shape, actions.shape)
             start_time = time.time()
             curr_obs, rewards, dones, _ = fake_env.step(actions)
             # print(273, type(rewards), type(dones), curr_obs.shape, rewards.shape, dones.shape)

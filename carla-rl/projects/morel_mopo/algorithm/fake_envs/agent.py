@@ -250,8 +250,10 @@ if __name__ == "__main__":
     for i in range(100):
 
         actions = torch.zeros(obs.shape[0], 2)
+        print('actions.shape:', actions.shape)
         start_time = time.time()
-        obs, _, done, _ = fake_env.step(actions)
+        obs, reward, done, _ = fake_env.step(actions)
+        print('reward.shape:', reward.shape, 'done.shape:', done.shape)
         print(f"Time taken: {time.time() - start_time}")
 
 
