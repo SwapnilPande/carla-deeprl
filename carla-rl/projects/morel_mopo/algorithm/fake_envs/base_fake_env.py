@@ -209,6 +209,19 @@ class BaseFakeEnv(gym.Env):
         self.poses = self.actor_manager_state['poses']
         self.waypoints = self.actor_manager_state['waypoints']
 
+        ## Instantiate the done array for all of the actors
+        # We maintain a done array so that we can artificall delay the termination for a given actor
+        # by only setting done true after a done_delay steps of being done for the actor
+        # TODO: Move this to config
+        self.dones_delay = 2
+        self.dones = torch.zeros(self.num_actors, dtype=torch.bool)
+        # Store the indices of the actors that are not done
+        self.active_indices = torch.arange(self.num_actors).to(self.device)
+
+        # done_counter is used to keep track of how many steps an actor has been done for
+        self.dones_counter = torch.zeros(self.num_actors, dtype=torch.int)
+
+
         # TODO: Add handling of the last few waypoints back
         # if(len(self.waypoints) == 2):
         #     self.second_last_waypoint = self.waypoints[0]
@@ -252,6 +265,13 @@ class BaseFakeEnv(gym.Env):
         return np.amax(self.calc_disc(predictions))
 
     def get_policy_obs_single_actor(self, agent_idx) -> torch.Tensor:
+
+        # This agent is done, no need to compute policy obs
+        # Return torch tensor of zeros
+        if(self.dones[agent_idx]):
+            return torch.zeros(self.observation_space.shape[-1]).to(self.device)
+
+
         angle, \
         dist_to_trajectory, \
         remaining_waypoints, \
@@ -307,8 +327,8 @@ class BaseFakeEnv(gym.Env):
         return torch.Tensor()
 
     def get_policy_obs(self) -> torch.tensor:
-        test = [self.get_policy_obs_single_actor(i).cpu().numpy() for i in range(self.num_actors)]
-        return torch.stack([self.get_policy_obs_single_actor(i) for i in range(self.num_actors)])
+        # Compute the policy observation for all actors
+        return torch.stack([self.get_policy_obs_single_actor(i) for i in range(self.num_actors)], dim=0)
 
     def check_collision(self, actor_1_pose, actor_2_pose):
         # This is cos(theta) from the centroid of our vehicle to one of the corners
@@ -356,7 +376,8 @@ class BaseFakeEnv(gym.Env):
         next_waypoints = self.waypoints[agent_idx]
 
         # try:
-        for i in range(self.num_actors):
+        # Compute the distance to the closest obstacle for each active vehicle
+        for i in self.active_indices:
             if(i == agent_idx):
                 continue
 
@@ -401,7 +422,7 @@ class BaseFakeEnv(gym.Env):
                     ).to(self.device)
 
         ## Step actor manager to get new states
-        self.actor_manager_state = self.actor_manager.step(new_actions)
+        self.actor_manager_state = self.actor_manager.step(new_actions, self.dones)
 
         # Break actor_manager state into separate variables
         self.poses = self.actor_manager_state['poses']
@@ -418,7 +439,9 @@ class BaseFakeEnv(gym.Env):
         # This halves computation
         # Get all combinations of actors
         collisions = torch.zeros(self.num_actors, dtype=torch.bool).to(self.device)
-        for actor_i, actor_j in itertools.combinations(range(self.num_actors), 2):
+
+        # Only compute collisions for the active actors
+        for actor_i, actor_j in itertools.combinations(self.active_indices, 2):
             # Check each collision independently
             side_collision = False
             front_collision = False
@@ -433,7 +456,6 @@ class BaseFakeEnv(gym.Env):
             # side_collision = side_collision or (collision and is_side)
             # front_collision = front_collision or (collision and not is_side)
 
-
         dist_to_trajectories = policy_obs[:,3] * self.config.obs_config.vehicle_proximity_threshold
 
         out_of_lanes = torch.abs(dist_to_trajectories) > DIST
@@ -442,7 +464,14 @@ class BaseFakeEnv(gym.Env):
         # success = len(self.waypoints) == 1 or self.steps_elapsed >= len(self.npc_poses)
         successes = torch.tensor([len(waypoints) <= 3 for waypoints in self.waypoints])# or self.steps_elapsed >= len(self.npc_poses)
 
-        rewards = compute_reward(np.squeeze(self.speeds), dist_to_trajectories, torch.logical_or(collisions, out_of_lanes), self.config)
+        active_rewards = compute_reward(np.squeeze(self.speeds[torch.logical_not(self.dones)]),
+                                dist_to_trajectories[torch.logical_not(self.dones)],
+                                torch.logical_or(collisions[torch.logical_not(self.dones)], out_of_lanes[torch.logical_not(self.dones)]),
+                                self.config)
+
+        # Construct full rewards array
+        rewards = torch.zeros(self.num_actors).to(self.device)
+        rewards[torch.logical_not(self.dones)] = active_rewards
 
         #TODO: Determine if uncertainty should be added
         # uncertain =  self.usad(self.deltas.normalized.detach().cpu().numpy())
@@ -477,11 +506,21 @@ class BaseFakeEnv(gym.Env):
                     # "num_remaining_waypoints" : len(self.waypoints),
                 }
 
-        # Check done condition
-        dones = torch.logical_or(successes, out_of_lanes.cpu())
-        dones = torch.logical_or(dones, collisions.cpu())
+        # Check done condition for this step
+        cur_dones = torch.logical_or(successes, out_of_lanes.cpu())
+        cur_dones = torch.logical_or(cur_dones, collisions.cpu())
 
+        # For all actors that are not done, set done_counter to 0
+        # Otherwise, increment done_counter
+        self.dones_counter[torch.logical_not(cur_dones)] = 0
+        self.dones_counter[cur_dones] += 1
 
+        # If done_counter is greater than or equal to done_delay, set done to true
+        # Done is latching, stays done once done
+        self.dones = torch.logical_or(self.dones, self.dones_counter >= self.dones_delay)
+
+        # Update active indices
+        self.active_indices = torch.where(torch.logical_not(self.dones))[0]
 
         # If done, print the termination type
         # if(done):
@@ -509,7 +548,7 @@ class BaseFakeEnv(gym.Env):
         #         info["termination"] = "unknown"
         #         print(len(self.npc_poses))
 
-        res = policy_obs.cpu().numpy(), rewards.cpu().numpy(), dones.cpu().numpy(), info
+        res = policy_obs.cpu().numpy(), rewards.cpu().numpy(), self.dones.cpu().numpy(), info
 
         #Logging
         # if(done and self.logger is not None):

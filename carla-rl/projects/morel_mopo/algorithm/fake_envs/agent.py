@@ -140,11 +140,12 @@ class ActorManager():
         return output
 
 
-    def step(self, actions):
+    def step(self, actions, dones):
         """Step the actor manager forward by one step. Given the actions, sample the next state and observation.
 
         Args:
             actions: Torch tensor containing the actions of the actors at the past frame_stack steps
+            dones: Torch tensor containing the done flags for the actors
 
         Returns:
             output (dict): Dictionary containing the following keys
@@ -155,6 +156,8 @@ class ActorManager():
 
         ## Run forward pass on dynamics model to get updated state of all agents
         self.actions = actions
+
+        #TODO: Don't do forward simulation for done actors
 
         # Call forward pass on prediction wrapper to get the updated states
         self.state, delta_poses = self.prediction_wrapper.step(actions)
