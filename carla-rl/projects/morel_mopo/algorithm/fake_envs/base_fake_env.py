@@ -417,7 +417,7 @@ class BaseFakeEnv(gym.Env):
         # Only need to compute collisions between every combination of vehicles
         # This halves computation
         # Get all combinations of actors
-        collisions = torch.zeros(self.num_actors, self.num_actors, dtype=torch.bool).to(self.device)
+        collisions = torch.zeros(self.num_actors, dtype=torch.bool).to(self.device)
         for actor_i, actor_j in itertools.combinations(range(self.num_actors), 2):
             # Check each collision independently
             side_collision = False
@@ -442,7 +442,7 @@ class BaseFakeEnv(gym.Env):
         # success = len(self.waypoints) == 1 or self.steps_elapsed >= len(self.npc_poses)
         successes = torch.tensor([len(waypoints) <= 3 for waypoints in self.waypoints])# or self.steps_elapsed >= len(self.npc_poses)
 
-        rewards = compute_reward(self.speeds, dist_to_trajectories, torch.logical_or(collisions, out_of_lanes), self.config)
+        rewards = compute_reward(np.squeeze(self.speeds), dist_to_trajectories, torch.logical_or(collisions, out_of_lanes), self.config)
 
         #TODO: Determine if uncertainty should be added
         # uncertain =  self.usad(self.deltas.normalized.detach().cpu().numpy())
