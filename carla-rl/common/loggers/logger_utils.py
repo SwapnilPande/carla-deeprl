@@ -4,7 +4,7 @@ import os
 
 # Create a generator for lock_open
 @contextmanager
-def lock_open(file, mode):
+def lock_open(file, mode, timeout = 20):
     """
     Context manager for opening a file, respecting the lock from other processes.
     """
@@ -12,7 +12,7 @@ def lock_open(file, mode):
     lock_file = file + '.lock'
 
     # Try opening lock file until timeout
-    timeout  = 5/0.1
+    timeout  = 20/0.1
     retries = 0
     lock = None
     while retries < timeout:
