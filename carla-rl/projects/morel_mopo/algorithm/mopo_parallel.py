@@ -46,6 +46,7 @@ class MOPO():
     def __init__(self, config,
                     logger,
                     load_data = True):
+
         self.config = config
         self.dynamics_config = self.config.dynamics_config
         self.fake_env_config = self.config.fake_env_config
@@ -129,11 +130,8 @@ class MOPO():
         self.glb_num_episodes = 0
         self.num_steps_since_update = 0
         self.save_freq = 5
-        # self.N_S = self.policy.observation_space.shape[0]
-        # self.N_A = self.policy.action_space.shape[0]
-
-        self.N_S = 6
-        self.N_A = 2
+        self.N_S = self.policy.observation_space.shape[1]
+        self.N_A = self.policy.action_space.shape[0]
 
         while self.glb_num_steps < self.total_equivalent_glb_steps:
             sender, num_steps_added, buffer_len, num_eps_added, signal = dist.recv(
@@ -337,7 +335,7 @@ class MOPO():
 
     @classmethod
     def get_dynamics_model(cls, config, load_data = True, logger = None):
-        print(f"MOPO: Loading dynamics model {self.config.pretrained_dynamics_model_config.name} from experiment {self.config.pretrained_dynamics_model_config.key}")
+        print(f"MOPO: Loading dynamics model {config.pretrained_dynamics_model_config.name} from experiment {config.pretrained_dynamics_model_config.key}")
 
 
         # Setup dynamics model

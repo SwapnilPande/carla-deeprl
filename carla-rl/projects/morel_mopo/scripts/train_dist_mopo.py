@@ -18,14 +18,16 @@ from projects.morel_mopo.config.morel_mopo_config import DefaultMLPMOPOConfig, D
 def launch_server(rank, resources):
     os.environ['RANK'] = str(rank)
     model = MOPO(config=resources['config'],
-                logger=resources['logger'])
+                logger=resources['logger'],)
+                # dynamics=resources['dynamics'])
     # train MOReL
     model.serve()
 
 def launch_worker(rank, resources):
     os.environ['RANK'] = str(rank)
     model = MOPO(config=resources['config'],
-                logger=resources['logger'])
+                logger=resources['logger'],)
+                # dynamics=resources['dynamics'])
     # train MOReL
     model.work()
 
@@ -49,8 +51,12 @@ def main(args):
     config.fake_env_config.uncertainty_coeff = args.uncertainty
     config.fake_env_config.uncertainty_coeff = 1
 
+    # dynamics = MOPO.get_dynamics_model(config)
+
     run_param_server(launch_server, launch_worker, 1, 3,
-        {'config': config, 'logger': logger}, get_host_ip(),
+        # {'config': config, 'logger': logger, 'dynamics': dynamics},
+        {'config': config, 'logger': logger},
+        get_host_ip(),
         random.randint(10000, 60000), mp_method='fork')
 
 
