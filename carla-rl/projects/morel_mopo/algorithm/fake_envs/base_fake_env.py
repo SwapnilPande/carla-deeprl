@@ -294,9 +294,11 @@ class BaseFakeEnv(gym.Env):
         dist_to_trajectory = torch.Tensor([dist_to_trajectory]).to(self.device)
         angle              = torch.Tensor([angle]).to(self.device)
 
+        # Only for type hints to be happy
+        out = torch.Tensor()
 
         if(self.config.obs_config.input_type == "wp_obs_info_speed_steer"):
-            return torch.cat([angle, self.speeds[agent_idx] / 10, self.steers[agent_idx], dist_to_trajectory], dim=0).float().to(self.device)#, dist_to_trajectory, angle
+            out = torch.cat([angle, self.speeds[agent_idx] / 10, self.steers[agent_idx], dist_to_trajectory], dim=0).float().to(self.device)#, dist_to_trajectory, angle
 
 
 
@@ -310,7 +312,7 @@ class BaseFakeEnv(gym.Env):
                 obstacle_dist /= self.config.obs_config.vehicle_proximity_threshold
                 obstacle_vel /= 20
 
-            return torch.cat([angle, self.speeds[agent_idx] / 10, self.steers[agent_idx], dist_to_trajectory, torch.tensor([obstacle_dist]).to(self.device), torch.tensor([obstacle_vel]).to(self.device)], dim=0).float().to(self.device)#dist_to_trajectory, angle
+            out = torch.cat([angle, self.speeds[agent_idx] / 10, self.steers[agent_idx], dist_to_trajectory, torch.tensor([obstacle_dist]).to(self.device), torch.tensor([obstacle_vel]).to(self.device)], dim=0).float().to(self.device)#dist_to_trajectory, angle
 
         elif(self.config.obs_config.input_type == "wp_obstacle_speed_steer"):
             obstacle_dist, obstacle_vel = self.get_obstacle_states(agent_idx)
@@ -321,10 +323,10 @@ class BaseFakeEnv(gym.Env):
                 obstacle_dist /= self.config.obs_config.vehicle_proximity_threshold
                 obstacle_vel /= 20
 
-            return torch.cat([angle, self.speeds[agent_idx] / 10, self.steers[agent_idx], dist_to_trajectory, torch.tensor([obstacle_dist]).to(self.device), torch.tensor([obstacle_vel]).to(self.device)], dim=0).float().to(self.device) #dist_to_trajectory, angle
+            out = torch.cat([angle, self.speeds[agent_idx] / 10, self.steers[agent_idx], dist_to_trajectory, torch.tensor([obstacle_dist]).to(self.device), torch.tensor([obstacle_vel]).to(self.device)], dim=0).float().to(self.device) #dist_to_trajectory, angle
 
-        # Only for type hints to be happy
-        return torch.Tensor()
+        # Make observation (1, obs_dim)
+        return torch.unsqueeze(out, dim=0)
 
     def get_policy_obs(self) -> torch.tensor:
         # Compute the policy observation for all actors
