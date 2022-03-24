@@ -458,7 +458,7 @@ class BaseFakeEnv(gym.Env):
             # side_collision = side_collision or (collision and is_side)
             # front_collision = front_collision or (collision and not is_side)
 
-        dist_to_trajectories = policy_obs[..., 3] * self.config.obs_config.vehicle_proximity_threshold
+        dist_to_trajectories = np.squeeze(policy_obs[..., 3]) * self.config.obs_config.vehicle_proximity_threshold
 
         out_of_lanes = torch.abs(dist_to_trajectories) > DIST
 
