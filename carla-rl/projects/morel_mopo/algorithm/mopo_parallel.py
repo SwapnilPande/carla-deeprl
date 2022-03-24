@@ -1,4 +1,5 @@
 # morel imports
+from ssl import get_default_verify_paths
 import sys, os
 import numpy as np
 from tqdm import tqdm
@@ -93,6 +94,8 @@ class MOPO():
             "mopo/policy_weight_decay" : 0.0
         })
 
+        self.get_dynamics_model()
+
         self.num_online_loops = 1
         self.num_online_samples = 50000
 
@@ -186,18 +189,8 @@ class MOPO():
         # Setup dynamics model
         # If we are using a pretrained dynamics model, we need to load it
         # Else, we need to train a new dynamics model
-        if(self.config.pretrained_dynamics_model_config is not None):
-            print("MOPO: Using pretrained dynamics model")
 
-            # Construct a logger temporarily to load the dynamics model
-            logger_conf = ExistingCometLoggerConfig()
-            logger_conf.experiment_key = self.config.pretrained_dynamics_model_config.key
-            logger_conf.clear_temp_logs = False
-            temp_logger = CometLogger(logger_conf)
-
-            # Load dynamics config
-            temp_config = temp_logger.pickle_load("mopo", "config.pkl")
-            self.dynamics_config = temp_config.dynamics_config
+        self.get_dynamics_model()
 
         self.num_online_loops = 1
         self.num_online_samples = 50000
@@ -333,42 +326,41 @@ class MOPO():
         action, _ = self.policy.predict(obs, deterministic = False)
         return action
 
-    @classmethod
-    def get_dynamics_model(cls, config, load_data = True, logger = None):
-        print(f"MOPO: Loading dynamics model {config.pretrained_dynamics_model_config.name} from experiment {config.pretrained_dynamics_model_config.key}")
+    def get_dynamics_model(self):
+        print(f"MOPO: Loading dynamics model {self.config.pretrained_dynamics_model_config.name} from experiment {self.config.pretrained_dynamics_model_config.key}")
 
 
         # Setup dynamics model
         # If we are using a pretrained dynamics model, we need to load it
         # Else, we need to train a new dynamics model
-        if(config.pretrained_dynamics_model_config is not None):
+        if(self.config.pretrained_dynamics_model_config is not None):
             print("MOPO: Using pretrained dynamics model")
 
             # Construct a logger temporarily to load the dynamics model
             logger_conf = ExistingCometLoggerConfig()
-            logger_conf.experiment_key = config.pretrained_dynamics_model_config.key
+            logger_conf.experiment_key = self.config.pretrained_dynamics_model_config.key
             logger_conf.clear_temp_logs = False
             temp_logger = CometLogger(logger_conf)
 
             # Load dynamics config
             temp_config = temp_logger.pickle_load("mopo", "config.pkl")
-            dynamics_config = temp_config.dynamics_config
+            self.dynamics_config = temp_config.dynamics_config
 
-            print(f"MOPO: Loading dynamics model {config.pretrained_dynamics_model_config.name} from experiment {config.pretrained_dynamics_model_config.key}")
+            print(f"MOPO: Loading dynamics model {self.config.pretrained_dynamics_model_config.name} from experiment {self.config.pretrained_dynamics_model_config.key}")
             # Load dataset, only if we need it
             #TODO: We need to be able to pass the norm statistics, in case the datasets are not exactly the same
-            if(load_data):
-                dynamics = dynamics_config.dynamics_model_type.load(
+            if(self.load_data):
+                self.dynamics = self.dynamics_config.dynamics_model_type.load(
                             logger = temp_logger,
-                            model_name = config.pretrained_dynamics_model_config.name,
-                            gpu = dynamics_config.gpu,
-                            data_config = dynamics_config.dataset_config)
+                            model_name = self.config.pretrained_dynamics_model_config.name,
+                            gpu = self.dynamics_config.gpu,
+                            data_config = self.dynamics_config.dataset_config)
 
 
             else:
                 print("MOPO: Skipping Loading dataset")
 
-                dynamics = self.dynamics_config.dynamics_model_type.load(
+                self.dynamics = self.dynamics_config.dynamics_model_type.load(
                             logger = temp_logger,
                             model_name = self.config.pretrained_dynamics_model_config.name,
                             gpu = self.dynamics_config.gpu)
@@ -379,15 +371,12 @@ class MOPO():
         else:
             print("MOPO: Loading dataset")
             # We have to load the dataset here, because we need to train the dynamics model
-            dynamics_config = config.dynamics_config
-            data_module = dynamics_config.dataset_config.dataset_type(dynamics_config.dataset_config)
+            data_module = self.dynamics_config.dataset_config.dataset_type(self.dynamics_config.dataset_config)
             print("MOPO: Initializing new dynamics model")
-            dynamics = dynamics_config.dynamics_model_type(
-                    config = dynamics_config.dynamics_model_config,
+            self.dynamics = self.dynamics_config.dynamics_model_type(
+                    config = self.dynamics_config.dynamics_model_config,
                     data_module = data_module,
-                    logger = logger)
-
-        return dynamics
+                    logger = self.logger)
 
 
     @classmethod
