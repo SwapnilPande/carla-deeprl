@@ -8,9 +8,9 @@ Calculates reward according to distance to trajectory
 '''
 def compute_reward(speeds, dist_to_trajectories, collisions, config):
 
-    speeds = np.squeeze(speeds)
-    dist_to_trajectories = np.squeeze(dist_to_trajectories)
-    collisions = np.squeeze(collisions)
+    speeds = speeds.squeeze()
+    dist_to_trajectories = dist_to_trajectories.squeeze()
+    collisions = collisions.squeeze()
 
 
     reward_config = config.reward_config

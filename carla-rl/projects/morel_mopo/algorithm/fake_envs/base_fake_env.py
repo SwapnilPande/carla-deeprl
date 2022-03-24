@@ -269,7 +269,7 @@ class BaseFakeEnv(gym.Env):
         # This agent is done, no need to compute policy obs
         # Return torch tensor of zeros
         if(self.dones[agent_idx]):
-            return torch.zeros(self.observation_space.shape[-1]).to(self.device)
+            return torch.zeros(1, self.observation_space.shape[-1]).to(self.device)
 
 
         angle, \

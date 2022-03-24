@@ -238,26 +238,29 @@ class MOPO():
         #     self.steps_per_loop, None, None, -1, 5, None, True, 'OffPolicyAlgorithm'
         # )
         glb_stats = self.update_parameters()
+        policy_collections.append(copy.deepcopy(self.policy.get_parameters()))
         print(312, glb_stats)
 
-        # policy_collections.append(copy.deepcopy(self.policy))
-        policy_collections.append(copy.deepcopy(self.policy.get_parameters()))
+        prev_obs = fake_env.reset().squeeze(-2)
+        policy_idx_dict = {0: list(range(prev_obs.shape[0]))}
+        done_mask = np.zeros(prev_obs.shape[0])
 
-        prev_obs = fake_env.reset()
         for i in range(10):
             self.num_steps_since_update += 1
             # actions = torch.zeros(prev_obs.shape[0], 2)
             # get actions from sampling old policies
             action_list = []
-            for idx in range(prev_obs.shape[0]):
-                _policy_param = random.choice(policy_collections)
+            for policy_idx, actor_idx in policy_idx_dict.items():
+                # _policy_param = random.choice(policy_collections)
+                _policy_param = policy_collections[policy_idx]
                 self.policy.set_parameters(_policy_param)
-                # print(341, self.policy.predict(prev_obs[idx, None]))
-                action_list.append(torch.tensor(self.policy.predict(prev_obs[idx, None])[0]))
+                # print(341, self.policy.predict(prev_obs[actor_idx, None, :]))
+                action_list.append(torch.tensor(self.policy.predict(prev_obs[actor_idx, None, :])[0]))
             actions = torch.vstack(action_list)
             print(340, prev_obs.shape, actions.shape)
             start_time = time.time()
             curr_obs, rewards, dones, _ = fake_env.step(actions)
+            curr_obs = curr_obs.squeeze(-2)
             # print(273, type(rewards), type(dones), curr_obs.shape, rewards.shape, dones.shape)
             # print(274, self.N_A, self.N_S)
             print(f"Time taken: {time.time() - start_time}")
@@ -274,18 +277,28 @@ class MOPO():
             #         [{}],
             #     )
 
+            done_mask = np.logical_and(done_mask, dones)
+
             # self.worker_buffer.append(np.hstack((prev_obs, actions, rewards[:, [0]], curr_obs, dones[:, [0]])))
-            self.worker_buffer.append(np.hstack((prev_obs, actions, rewards[[0]], curr_obs, dones[[0]])))
+            self.worker_buffer.append(np.hstack((
+                prev_obs[np.logical_not(done_mask)],
+                actions[np.logical_not(done_mask)],
+                rewards[np.logical_not(done_mask)].reshape(-1, 1),
+                curr_obs[np.logical_not(done_mask)],
+                dones[np.logical_not(done_mask)].reshape(-1, 1))))
             print(336, [x.shape for x in self.worker_buffer])
 
+            done_mask[:] = dones
             prev_obs = curr_obs
 
             self.send_buffer()
             glb_stats = self.update_parameters()
+            policy_collections.append(copy.deepcopy(self.policy.get_parameters()))
 
             if dones.all():
-                prev_obs = fake_env.reset()
-
+                prev_obs = fake_env.reset().squeeze(-2)
+                # policy_collections.append(copy.deepcopy(self.policy))
+                policy_idx_dict = {0: list(range(prev_obs.shape[0]))}
 
 
     def update_parameters(self):
