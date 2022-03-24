@@ -502,7 +502,7 @@ class PIDLateralController():
         self._dt = dt
         self._e_buffer = deque(maxlen=10)
 
-    def pid_control(self, vehicle_pose, waypoint):
+    def pid_control(self, vehicle_pose, angle):
         """
         Estimate the steering angle of the vehicle based on the PID equations
 
@@ -510,25 +510,8 @@ class PIDLateralController():
         :param vehicle_transform: current transform of the vehicle
         :return: steering control in the range [-1, 1]
         """
-        v_begin = vehicle_pose[0:2]
-        theta = vehicle_pose[2]
 
-        v_end = v_begin + np.array([np.cos(np.radians(theta)),
-                                         np.sin(np.radians(theta))])
-
-        v_vec = np.array([v_end[0] - v_begin[0], v_end[1] - v_begin[1], 0.0])
-        w_vec = np.array([waypoint[0] -
-                          v_begin[0],
-                          waypoint[1] -
-                          v_begin[1], 0.0])
-        _dot = np.arccos(np.clip(np.dot(w_vec, v_vec) /
-                                 (np.linalg.norm(w_vec) * np.linalg.norm(v_vec)), -1.0, 1.0))
-
-        _cross = np.cross(v_vec, w_vec)
-        if _cross[2] < 0:
-            _dot *= -1.0
-
-        self._e_buffer.append(_dot)
+        self._e_buffer.append(angle)
         if len(self._e_buffer) >= 2:
             _de = (self._e_buffer[-1] - self._e_buffer[-2]) / self._dt
             _ie = sum(self._e_buffer) * self._dt
@@ -536,11 +519,9 @@ class PIDLateralController():
             _de = 0.0
             _ie = 0.0
 
-        output =  np.clip((self._K_P * _dot) + (self._K_D * _de /
+        output =  np.clip((self._K_P * angle) + (self._K_D * _de /
                                              self._dt) + (self._K_I * _ie * self._dt), -1.0, 1.0)
 
-        # if(np.isnan(output)):
-        #     import ipdb; ipdb.set_trace()
 
         return output
 

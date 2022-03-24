@@ -562,25 +562,3 @@ class BaseFakeEnv(gym.Env):
         #     self.logger.log_scalar('rollout/average_uncertainty', self.episode_uncertainty / self.steps_elapsed, self.cum_step)
 
         return res
-
-    def get_autopilot_action(self, target_speed=0.5):
-        waypoint = self.waypoints[0]
-
-        steer = self.lateral_controller.pid_control(self.vehicle_pose.cpu().numpy(), waypoint)
-        steer = np.clip(steer, -1, 1)
-
-
-        obstacle_dist = 1.0
-        obstacle_vel = 1.0
-        cur_npc_poses = self.npc_poses[self.steps_elapsed]
-        for i in range(cur_npc_poses.shape[0]):
-            d_bool, norm_target = feutils.is_within_distance_ahead(cur_npc_poses[i], self.vehicle_pose, self.config.obs_config.vehicle_proximity_threshold)
-
-            if(d_bool):
-                obstacle_dist = norm_target/self.config.obs_config.vehicle_proximity_threshold
-                obstacle_vel = cur_npc_poses[i][3] / 20
-
-        if(obstacle_dist < 0.3):
-            target_speed = -1.0
-
-        return np.array([steer, target_speed])
