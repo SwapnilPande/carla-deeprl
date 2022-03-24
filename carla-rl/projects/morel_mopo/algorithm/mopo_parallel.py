@@ -3,7 +3,7 @@ from ssl import get_default_verify_paths
 import sys, os
 import numpy as np
 from tqdm import tqdm
-from collections import deque
+from collections import deque, defaultdict
 import copy
 import time
 import torch
@@ -298,7 +298,14 @@ class MOPO():
             if dones.all():
                 prev_obs = fake_env.reset().squeeze(-2)
                 # policy_collections.append(copy.deepcopy(self.policy))
-                policy_idx_dict = {0: list(range(prev_obs.shape[0]))}
+                # policy_idx_dict = {0: list(range(prev_obs.shape[0]))}
+                rand_idx_list = [random.randrange(0, len(policy_collections)) for _ in range(prev_obs.shape[0] - 1)] + \
+                    [len(policy_collections) - 1]
+                policy_idx_dict = defaultdict(list)
+                for idx in range(prev_obs.shape[0]):
+                    policy_idx_dict[rand_idx_list[idx]].append(idx)
+
+
 
 
     def update_parameters(self):
