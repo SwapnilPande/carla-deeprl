@@ -101,6 +101,7 @@ class MOPO():
             # Construct a logger temporarily to load the dynamics model
             logger_conf = ExistingCometLoggerConfig()
             logger_conf.experiment_key = self.config.pretrained_dynamics_model_config.key
+            logger_conf.clear_temp_logs = False
             temp_logger = CometLogger(logger_conf)
 
             # Load dynamics config
@@ -240,6 +241,7 @@ class MOPO():
             # Construct a logger temporarily to load the dynamics model
             logger_conf = ExistingCometLoggerConfig()
             logger_conf.experiment_key = self.config.pretrained_dynamics_model_config.key
+            logger_conf.clear_temp_logs = False
             temp_logger = CometLogger(logger_conf)
 
             # Load dynamics config
