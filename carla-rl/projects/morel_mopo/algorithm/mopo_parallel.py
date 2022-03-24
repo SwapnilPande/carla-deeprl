@@ -235,10 +235,10 @@ class MOPO():
         )
         policy_collections = deque(maxlen=100)
 
-        # self.N_S = self.policy.observation_space.shape[0]
-        # self.N_A = self.policy.action_space.shape[0]
-        self.N_S = 6
-        self.N_A = 2
+        self.N_S = self.policy.observation_space.shape[1]
+        self.N_A = self.policy.action_space.shape[0]
+        # self.N_S = 6
+        # self.N_A = 2
 
         self.model_len = len(parameters_to_vector(self.policy.policy.parameters()))
         self.worker_buffer = []
@@ -283,7 +283,8 @@ class MOPO():
             #         [{}],
             #     )
 
-            self.worker_buffer.append(np.hstack((prev_obs, actions, rewards[:, [0]], curr_obs, dones[:, [0]])))
+            # self.worker_buffer.append(np.hstack((prev_obs, actions, rewards[:, [0]], curr_obs, dones[:, [0]])))
+            self.worker_buffer.append(np.hstack((prev_obs, actions, rewards[[0]], curr_obs, dones[[0]])))
             print(336, [x.shape for x in self.worker_buffer])
 
             prev_obs = curr_obs
