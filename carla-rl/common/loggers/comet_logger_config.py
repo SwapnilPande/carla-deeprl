@@ -30,9 +30,13 @@ class BaseCometLoggerConfig(BaseLoggerConfig):
         # Directory in which to store logs
         self.log_dir = None
 
-    def populate(self, experiment_name, tags = []):
+        # Whether to clear temporary logs if temp log directory already exists
+        self.clear_temp_logs = None
+
+    def populate(self, experiment_name, tags = [], clear_temp_logs = False):
         self.experiment_name = experiment_name
         self.tags = tags
+        self.clear_temp_logs = clear_temp_logs
 
 
     def verify(self):

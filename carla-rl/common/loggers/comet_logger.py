@@ -3,6 +3,7 @@ from comet_ml import Experiment, experiment
 from comet_ml.api import API, APIExperiment
 
 from common.loggers.base_logger import BaseLogger
+from common.loggers.logger_utils import lock_open
 
 import os
 import sys
@@ -16,7 +17,7 @@ class CometLogger(BaseLogger):
         self.config = config
         self.config.verify()
         # super().__init__(config)
-        # Not loading an already existing experiment
+        # Creating a new experiment, not loading existing one
         if config.experiment_key is None:
             # Create log directory
             super().__init__(config)
@@ -41,13 +42,19 @@ class CometLogger(BaseLogger):
             # Get the experiment key and save to the file
             self.experiment_key = self.logger.get_key()
             self.experiment_key_path = os.path.join(self.log_dir, "experiment_key")
-            with open(self.experiment_key_path, "w") as f:
+            with lock_open(self.experiment_key_path, "w") as f:
                 f.write(self.experiment_key)
 
-            self.experiment_exists_locally = True
+            # Flag to determine if this is a temporary log
+            # If not a temp log, there is no need to ever download files
+            # If it is a temp log, we may need to download files
+            self.is_temp_log = False
 
         # Else, load existing experiment using key
         else:
+            # Don't call super constructor, we don't want to create a new directory
+
+            # Create an experiment object
             self.logger = APIExperiment(api_key = self.config.api_key,
                                         previous_experiment = self.config.experiment_key)
 
@@ -58,17 +65,17 @@ class CometLogger(BaseLogger):
             self.get_available_assets()
 
             ##### Set up log location
-            # First, check if we are running the experiment on the same machine
+            # Check if we are running the experiment on the same machine
             current_hostname = os.uname()[1]
             experiment_hostname = self.logger.get_hostname()
 
             # Variable storing whether we found the experiment locally
-            self.experiment_exists_locally = False
+            self.is_temp_log = True
 
 
             # We are on the same machine as the original experiment
             if(current_hostname == experiment_hostname):
-                # Now, see if we can find the experiment log locally already
+                # Check if we can find the experiment log locally already
                 # We check the experiment_key file in the log directory to see if it matches
 
                 # Get log_dir from config and cat the experiment name
@@ -79,28 +86,44 @@ class CometLogger(BaseLogger):
 
                 # First, check if log exists and experiment_key file exists
                 if(os.path.isdir(self.log_dir) and os.path.isfile(self.experiment_key_path)):
-                    with open(self.experiment_key_path,'r') as f:
+                    with lock_open(self.experiment_key_path,'r') as f:
                         local_exp_key = f.read().strip()
 
                     # Compare two keys and check if they match
                     if(local_exp_key == self.config.experiment_key):
-                        self.experiment_exists_locally = True
+                        self.is_temp_log = False
 
-            if(self.experiment_exists_locally):
+            if(not self.is_temp_log):
                 print("LOGGER: Found experiment logs locally at {}.".format(self.log_dir))
 
             else:
-                print("LOGGER: Could not find experiment in log_dir. Creating new log directory.")
+                print("LOGGER: Could not find experiment in log_dir. Checking for experiment in temp directory.")
 
                 # Construct new log directory
                 self.log_dir = os.path.join(self.config.log_dir, "comet_temp", self.experiment_name)
                 # Delete old directory if exists
                 if(os.path.isdir(self.log_dir)):
-                    print("LOGGER: Temporary log directory exists... Cleaning up old directory")
-                    shutil.rmtree(self.log_dir)
+                    # Confirm that it actually is the same experiment by checking the experiment_key file
+                    # Construct file_path for experiment_key
+                    self.experiment_key_path = os.path.join(self.log_dir, "experiment_key")
 
-                # Finally, create the directory
-                os.makedirs(self.log_dir)
+                    # First, check if experiment_key file exists
+                    if(os.path.isfile(self.experiment_key_path)):
+                        with lock_open(self.experiment_key_path, 'r') as f:
+                            local_exp_key = f.read().strip()
+
+                        # If keys match and the user doesn't want to delete the old log
+                        if(local_exp_key == self.config.experiment_key and not self.config.clear_temp_logs):
+                            print("LOGGER: Temporary log directory exists, not cleaning up because clear_temp_logs flag is not set")
+
+                    # Else, delete old directory, regardless of whether it is the correct experiment.
+                    if(self.config.clear_temp_logs):
+                        print("LOGGER: Temporary log directory exists... Cleaning up old directory")
+                        shutil.rmtree(self.log_dir)
+                        # Finally, create the directory
+                        os.makedirs(self.log_dir)
+
+
                 print("LOGGER: Experiment name - {}".format(self.experiment_name))
                 print("LOGGER: Created log directory at {}".format(self.log_dir))
 
@@ -129,8 +152,8 @@ class CometLogger(BaseLogger):
 
 
 
-    def is_log_local(self):
-        return self.experiment_exists_locally
+    def is_log_temp(self):
+        return self.is_temp_log
 
     def log_scalar(self, name, value, step = None):
         """Logs a single scalar value.
@@ -191,7 +214,7 @@ class CometLogger(BaseLogger):
             # Create request in streaming mode
             with requests.get(comet_url, stream=True, headers = headers) as r:
                 r.raise_for_status()
-                with open(file_path, 'wb') as f:
+                with lock_open(file_path, 'wb') as f:
                     for chunk in r.iter_content(chunk_size=8192):
                         # If you have chunk encoded response uncomment if
                         # and set chunk_size parameter to None.
@@ -218,10 +241,10 @@ class CometLogger(BaseLogger):
         file_path = os.path.join(full_log_path, name)
 
         # Dowload file if not local
-        if(not self.experiment_exists_locally):
+        if(self.is_temp_log):
             self.comet_download(os.path.join(log_path, name))
 
-        with open(file_path, 'rb') as f:
+        with lock_open(file_path, 'rb') as f:
             obj = torch.load(f, map_location=map_location)
 
         return obj
@@ -232,7 +255,7 @@ class CometLogger(BaseLogger):
 
         file_path = os.path.join(full_log_path, name)
 
-        with open(file_path, 'wb') as f:
+        with lock_open(file_path, 'wb') as f:
             pickle.dump(obj, f, -1)
 
         # Lastly, log asset to comet as well
@@ -246,10 +269,10 @@ class CometLogger(BaseLogger):
         file_path = os.path.join(full_log_path, name)
 
         # Dowload file if not local
-        if(not self.experiment_exists_locally):
+        if(self.is_temp_log):
             self.comet_download(os.path.join(log_path, name))
 
-        with open(file_path, 'rb') as f:
+        with lock_open(file_path, 'rb') as f:
             obj = pickle.load(f)
 
         return obj
@@ -261,7 +284,7 @@ class CometLogger(BaseLogger):
         file_path = os.path.join(full_log_path, name)
 
         # Dowload file if not local
-        if(not self.experiment_exists_locally):
+        if(self.is_temp_log):
             self.comet_download(os.path.join(log_path, name))
 
         return file_path
