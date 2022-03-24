@@ -12,8 +12,8 @@ class AutopilotPolicy():
                                         dt=self.args_lateral_dict['dt']
                                 )
 
-    def __call__(self, obs):
-        return self.env.get_autopilot_action()
+    def predict(self, obs):
+        return self.get_autopilot_action(obs)
 
 
     def get_autopilot_action(self, obs, target_speed=0.5):
