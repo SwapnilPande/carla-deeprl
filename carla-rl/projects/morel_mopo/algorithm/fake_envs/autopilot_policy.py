@@ -6,26 +6,27 @@ import numpy as np
 class AutopilotPolicy():
     def __init__(self, env):
         self.lateral_controller = feutils.PIDLateralController(
-                                        K_P=self.args_lateral_dict['K_P'],
-                                        K_D=self.args_lateral_dict['K_D'],
-                                        K_I=self.args_lateral_dict['K_I'],
-                                        dt=self.args_lateral_dict['dt']
+                                        K_P = 0.88,
+                                        K_D = 0.02,
+                                        K_I = 0.5,
+                                        dt  = 1/10.0
                                 )
-
     def predict(self, obs):
         return self.get_autopilot_action(obs)
 
 
-    def get_autopilot_action(self, obs, target_speed=0.5):
+    def get_autopilot_action(self, obs, target_speed=1.0):
 
-        angle  = obs[0]
-        obstacle_dist = obs[4]
+        angle  = obs[...,0]
+        obstacle_dist = obs[...,4]
 
-        steer = self.lateral_controller.pid_control(self.vehicle_pose.cpu().numpy(), angle)
+        print(obs)
+
+        steer = self.lateral_controller.pid_control(angle)
         steer = np.clip(steer, -1, 1)
 
 
-        if(obstacle_dist < 0.3):
+        if(obstacle_dist < 0.6):
             target_speed = -1.0
 
         return np.array([steer, target_speed])
