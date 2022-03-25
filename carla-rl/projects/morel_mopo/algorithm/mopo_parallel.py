@@ -245,7 +245,7 @@ class MOPO():
         policy_idx_dict = {0: list(range(prev_obs.shape[0]))}
         done_mask = np.zeros(prev_obs.shape[0])
 
-        for i in range(10):
+        for i in range(self.policy_epochs):
             self.num_steps_since_update += 1
             # actions = torch.zeros(prev_obs.shape[0], 2)
             # get actions from sampling old policies
@@ -297,6 +297,7 @@ class MOPO():
 
             if dones.all():
                 prev_obs = fake_env.reset().squeeze(-2)
+                done_mask = np.zeros(prev_obs.shape[0])
                 # policy_collections.append(copy.deepcopy(self.policy))
                 # policy_idx_dict = {0: list(range(prev_obs.shape[0]))}
                 rand_idx_list = [random.randrange(0, len(policy_collections)) for _ in range(prev_obs.shape[0] - 1)] + \
@@ -365,6 +366,7 @@ class MOPO():
             # Load dynamics config
             temp_config = temp_logger.pickle_load("mopo", "config.pkl")
             self.dynamics_config = temp_config.dynamics_config
+            self.dynamics_config.gpu = self.config.gpu
 
             print(f"MOPO: Loading dynamics model {self.config.pretrained_dynamics_model_config.name} from experiment {self.config.pretrained_dynamics_model_config.key}")
             # Load dataset, only if we need it
