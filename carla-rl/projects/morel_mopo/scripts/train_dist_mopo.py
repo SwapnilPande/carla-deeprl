@@ -68,7 +68,7 @@ def main(args):
 
     # dynamics = MOPO.get_dynamics_model(config)
     # 1 server, 3 workers
-    run_param_server(launch_server, launch_worker, 1, 3,
+    run_param_server(launch_server, launch_worker, 1, 5,
         # {'config': config, 'logger': logger, 'dynamics': dynamics},
         {'gpu': args.gpu, 'logger': logger},
         get_host_ip(),
