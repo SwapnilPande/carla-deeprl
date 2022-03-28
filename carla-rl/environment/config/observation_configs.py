@@ -49,11 +49,11 @@ class LowDimObservationConfig(BaseObservationConfig):
 
         self.sensors = {"lane_invasion_sensor":None, \
                         "collision_sensor": None, \
-                        "sensor.camera.semantic_segmentation/top": {'x':3.0,
--                                                                   'z':10.0,
+                        "sensor.camera.rgb/top": {'x':3.0,
+                                                                    'z':20.0,
                                                                     'pitch':270.0,
-                                                                    'sensor_x_res': '128',
-                                                                    'sensor_y_res':'128',
+                                                                    'sensor_x_res': '512',
+                                                                    'sensor_y_res':'512',
                                                                     'fov':'90',
                                                                     'sensor_tick': '0.0',
                                                                     'num_classes':5},
@@ -149,8 +149,8 @@ class VehicleDynamicsObstacleConfig(BaseObservationConfig):
                             "sensor.camera.rgb/top": {'x': 7,
                                                     'z':25,
                                                     'pitch': -90.0,
-                                                    'sensor_x_res':'128',
-                                                    'sensor_y_res':'128',
+                                                    'sensor_x_res':'512',
+                                                    'sensor_y_res':'512',
                                                     'fov':'90',
                                                     'sensor_tick': '0.0'}
                         }

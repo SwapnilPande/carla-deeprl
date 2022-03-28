@@ -129,7 +129,7 @@ class BaseMainConfig(BaseConfig):
         self.action_config = None
 
         # Are we testing?
-        # self.testing = None
+        self.testing = None
 
 
         #### Server Setup ####
@@ -148,10 +148,10 @@ class BaseMainConfig(BaseConfig):
         # Y Rendering Resolution
         self.render_res_y = None
 
-        # # Input X Res (Default set to Atari)
-        # self.x_res = None
-        # # Input Y Res (Default set to Atari)
-        # self.y_res = None
+        # Input X Res (Default set to Atari)
+        self.x_res = None
+        # Input Y Res (Default set to Atari)
+        self.y_res = None
 
         #### Logging related parameters ####
         self.print_obs = None
@@ -174,7 +174,14 @@ class BaseMainConfig(BaseConfig):
 
 
 
-    def populate_config(self, observation_config = 'LowDimObservationConfig', action_config = 'MergedSpeedScaledTanhConfig', reward_config = 'Simple2RewardConfig', scenario_config = 'NoCrashEmptyTown01Config', carla_gpu = 0, render_server = False):
+    def populate_config(self,
+                        observation_config = 'LowDimObservationConfig',
+                        action_config = 'MergedSpeedScaledTanhConfig',
+                        reward_config = 'Simple2RewardConfig',
+                        scenario_config = 'NoCrashEmptyTown01Config',
+                        testing = False,
+                        carla_gpu = 0,
+                        render_server = False):
         """Fill in the config parameters that are not set by default
 
         For each type of config, the parameter can be either passed in as a string containing the class name or
@@ -237,10 +244,14 @@ class BaseMainConfig(BaseConfig):
             # Invalid Argument
             raise Exception("Invalid argument for scenario_config")
 
+        # Testing
+        self.testing = testing
+
         # Carla GPU
         self.carla_gpu = carla_gpu
 
         self.render_server = render_server
+
 
 class DefaultMainConfig(BaseMainConfig):
     """Default Config for the server
@@ -262,6 +273,12 @@ class DefaultMainConfig(BaseMainConfig):
         # Y Rendering Resolution
         self.render_res_y = 800
 
+        #TODO WHAT ARE THESE
+        # Input X Res (Default set to Atari)
+        self.x_res = 80
+        # Input Y Res (Default set to Atari)
+        self.y_res = 160
+
         #### Logging related parameters ####
         self.print_obs = True
         self.log_measurements_to_file = False
@@ -272,7 +289,8 @@ class DefaultMainConfig(BaseMainConfig):
         self.videos = False
 
 
-        #### NPC Vehicle Spawn Parameter ####
+        #### UNKNOWN CLASSIFICATION ####
+        #TODO MOVE THESE TO THE CORRECT PLACES
         self.test_fixed_spawn_points = True
         self.train_fixed_spawn_points = False
         self.spawn_points_fixed_idx = SPAWN_POINTS_FIXED_IDX

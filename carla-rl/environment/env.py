@@ -836,20 +836,19 @@ class CarlaEnv(gym.Env):
                 obstacle_speed = self.config.obs_config.default_obs_traffic_val
 
             if light != -1:
-                light /= 25.0
+                light /= 20.0
             else:
                 light = self.config.obs_config.default_obs_traffic_val
 
             # We see both an obstacle and the light
             if(light != self.config.obs_config.default_obs_traffic_val):
                 unnorm_obs_dist = obstacle_dist * self.config.obs_config.vehicle_proximity_threshold
-                unnorm_light = light * 25
+                unnorm_light = light * 20
 
                 # If the light is further do nothing
                 if(obstacle_dist != self.config.obs_config.default_obs_traffic_val and unnorm_light > unnorm_obs_dist):
                     pass
                 else:
-                    # import ipdb; ipdb.set_trace()
                     obstacle_dist = light
                     obstacle_speed = 0
 
@@ -1056,8 +1055,8 @@ class CarlaEnv(gym.Env):
         self.episode_measurements['dist_to_trajectory'] = carla_obs["dist_to_trajectory"]
 
 
-        self.next_waypoints = carla_obs.get("next_waypoints")
-        next_waypoints = [(wp.transform.location.x, wp.transform.location.y, wp.transform.location.z) for wp in carla_obs.get('next_waypoints', [])]
+        self.next_waypoints = carla_obs.get("next_waypoints", [])
+        next_waypoints = [(wp.transform.location.x, wp.transform.location.y, wp.transform.location.z) for wp in self.next_waypoints]
         self.episode_measurements["next_waypoints"] = next_waypoints
 
 
