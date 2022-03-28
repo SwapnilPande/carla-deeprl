@@ -116,17 +116,14 @@ def get_dot_product_and_angle(vehicle_pose, waypoint, device):
     # steering error: angle between vehicle vector and vector pointing from vehicle loc to
     # waypoint
     dot   = torch.dot(w_vec, v_vec)
-    if(dot == 0):
-        angle = 0
-    else:
-        angle = torch.acos(torch.clip(dot /
-                                    (torch.linalg.norm(w_vec) * torch.linalg.norm(v_vec)), -1.0, 1.0))
+    angle = torch.acos(torch.clip(dot /
+                                (torch.linalg.norm(w_vec) * torch.linalg.norm(v_vec)), -1.0, 1.0))
 
-        try:
-            assert(torch.isclose(torch.cos(angle), torch.clip(torch.dot(w_vec, v_vec) / \
-                (torch.linalg.norm(w_vec) * torch.linalg.norm(v_vec)), -1.0, 1.0), atol=1e-3))
-        except:
-            import ipdb; ipdb.set_trace()
+    try:
+        assert(torch.isclose(torch.cos(angle), torch.clip(torch.dot(w_vec, v_vec) / \
+            (torch.linalg.norm(w_vec) * torch.linalg.norm(v_vec)), -1.0, 1.0), atol=1e-3))
+    except:
+        import ipdb; ipdb.set_trace()
 
     # make vectors 3D for cross product
     v_vec_3d = torch.hstack((v_vec, torch.Tensor([0]).to(device)))
