@@ -66,7 +66,7 @@ class MOPO():
         self.policy_algo = sac.SAC
         print(51, self.policy_algo)
         self.policy  = None
-        self.total_equivalent_glb_steps = 10000
+        self.total_equivalent_glb_steps = self.policy_epochs
 
         comm_vars = dist.init_param_server_comm()
         self.rank, self.world_size = comm_vars[:2]
