@@ -22,7 +22,7 @@ from stable_baselines3.common.env_util import DummyVecEnv
 # Environment
 from environment.env import CarlaEnv
 from environment.config.config import DefaultMainConfig
-from environment.config.observation_configs import VehicleDynamicsOnlyConfig, VehicleDynamicsObstacleConfig
+from environment.config.observation_configs import VehicleDynamicsObstacleConfig
 from environment.config.scenario_configs import NoCrashEmptyTown01Config, NoCrashEmptyTown02Config, NoCrashDenseTown01Config, LeaderboardConfig
 from environment.config.action_configs import MergedSpeedTanhConfig
 
@@ -119,10 +119,10 @@ def generate_rollouts(logger, env, policy, n_rollouts = 25, timeout = 10000):
                     success_eps += 1
                 break
         term_state = info["termination_state"]
-        generate_video(logger = logger,
-                    image_path = image_save_dir,
-                    save_path = video_save_dir,
-                    name = f"{rollout}_{term_state}.mp4")
+        # generate_video(logger = logger,
+        #             image_path = image_save_dir,
+        #             save_path = video_save_dir,
+        #             name = f"{rollout}_{term_state}.mp4")
 
 
 
@@ -289,8 +289,8 @@ def closed_loop_eval(exp_name, logger, env, fake_env, policy, n_rollouts):
 
 class MOPOEvaluationConf:
     def __init__(self):
-        self.policy_model_name = "best_model_200000.zip"
-        self.experiment_key = "8f0092e0bf54446f9dc4f20ff9a5a9c8"
+        self.policy_model_name = "best_model_9000000.zip"
+        self.experiment_key = "7939b014bf084519ad501ed5dfe8e247"
         self.policy_only = True
         # self.dynamics_model_name = "final"
         self.dynamics_model_name = None
@@ -305,6 +305,7 @@ def main(args):
 
     logger = CometLogger(logger_conf)
 
+    breakpoint()
     mopo = MOPO.load(logger = logger,
                     policy_model_name = mopo_evaluation_conf.policy_model_name,
                     gpu = args.gpu,
@@ -316,7 +317,7 @@ def main(args):
     mopo.config.eval_env_config.carla_gpu = args.gpu
     mopo.config.eval_env_config.obs_config = VehicleDynamicsObstacleConfig() # VehicleDynamicsOnlyConfig()
     mopo.config.eval_env_config.action_config = MergedSpeedTanhConfig()
-    mopo.config.eval_env_config.scenario_config = LeaderboardConfig()
+    mopo.config.eval_env_config.scenario_config = NoCrashDenseTown01Config()
     mopo.config.eval_env_config.scenario_config.set_parameter("disable_traffic_light", False)
     mopo.config.eval_env_config.scenario_config.set_parameter("disable_static", True)
 
@@ -324,10 +325,10 @@ def main(args):
     eval_env = env.get_eval_env(1)
 
     # autopilot_policy = AutopilotPolicy(env)
-    policy = AutopilotNoisePolicy(env, 0.1, 0.1)
+    # policy = AutopilotNoisePolicy(env, 0.1, 0.1)
     # closed_loop_eval("test", logger, env, mopo.fake_env, mopo, 5)
 
-    generate_rollouts(logger = logger, env = eval_env, policy = policy, n_rollouts = 25)
+    generate_rollouts(logger = logger, env = eval_env, policy = mopo, n_rollouts = 25)
 
 
 if __name__ == "__main__":
