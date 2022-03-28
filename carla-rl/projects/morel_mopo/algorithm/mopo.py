@@ -52,6 +52,9 @@ class MOPO():
         self.fake_env = None
 
         self.policy_algo = self.config.policy_algorithm
+
+        # Retrieve the policy hyperparameters as a dictionary to pass to the policy constructor
+        self.policy_hp = vars(self.config.policy_hyperparameters)
         self.policy  = None
 
         # Save config to load in the future
@@ -69,20 +72,26 @@ class MOPO():
 
         eval_callback = EvalCallback(dummy_eval_env, best_model_save_path=os.path.join(self.logger.log_dir, "policy", "models"),
                                     log_path=os.path.join(self.logger.log_dir, "policy"), eval_freq=100000,
-                                    deterministic=True, render=False,
+                                    deterministic=False, render=False,
                                     n_eval_episodes=self.eval_env_config.scenario_config.num_episodes)
 
         # Save a checkpoint every 1000 steps
         checkpoint_callback = CheckpointCallback(save_freq=self.policy_epochs//10, save_path=os.path.join(self.logger.log_dir, "policy", "models"),
                                                 name_prefix='policy_checkpoint_')
 
-        # Log MOPO hyperparameters
-        self.logger.log_hyperparameters({
+        hyperparameters_to_log = {
             "mopo/uncertainty_penalty" : self.fake_env_config.uncertainty_coeff,
             "mopo/rollout_length" : self.fake_env_config.timeout_steps,
             "mopo/policy_algorithm" : str(self.policy_algo),
             "mopo/policy_weight_decay" : 0.0
-        })
+        }
+        # Add policy hyperparameters
+        for key, value in self.policy_hp.items():
+            # Prepend policy/ to the key
+            hyperparameters_to_log["policy/" + key] = value
+
+        # Log MOPO hyperparameters
+        self.logger.log_hyperparameters(hyperparameters_to_log)
 
         # Setup dynamics model
         # If we are using a pretrained dynamics model, we need to load it
@@ -131,49 +140,28 @@ class MOPO():
                     data_module = self.data_module,
                     logger = self.logger)
 
-        data_collector = DataCollector()
-
-        self.num_online_loops = 1
-        self.num_online_samples = 50000
-
-        self.steps_per_loop = self.policy_epochs // self.num_online_loops
-        for i in range(self.num_online_loops):
             print("MOPO: Beginning Dynamics Training")
-            # if(i == 0):
-            #     self.dynamics.train_model(self.dynamics_epochs)
-            # else:
-            #     self.dynamics.lr = self.dynamics_config.lr / 10
-            #     self.dynamics.train_model(25)
+            self.dynamics.train_model(self.dynamics_epochs)
 
-            print("MOPO: Constructing Fake Env")
+        print("MOPO: Constructing Fake Env")
 
 
-            fake_env = self.dynamics_config.fake_env_type(self.dynamics,
-                            config = self.fake_env_config,
-                            logger = self.logger)
+        fake_env = self.dynamics_config.fake_env_type(self.dynamics,
+                        config = self.fake_env_config,
+                        logger = self.logger)
 
-            print("MOPO: Constructing Real Env for evaluation")
+        print("MOPO: Constructing Real Env for evaluation")
 
-            print("MOPO: Beginning Policy Training")
+        print("MOPO: Beginning Policy Training")
 
-            self.policy = self.policy_algo("MlpPolicy",
-                fake_env,
-                verbose=1,
-                carla_logger = self.logger,
-                device = self.dynamics.device,
-            )
-            self.policy.learn(total_timesteps=self.steps_per_loop, callback = [eval_callback, checkpoint_callback])
-
-            print("MOPO: Collecting online data")
-            experience_steps = 0
-            data_collector.collect_data(env = env,
-                           path = f"/home/scratch/swapnilp/temp_data/data_{i}",
-                           policy = self.policy,
-                           n_samples = self.num_online_samples,
-                           carla_gpu = self.dynamics.device,
-                    )
-
-
+        self.policy = self.policy_algo("MlpPolicy",
+            fake_env,
+            verbose=1,
+            carla_logger = self.logger,
+            device = self.dynamics.device,
+            **self.policy_hp
+        )
+        self.policy.learn(total_timesteps=self.steps_per_loop, callback = [eval_callback, checkpoint_callback])
 
         self.policy.save(os.path.join(self.logger.log_dir, "policy", "models", "final_policy"))
 

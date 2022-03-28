@@ -20,6 +20,36 @@ class PretrainedDynamicsModelConfig(BaseConfig):
         self.name = name
         self.gpu = gpu
 
+class BasePolicyConfig(BaseConfig):
+    def __init__(self):
+        super().__init__()
+
+        self.learning_rate = None
+
+        # Discount Factor
+        self.gamma = None
+
+
+class BasePPOConfig(BasePolicyConfig):
+    def __init__(self):
+        super().__init__()
+
+        # Clip range for PPO
+        self.clip_range = None
+
+        # Number of epochs to train for policy updates
+        self.n_epochs = None
+
+
+class DefaultPPOConfig(BasePPOConfig):
+    def __init__(self):
+        super().__init__()
+
+        self.learning_rate = 3e-4
+        self.gamma = 0.99
+        self.clip_range = 0.25
+        self.n_epochs = 10
+
 class BaseMOPOConfig(BaseConfig):
     def __init__(self):
         super().__init__()
@@ -37,6 +67,8 @@ class BaseMOPOConfig(BaseConfig):
         self.eval_env_config = None
 
         self.policy_algorithm = None
+
+        self.policy_hyperparameters = None
 
     def populate_config(self, gpu = 0, policy_algorithm = "PPO", pretrained_dynamics_model_key = None, pretrained_dynamics_model_name = None):
         self.gpu = gpu
@@ -59,6 +91,10 @@ class BaseMOPOConfig(BaseConfig):
         self.eval_env_config.carla_gpu = gpu
 
         self.policy_algorithm = getattr(stable_baselines3, policy_algorithm)
+        if(policy_algorithm == "PPO"):
+            self.policy_hyperparameters = DefaultPPOConfig()
+        else:
+            raise Exception("No config for policy algorithm: {}".format(policy_algorithm))
 
         if(pretrained_dynamics_model_key is not None):
             ignore_keys = ["dynamics_config"]
