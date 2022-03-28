@@ -5,6 +5,7 @@ from comet_ml.api import API, APIExperiment
 from common.loggers.base_logger import BaseLogger
 
 import os
+import sys
 import shutil
 import torch
 import pickle
@@ -19,11 +20,16 @@ class CometLogger(BaseLogger):
         if config.experiment_key is None:
             # Create log directory
             super().__init__(config)
+
+            # Check if no_logger is passed as command line argument
+            # If true, set disabled = True
+            disabled = "--no_logger" in sys.argv
             # Configure comet experiment
             self.logger = Experiment(api_key = self.config.api_key,
                                     workspace = self.config.workspace,
                                     project_name = self.config.project_name,
-                                    auto_metric_logging = True)
+                                    auto_metric_logging = True,
+                                    disabled = disabled)
 
             # Set name of experiment
             self.logger.set_name(self.experiment_name)
