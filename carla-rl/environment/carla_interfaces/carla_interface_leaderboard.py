@@ -23,7 +23,7 @@ class LeaderboardArgs:
 
         self.scenario_class = "route_scenario"
         self.scenarios = os.path.join(os.environ["CARLA_RL"], "assets/all_towns_traffic_scenarios.json")
-        self.town = "Town02"
+        self.town = "Town01"
         self.routes = os.path.join(os.environ["CARLA_RL"], "assets/routes_all.xml")
         self.repetitions = 10000
 

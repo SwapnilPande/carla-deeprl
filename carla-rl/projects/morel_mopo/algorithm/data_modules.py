@@ -100,7 +100,6 @@ class OfflineCarlaDataset(Dataset):
 
         trajectory_paths = glob.glob('{}/*'.format(path))
         # assert len(trajectory_paths) > 0, 'No trajectories found in {}'.format(path)
-
         self.path = path
         self.use_images = use_images
 

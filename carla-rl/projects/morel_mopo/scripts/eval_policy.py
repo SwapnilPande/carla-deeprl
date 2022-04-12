@@ -97,6 +97,7 @@ def generate_rollouts(logger, env, policy, n_rollouts = 25, timeout = 10000):
         #     obs, _, _, _ = env.step(np.array([0.0,0.0]))
 
         done = False
+        i = 0
         while not done:
         # for i in range(timeout):
             action = policy.policy_predict(obs)
@@ -108,9 +109,10 @@ def generate_rollouts(logger, env, policy, n_rollouts = 25, timeout = 10000):
 
             im_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             cv2.imwrite(os.path.join(image_save_dir, "{:04d}.png".format(i)), im_rgb)
-            # save_dir = os.path.join(image_save_dir, "{:04d}.png".format(i))
+            save_dir = os.path.join(image_save_dir, "{:04d}.png".format(i))
             # print(f"Image to")
 
+            i += 1
             global_idx += 1
             print(f"Step #{global_idx}")
 
@@ -118,11 +120,11 @@ def generate_rollouts(logger, env, policy, n_rollouts = 25, timeout = 10000):
                 if(info["termination_state"] == "success"):
                     success_eps += 1
                 break
-        term_state = info["termination_state"]
-        # generate_video(logger = logger,
-        #             image_path = image_save_dir,
-        #             save_path = video_save_dir,
-        #             name = f"{rollout}_{term_state}.mp4")
+        # term_state = info["termination_state"]
+        generate_video(logger = logger,
+                    image_path = image_save_dir,
+                    save_path = video_save_dir,
+                    name = f"{rollout}.mp4")
 
 
 
@@ -318,11 +320,11 @@ def main(args):
     mopo.config.eval_env_config.obs_config = VehicleDynamicsObstacleConfig() # VehicleDynamicsOnlyConfig()
     mopo.config.eval_env_config.action_config = MergedSpeedTanhConfig()
     mopo.config.eval_env_config.scenario_config = NoCrashDenseTown01Config()
-    mopo.config.eval_env_config.scenario_config.set_parameter("disable_traffic_light", False)
+    mopo.config.eval_env_config.scenario_config.set_parameter("disable_traffic_light", True)
     mopo.config.eval_env_config.scenario_config.set_parameter("disable_static", True)
-
+    mopo.config.eval_env_config.obs_config.set_parameter("disable_lane_invasion_sensor", True)
     env = CarlaEnv(config = mopo.config.eval_env_config, log_dir = logger.log_dir)
-    eval_env = env.get_eval_env(1)
+    eval_env = env.get_eval_env(25)
 
     # autopilot_policy = AutopilotPolicy(env)
     # policy = AutopilotNoisePolicy(env, 0.1, 0.1)

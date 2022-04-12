@@ -161,7 +161,7 @@ class MOPO():
             device = self.dynamics.device,
             **self.policy_hp
         )
-        self.policy.learn(total_timesteps=self.steps_per_loop, callback = [eval_callback, checkpoint_callback])
+        self.policy.learn(total_timesteps=self.policy_epochs, callback = [eval_callback, checkpoint_callback])
 
         self.policy.save(os.path.join(self.logger.log_dir, "policy", "models", "final_policy"))
 
