@@ -264,9 +264,9 @@ class LeaderboardEvaluator(object):
             crash_message
         )
 
-        print("\033[1m> Registering the route statistics. NOTE: THIS IS CURRENTLY DISABLED\033[0m")
-        # self.statistics_manager.save_record(current_stats_record, config.index, checkpoint)
-        # self.statistics_manager.save_entry_status(entry_status, False, checkpoint)
+        print("\033[1m> Registering the route statistics. \033[0m")
+        self.statistics_manager.save_record(current_stats_record, config.index, checkpoint)
+        self.statistics_manager.save_entry_status(entry_status, False, checkpoint)
 
     def _load_and_run_scenario(self, args, config):
         """
@@ -279,6 +279,7 @@ class LeaderboardEvaluator(object):
         entry_status = "Started"
 
         print("\n\033[1m========= Preparing {} (repetition {}) =========".format(config.name, config.repetition_index))
+        print(os.path.splitext(args.checkpoint)[0] + f"_{config.name}.txt")
         print("> Setting up the agent\033[0m")
 
         # Prepare the statistics of the route
@@ -312,7 +313,7 @@ class LeaderboardEvaluator(object):
             crash_message = "Agent's sensors were invalid"
             entry_status = "Rejected"
 
-            self._register_statistics(config, args.checkpoint, entry_status, crash_message)
+            self._register_statistics(config, os.path.splitext(args.checkpoint)[0] + f"_{config.name}.txt", entry_status, crash_message)
             self._cleanup()
             sys.exit(-1)
 
@@ -324,7 +325,7 @@ class LeaderboardEvaluator(object):
 
             crash_message = "Agent couldn't be set up"
 
-            self._register_statistics(config, args.checkpoint, entry_status, crash_message)
+            self._register_statistics(config, os.path.splitext(args.checkpoint)[0] + f"_{config.name}.txt", entry_status, crash_message)
             self._cleanup()
             return
 
@@ -334,6 +335,7 @@ class LeaderboardEvaluator(object):
         try:
             self._load_and_wait_for_world(args, config.town, config.ego_vehicles)
             self._prepare_ego_vehicles(config.ego_vehicles, False)
+
             scenario = self._scenario_class(world=self.world, config=config, debug_mode=args.debug)
             self.statistics_manager.set_scenario(scenario.scenario)
 
@@ -391,7 +393,7 @@ class LeaderboardEvaluator(object):
         try:
             print("\033[1m> Stopping the route\033[0m")
             self.manager.stop_scenario()
-            self._register_statistics(config, args.checkpoint, entry_status, crash_message)
+            self._register_statistics(config, os.path.splitext(args.checkpoint)[0] + f"_{config.name}.txt", entry_status, crash_message)
 
             if args.record:
                 self.client.stop_recorder()
@@ -428,8 +430,8 @@ class LeaderboardEvaluator(object):
             # setup
             ## Changed
             # Sample routes from route indexer, instead of choosing them in line
-            # config = route_indexer.next()
-            config = route_indexer.sample()
+            config = route_indexer.next()
+            # config = route_indexer.sample()
             config.index = self.route_index
 
             if self.town is not None:
