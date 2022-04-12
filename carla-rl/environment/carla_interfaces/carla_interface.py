@@ -386,7 +386,7 @@ class Carla910Interface():
         if hazard_detected:
             return np.array([0,-1])
         else:
-            waypoint = self.next_waypoints[0]
+            waypoint = self.next_waypoints[2]
             steer = self.actor_fleet.lateral_controller.pid_control(waypoint)
             steer = np.clip(steer, -1, 1)
             return np.array([steer, target_speed])
