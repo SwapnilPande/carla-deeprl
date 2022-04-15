@@ -574,7 +574,7 @@ class BaseFakeEnv(gym.Env):
             #Logging
             if(done and self.logger is not None):
                 # Log how the episode terminated
-                self.logger.log_scalar('rollout/obstacle_collision', int(collision), self.cum_step)
+                self.logger.log_scalar('rollout/obstacle_collision', int(front_collision or side_collision), self.cum_step)
                 self.logger.log_scalar('rollout/out_of_lane', int(out_of_lane), self.cum_step)
                 self.logger.log_scalar('rollout/success', int(success), self.cum_step)
                 # Log average uncertainty over the episode
