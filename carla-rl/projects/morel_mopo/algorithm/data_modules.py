@@ -295,7 +295,7 @@ class OfflineCarlaDataset(Dataset):
                         npc_poses = torch.FloatTensor(samples[i][npc_pose_key])
                     else:
                         npc_poses = torch.zeros(size = (0,4))
-                    self.npc_module.store_poses(npc_poses)
+                    self.npc_module.store_poses(npc_poses, samples[i][done_key])
 
                     # rewards, terminal at each timestep
                     self.rewards.append(torch.FloatTensor([samples[i][reward_key]]))
