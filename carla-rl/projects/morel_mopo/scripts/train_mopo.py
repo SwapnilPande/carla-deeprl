@@ -53,7 +53,7 @@ if __name__ == '__main__':
     parser.add_argument('--exp_name', type=str)
     parser.add_argument("--uncertainty", type=float)
     parser.add_argument("--exp_group", type=str, required = False)
-    args = parser.parse_args()
+    args = parser.parse_known_args()[0]
     main(args)
 
 
