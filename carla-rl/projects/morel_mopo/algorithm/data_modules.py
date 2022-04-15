@@ -62,19 +62,62 @@ class TrafficLightModule():
         return None, None
 
 class NPCModule():
+    """ NPCModule stores the sequence of poses of NPCs for an entire dataset.
+
+    The dataset is stored in an array of shape [n_samples, n_agents, 4]. The module will return sequences of length rollout_len, except if the
+    npc trajectory in the dataset ends (The next sequence of NPC poses has started). In that case, the module will return the remaining poses.
+    """
     ''' init waypoints '''
     def __init__(self):
-        self.pose_sequence = []
+        # Stores the sequence of poses of all NPCs
+        # [n_trajectories, trajectory_length, n_agents, 4]
+        self.pose_sequence = [[]]
 
-    def store_poses(self, poses):
-        self.pose_sequence.append(poses)
+        # Stores mapping from global idx to specific pose sequence index
+        # [n_trajectories, 2]
+        # First element is the trajectory idx, second element is the step idx
+        self.global_idx_to_pose_idx = []
+
+    def store_poses(self, poses, done):
+        """Stores the sequence of poses of all NPCs in the dataset.
+
+        Args:
+            poses: [n_agents, 4]
+            done: True if the trajectory is done
+        """
+        # If the trajectory is done, store the poses and reset the pose sequence
+        self.pose_sequence[-1].append(poses)
+
+        # Get the global idx of the last pose
+        traj_idx = len(self.pose_sequence) - 1
+        step_idx = len(self.pose_sequence[traj_idx]) - 1
+
+        # Store the mapping from global idx to specific pose sequence index
+        self.global_idx_to_pose_idx.append((traj_idx, step_idx))
+
+        # If the trajectory is done, reset the pose sequence
+        if done:
+            self.pose_sequence.append([])
 
     def get_poses(self, idx, rollout_len):
-        # Return poses if idx is valid
-        if(idx < len(self.pose_sequence)):
-            return self.pose_sequence[idx : idx + rollout_len]
+        """Returns the sequence of poses of all NPCs in the dataset, for the remaining length of the trajectory.
 
-        return
+        If rollout_len is greater than the remaining length of the trajectory, the remaining poses will be returned. Else, the poses will be
+        returned for the next rollout_len poses.
+
+        Args:
+            idx: global index of the sequence
+            rollout_len: length of the sequence
+
+        Returns:
+            poses: [n_agents, 4]
+        """
+
+        # Get traj_idx and step_idx from global idx
+        traj_idx, step_idx = self.global_idx_to_pose_idx[idx]
+
+
+        return self.pose_sequence[traj_idx][step_idx : step_idx + rollout_len]
 
 
 
@@ -246,7 +289,8 @@ class OfflineCarlaDataset(Dataset):
                     # else:
                     #     self.traffic_light_module.store_traffic_light_loc(torch.FloatTensor(([-1,-1])), 0)
 
-                    # get npc poses for current timestep
+                    # Get NPC poses for current timestep
+                    # NPC poses at the current timestep is a list of lists of [x, y, theta, speed] (n_npcs x 4)
                     if(npc_pose_key in samples[i]):
                         npc_poses = torch.FloatTensor(samples[i][npc_pose_key])
                     else:
