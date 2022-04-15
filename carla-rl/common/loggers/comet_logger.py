@@ -211,7 +211,7 @@ class CometLogger(BaseLogger):
         # Lastly, log model to comet as well
         self.log_model(log_path, file_path)
 
-    def torch_load(self, log_path, name):
+    def torch_load(self, log_path, name, map_location = 'cpu'):
         # Get full path to log directory
         full_log_path = self.prep_dir(log_path)
 
@@ -222,7 +222,7 @@ class CometLogger(BaseLogger):
             self.comet_download(os.path.join(log_path, name))
 
         with open(file_path, 'rb') as f:
-            obj = torch.load(f, map_location='cpu')
+            obj = torch.load(f, map_location=map_location)
 
         return obj
 

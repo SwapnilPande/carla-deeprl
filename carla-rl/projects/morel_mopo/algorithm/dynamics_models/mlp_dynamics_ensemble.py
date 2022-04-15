@@ -533,7 +533,9 @@ class MLPDynamicsEnsemble(nn.Module):
                     norm_stats = norm_stats,
                     gpu = gpu)
 
-        model.load_state_dict(logger.torch_load(MLPDynamicsEnsemble.model_log_dir, model_name))
+        device = "cuda:{}".format(gpu)
+
+        model.load_state_dict(logger.torch_load(MLPDynamicsEnsemble.model_log_dir, model_name, map_location = device))
 
         return model
 
