@@ -499,7 +499,7 @@ class BaseFakeEnv(gym.Env):
             out_of_lane = torch.abs(dist_to_trajectory) > DIST
 
             success = len(self.waypoints) <= 1 or (self.steps_elapsed >= len(self.npc_poses) - 1)
-            reward_out = compute_reward(self.state.unnormalized[0], dist_to_trajectory, (side_collision or front_collision) or out_of_lane, self.config)
+            reward_out = compute_reward(self.state.unnormalized[0], dist_to_trajectory, side_collision or front_collision or out_of_lane, self.config)
 
             uncertain =  self.usad(self.deltas.normalized.detach().cpu().numpy())
             reward_out[0] = reward_out[0] - uncertain * self.uncertainty_coeff
