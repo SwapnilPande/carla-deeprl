@@ -4,7 +4,7 @@ import projects.morel_mopo.algorithm.fake_envs.fake_env_utils as feutils
 import numpy as np
 import torch
 import time
-
+import matplotlib.pyplot as plt
 
 def delta_update_func(deltas: feutils.NormalizedTensor):
     """Preprocess delta before they are applied to the state
@@ -45,6 +45,9 @@ class ActorManager():
 
         # num_actors stores the total number of actors
         self.num_actors = 0
+
+        # For rendering
+        self.fig = None
 
 
     def reset(self,
@@ -108,6 +111,7 @@ class ActorManager():
                                           self.frame_stack,
                                           self.dynamics.action_dim,
                                           device=self.device)
+
 
         # Set the target_speed to -1 for all actors - this corresponds to full braking
         initial_actions[...,1] = -1
@@ -194,6 +198,20 @@ class ActorManager():
         }
 
         return output
+
+    def render(self):
+        if(self.fig is None):
+            self.fig = plt.figure()
+            self.ax = self.fig.subplots()
+        else:
+            # Clear plot
+            self.ax.clear()
+        self.ax.plot(self.poses[...,0], self.poses[...,1], '.')
+        self.ax.set_title("Vehicle Positions")
+        plt.show()
+        plt.waitforbuttonpress()
+
+
 
 
 
