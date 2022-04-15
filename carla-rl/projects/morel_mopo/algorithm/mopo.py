@@ -19,7 +19,7 @@ from stable_baselines3.common.callbacks import CheckpointCallback
 from projects.morel_mopo.scripts.collect_data import DataCollector
 
 from common.loggers.comet_logger import CometLogger
-from projects.latgraph_drive.config.logger_config import ExistingCometLoggerConfig
+from projects.morel_mopo.config.logger_config import ExistingCometLoggerConfig
 
 
 
