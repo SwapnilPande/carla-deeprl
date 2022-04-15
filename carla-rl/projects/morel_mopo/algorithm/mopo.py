@@ -116,7 +116,7 @@ class MOPO():
                 self.dynamics = self.dynamics_config.dynamics_model_type.load(
                             logger = temp_logger,
                             model_name = self.config.pretrained_dynamics_model.name,
-                            gpu = self.dynamics_config.gpu,
+                            gpu = self.config.gpu,
                             data_config = self.dynamics_config.dataset_config)
 
 

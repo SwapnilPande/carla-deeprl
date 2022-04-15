@@ -190,8 +190,8 @@ def filter_waypoints(waypoints):
             popped = True
         else:
             i += 1
-    if(popped):
-        print("FAKE_ENV: POPPED DUPLICATE WAYPOINTS")
+    # if(popped):
+    #     print("FAKE_ENV: POPPED DUPLICATE WAYPOINTS")
 
     return torch.FloatTensor(waypoints)
 

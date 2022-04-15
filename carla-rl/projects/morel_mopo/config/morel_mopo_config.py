@@ -34,11 +34,11 @@ class BasePPOConfig(BasePolicyConfig):
     def __init__(self):
         super().__init__()
 
-        # Clip range for PPO
-        self.clip_range = None
+        # # Clip range for PPO
+        # self.clip_range = None
 
-        # Number of epochs to train for policy updates
-        self.n_epochs = None
+        # # Number of epochs to train for policy updates
+        # self.n_epochs = None
 
 
 class DefaultPPOConfig(BasePPOConfig):
@@ -47,8 +47,8 @@ class DefaultPPOConfig(BasePPOConfig):
 
         self.learning_rate = 3e-4
         self.gamma = 0.99
-        self.clip_range = 0.25
-        self.n_epochs = 10
+        # self.clip_range = 0.25
+        # self.n_epochs = 10
 
 class BaseMOPOConfig(BaseConfig):
     def __init__(self):
