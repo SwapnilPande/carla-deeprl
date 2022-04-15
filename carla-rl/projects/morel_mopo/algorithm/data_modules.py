@@ -71,14 +71,14 @@ class NPCModule():
     def __init__(self):
         # Stores the sequence of poses of all NPCs
         # [n_trajectories, trajectory_length, n_agents, 4]
-        self.pose_sequence = [[]]
+        self.pose_sequence = []
 
         # Stores mapping from global idx to specific pose sequence index
         # [n_trajectories, 2]
         # First element is the trajectory idx, second element is the step idx
         self.global_idx_to_pose_idx = []
 
-    def store_poses(self, poses, done):
+    def store_poses(self, poses):
         """Stores the sequence of poses of all NPCs in the dataset.
 
         Args:
@@ -95,9 +95,10 @@ class NPCModule():
         # Store the mapping from global idx to specific pose sequence index
         self.global_idx_to_pose_idx.append((traj_idx, step_idx))
 
-        # If the trajectory is done, reset the pose sequence
-        if done:
-            self.pose_sequence.append([])
+
+    def initialize_trajectory(self):
+        """Initializes a new trajectory."""
+        self.pose_sequence.append([])
 
     def get_poses(self, idx, rollout_len):
         """Returns the sequence of poses of all NPCs in the dataset, for the remaining length of the trajectory.
@@ -184,6 +185,7 @@ class OfflineCarlaDataset(Dataset):
         # Don't calculate gradients for descriptive statistics
         with torch.no_grad():
             # Loop over all trajectories
+            i = 0
             for trajectory_path in tqdm(trajectory_paths):
                 samples = []
                 json_paths = sorted(glob.glob('{}/measurements/*.json'.format(trajectory_path)))
@@ -199,6 +201,9 @@ class OfflineCarlaDataset(Dataset):
                 # Exit if the trajectory is too short
                 if traj_length <= (self.frame_stack + 1):
                     continue
+
+                # Initialize new trajectory in npc module
+                self.npc_module.initialize_trajectory()
 
                 # Construct observations across all timesteps i in trajectory
                 for i in range(self.frame_stack, traj_length-1):
@@ -295,11 +300,13 @@ class OfflineCarlaDataset(Dataset):
                         npc_poses = torch.FloatTensor(samples[i][npc_pose_key])
                     else:
                         npc_poses = torch.zeros(size = (0,4))
-                    self.npc_module.store_poses(npc_poses, samples[i][done_key])
+                    self.npc_module.store_poses(npc_poses)
 
                     # rewards, terminal at each timestep
                     self.rewards.append(torch.FloatTensor([samples[i][reward_key]]))
                     self.terminals.append(samples[i][done_key])
+
+                i += 1
 
             self.obs = torch.stack(self.obs)
             self.actions = torch.stack(self.actions)
