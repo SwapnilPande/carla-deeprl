@@ -14,7 +14,7 @@ class PretrainedDynamicsModelConfig(BaseConfig):
         self.key = None
         self.name = None
 
-    def populate(self, key, name):
+    def populate(self, key, name, gpu):
         self.key = key
         self.name = name
         self.gpu = gpu
@@ -49,6 +49,18 @@ class DefaultPPOConfig(BasePPOConfig):
         # self.clip_range = 0.25
         # self.n_epochs = 10
 
+class BaseSACConfig(BasePolicyConfig):
+    def __init__(self):
+        super().__init__()
+
+
+class DefaultSACConfig(BaseSACConfig):
+    def __init__(self):
+        super().__init__()
+
+        self.learning_rate = 3e-4
+        self.gamma = 0.99
+
 class BaseMOPOConfig(BaseConfig):
     def __init__(self):
         super().__init__()
@@ -77,7 +89,8 @@ class BaseMOPOConfig(BaseConfig):
         if(pretrained_dynamics_model_key is not None):
             self.pretrained_dynamics_model_config = PretrainedDynamicsModelConfig()
             self.pretrained_dynamics_model_config.populate(key = pretrained_dynamics_model_key,
-                                                    name = pretrained_dynamics_model_name)
+                                                    name = pretrained_dynamics_model_name,
+                                                    gpu = gpu)
             self.dynamics_config = None
 
 
@@ -90,6 +103,8 @@ class BaseMOPOConfig(BaseConfig):
         self.policy_algorithm = getattr(stable_baselines3, policy_algorithm)
         if(policy_algorithm == "PPO"):
             self.policy_hyperparameters = DefaultPPOConfig()
+        elif(policy_algorithm == "SAC"):
+            self.policy_hyperparameters = DefaultSACConfig()
         else:
             raise Exception("No config for policy algorithm: {}".format(policy_algorithm))
 

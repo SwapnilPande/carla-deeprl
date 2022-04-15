@@ -15,7 +15,7 @@ class BaseConfig:
             # Raise Exception if value is None
             if (name not in ignore_keys):
                 if(value is None):
-                    import ipdb; ipdb.set_trace()
+                    # import ipdb; ipdb.set_trace()
                     raise Exception("Missing value for parameter {} in config {}".format(
                             name,
                             self.__class__.__name__
