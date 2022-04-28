@@ -33,7 +33,7 @@ exp_group_id=${exp_name}_${num_exp}_$(date +%Y%m%d)
 # Loop num_exp times
 for i in $(seq 1 $num_exp); do
     # Run train_mopo.py in a tmux session
-    tmux new-session -s ${exp_group_id}_${i} -d "source ~/anaconda3/etc/profile.d/conda.sh && conda activate carla-rl && source ../../../../configure_env.setup && python train_mopo.py --exp_name $exp_name --gpu ${gpu_array[i - 1]} --exp_group $exp_group_id"
+    tmux new-session -s ${exp_group_id}_${i} -d "source ~/anaconda3/etc/profile.d/conda.sh && conda activate carla-rl-cuda-11 && source ../../../../configure_env.setup && python train_mopo.py --exp_name $exp_name --gpu ${gpu_array[i - 1]} --exp_group $exp_group_id"
     echo "Launched tmux session ${exp_group_id}_${i}"
     sleep 60
 done
