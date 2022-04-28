@@ -24,10 +24,6 @@ from environment.env import CarlaEnv
 from environment.config.config import DefaultMainConfig
 from environment.config.observation_configs import VehicleDynamicsObstacleConfig
 from environment.config.scenario_configs import NoCrashEmptyTown01Config, NoCrashEmptyTown02Config, NoCrashDenseTown01Config, LeaderboardConfig
-from environment.config.action_configs import MergedSpeedTanhConfig
-
-
-
 
 
 # MOPO
@@ -57,8 +53,6 @@ class AutopilotNoisePolicy:
 
     def policy_predict(self, obs):
         return self(obs)
-
-
 
 
 def generate_video(logger, image_path, save_path, name):
@@ -291,8 +285,8 @@ def closed_loop_eval(exp_name, logger, env, fake_env, policy, n_rollouts):
 
 class MOPOEvaluationConf:
     def __init__(self):
-        self.policy_model_name = "best_model_9000000.zip"
-        self.experiment_key = "7939b014bf084519ad501ed5dfe8e247"
+        self.policy_model_name = "best_model_2000000.zip"
+        self.experiment_key = "cfb8f34ba519462e8dd986743557de54"
         self.policy_only = True
         # self.dynamics_model_name = "final"
         self.dynamics_model_name = None
@@ -318,7 +312,6 @@ def main(args):
     mopo.config.eval_env_config.render_server = True
     mopo.config.eval_env_config.carla_gpu = args.gpu
     mopo.config.eval_env_config.obs_config = VehicleDynamicsObstacleConfig() # VehicleDynamicsOnlyConfig()
-    mopo.config.eval_env_config.action_config = MergedSpeedTanhConfig()
     mopo.config.eval_env_config.scenario_config = NoCrashDenseTown01Config()
     mopo.config.eval_env_config.scenario_config.set_parameter("disable_traffic_light", True)
     mopo.config.eval_env_config.scenario_config.set_parameter("disable_static", True)
