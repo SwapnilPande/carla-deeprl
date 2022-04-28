@@ -6,12 +6,12 @@ Calculates reward according to distance to trajectory
         dist_to_traj: distance from vehicle to current trajectory
         config
 '''
-def compute_reward(next_state, dist_to_traj, collision, config):
+def compute_reward(velocity, dist_to_traj, collision, config):
 
     reward_config = config.reward_config
 
     # Speed reward
-    speed = next_state[1] * reward_config.speed_coeff
+    speed = velocity * reward_config.speed_coeff
     # Dist to trajectory
     dist_to_trajectory = dist_to_traj * reward_config.dist_to_trajectory_coeff
 

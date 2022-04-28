@@ -478,7 +478,6 @@ class BaseFakeEnv(gym.Env):
             self.state.unnormalized = self.update_next_state(self.state, delta_state)
 
             ###################### calculate waypoint features (in global frame)  ##############################
-
             policy_obs, dist_to_trajectory, angle = self.get_policy_obs(self.state.unnormalized[0])
 
             ################## calc reward with penalty for uncertainty ##############################
@@ -499,7 +498,16 @@ class BaseFakeEnv(gym.Env):
             out_of_lane = torch.abs(dist_to_trajectory) > DIST
 
             success = len(self.waypoints) <= 1 or (self.steps_elapsed >= len(self.npc_poses) - 1)
-            reward_out = compute_reward(self.state.unnormalized[0], dist_to_trajectory, side_collision or front_collision or out_of_lane, self.config)
+
+            # Compute velocity along trajectory
+            trajectory_velocity = feutils.compute_trajectory_velocity(self.waypoints,
+                                                                        self.vehicle_pose,
+                                                                        self.state.unnormalized[0],
+                                                                        self.device,
+                                                                        second_last_waypoint = self.second_last_waypoint,
+                                                                        last_waypoint = self.last_waypoint,
+                                                                        previous_waypoint = self.previous_waypoint)
+            reward_out = compute_reward(trajectory_velocity, dist_to_trajectory, side_collision or front_collision or out_of_lane, self.config)
 
             uncertain =  self.usad(self.deltas.normalized.detach().cpu().numpy())
             reward_out[0] = reward_out[0] - uncertain * self.uncertainty_coeff
