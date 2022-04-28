@@ -50,6 +50,27 @@ class DefaultPPOConfig(BasePPOConfig):
         # self.clip_range = 0.25
         # self.n_epochs = 10
 
+class BaseSACConfig(BasePolicyConfig):
+    def __init__(self):
+        super().__init__()
+
+        # # Clip range for PPO
+        # self.clip_range = None
+
+        # # Number of epochs to train for policy updates
+        # self.n_epochs = None
+
+
+class DefaultSACConfig(BasePPOConfig):
+    def __init__(self):
+        super().__init__()
+
+        self.learning_rate = 3e-4
+        self.gamma = 0.99
+        # self.clip_range = 0.25
+        # self.n_epochs = 10
+
+
 class BaseMOPOConfig(BaseConfig):
     def __init__(self):
         super().__init__()
@@ -82,6 +103,7 @@ class BaseMOPOConfig(BaseConfig):
                                                     name = pretrained_dynamics_model_name,
                                                     gpu = gpu)
 
+
             self.dynamics_config = None
 
         else:
@@ -92,6 +114,8 @@ class BaseMOPOConfig(BaseConfig):
 
         self.policy_algorithm = getattr(stable_baselines3, policy_algorithm)
         if(policy_algorithm == "PPO"):
+            self.policy_hyperparameters = DefaultPPOConfig()
+        elif(policy_algorithm == "SAC"):
             self.policy_hyperparameters = DefaultPPOConfig()
         else:
             raise Exception("No config for policy algorithm: {}".format(policy_algorithm))
