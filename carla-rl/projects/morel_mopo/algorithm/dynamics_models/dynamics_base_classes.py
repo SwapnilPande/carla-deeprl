@@ -64,7 +64,7 @@ class PredictionWrapper():
         # Sample a model_idx for this rollout
         self.model_idx = torch.randint(0, self.dynamics.n_models, (1,)).item()
 
-        return self.actions.unnormalized[:, self.current_idx, :], self.states.unnormalized[:, self.current_idx, :]
+        return self.states.unnormalized[:, self.current_idx, :], self.actions.unnormalized[:, self.current_idx, :]
 
 
     def update_state(self, delta_state: torch.Tensor):
