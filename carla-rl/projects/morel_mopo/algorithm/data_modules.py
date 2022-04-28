@@ -352,7 +352,7 @@ class OfflineCarlaDataset(Dataset):
 
 class OfflineCarlaDataModule():
     """ Datamodule for offline driving data """
-    def __init__(self, cfg):
+    def __init__(self, cfg, norm_stats = None):
         super().__init__()
         self.normalize_data = cfg.normalize_data
         self.paths = cfg.dataset_paths
@@ -364,8 +364,10 @@ class OfflineCarlaDataModule():
         self.datasets = None
         self.train_data = None
         self.val_data = None
-        if(hasattr(cfg, "normalization_stats")):
-            self.normalization_stats = cfg.normalization_stats
+        self.received_normalization_stats = False
+        if(norm_stats is not None):
+            self.normalization_stats = norm_stats
+            self.received_normalization_stats = True
         else:
             self.normalization_stats = {
                 "obs": None,
@@ -407,7 +409,7 @@ class OfflineCarlaDataModule():
         self.frame_stack = self.frame_stack
 
         # normalize across all trajectories
-        if self.normalize_data:
+        if self.normalize_data and not self.received_normalization_stats:
             print("DATA_MODULE: NORMALIZING")
             # number of total timesteps
             n = sum(len(d.rewards) for d in self.datasets)
@@ -431,7 +433,7 @@ class OfflineCarlaDataModule():
             print('DATA_MODULE: after norm delta', self.normalization_stats["delta"])
 
 
-        else:
+        elif not self.received_normalization_stats:
             print('DATA_MODULE: No normalization: Setting normalization stats to Mean=0, Std=1')
             self.normalization_stats["obs"] = {"mean" : torch.zeros((1, self.datasets[0].obs_dim)), "std" : torch.ones((1, self.datasets[0].obs_dim))}
             self.normalization_stats["action"] = {"mean" : torch.zeros((1, self.datasets[0].action_dim)), "std" : torch.ones((1, self.datasets[0].action_dim))}
@@ -440,6 +442,12 @@ class OfflineCarlaDataModule():
             # print('obs',self.normalization_stats["obs"])
             # print('act', self.normalization_stats["action"])
             # print('delta', self.normalization_stats["delta"])
+
+        else:
+            print('DATA_MODULE: Already normalized')
+            print('DATA_MODULE: Obs stats: ', self.normalization_stats["obs"])
+            print('DATA_MODULE: Action stats: ',  self.normalization_stats["action"])
+            print('DATA_MODULE: Delta stats: ', self.normalization_stats["delta"])
 
         # normalize
         for i in range(len(self.datasets)):
