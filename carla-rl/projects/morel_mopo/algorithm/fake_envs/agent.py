@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import time
 import matplotlib.pyplot as plt
+from common.debug_code import DebugCode
 
 def delta_update_func(deltas: feutils.NormalizedTensor):
     """Preprocess delta before they are applied to the state
@@ -85,9 +86,9 @@ class ActorManager():
         # TODO : Figure out a better solution
         # Reset the state of all of the actors
         initial_states = torch.zeros(self.num_actors,
-                                     self.frame_stack,
-                                     self.dynamics.state_dim_in,
-                                     device=self.device)
+                                    self.frame_stack,
+                                    self.dynamics.state_dim_in,
+                                    device=self.device)
         # Save the ego state in the last position
         # Unnormalize state before saving it, using the NormalizedTensor in prediction_wrapper
         initial_states[-1] = self.prediction_wrapper.states.unnormalize_array(ego_states)
@@ -112,7 +113,6 @@ class ActorManager():
                                           self.dynamics.action_dim,
                                           device=self.device)
 
-
         # Set the target_speed to -1 for all actors - this corresponds to full braking
         initial_actions[...,1] = -1
 
@@ -129,6 +129,7 @@ class ActorManager():
         self.waypoints = [feutils.get_waypoints(actor_trajectories[:,i,:]) for i in range(self.num_actors - 1)]
         # Add waypoints to the list for the ego vehicle
         self.waypoints.append(ego_waypoints[...,0:2])
+
 
         # Call reset on the prediction wrapper
         self.states, self.actions = self.prediction_wrapper.reset(initial_states, initial_actions)
@@ -183,11 +184,12 @@ class ActorManager():
         rot = torch.unsqueeze(rot, dim = -1)
 
         # Update the pose of all the vehicles
+        self.old_poses = self.poses
         self.poses = torch.cat([loc, rot], dim = -1)
 
         # Constrain theta to be between -180 and 180
-        self.poses[self.poses[...,2] < -180] += 360
-        self.poses[self.poses[...,2] >  180] -= 360
+        self.poses[self.poses[...,2] < -180][...,2] += 360
+        self.poses[self.poses[...,2] >  180][...,2] -= 360
 
         # Generate the output dictionary
         output = {
@@ -206,10 +208,11 @@ class ActorManager():
         else:
             # Clear plot
             self.ax.clear()
-        self.ax.plot(self.poses[...,0], self.poses[...,1], '.')
+        self.ax.set_ylim(-10, 10)
+        self.ax.plot(self.poses[...,0].cpu().numpy(), self.poses[...,1].cpu().numpy(), '.')
         self.ax.set_title("Vehicle Positions")
-        plt.show()
-        plt.waitforbuttonpress()
+        plt.draw()
+        plt.pause(1)
 
 
 

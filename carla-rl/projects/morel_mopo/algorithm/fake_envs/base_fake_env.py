@@ -147,6 +147,7 @@ class BaseFakeEnv(gym.Env):
         self.prev_termination_log = 0
 
 
+
     # sample from dataset
     def sample(self):
         return self.offline_data_module.sample_with_waypoints(self.timeout_steps)
@@ -183,7 +184,7 @@ class BaseFakeEnv(gym.Env):
         action = feutils.tensorify(action, self.device)
         ego_pose = feutils.tensorify(ego_pose, self.device)
         waypoints = feutils.tensorify(waypoints, self.device)
-        npc_poses = feutils.tensorify(npc_poses, self.device)
+        npc_poses = feutils.tensorify(np.stack(npc_poses), self.device)
 
         # This removes duplicate waypoints from the waypoints list'
         # TODO Revisit this - shouldn't be needed
@@ -425,6 +426,7 @@ class BaseFakeEnv(gym.Env):
 
         ## Step actor manager to get new states
         self.actor_manager_state = self.actor_manager.step(new_actions, self.dones)
+        # self.actor_manager.render()
 
         # Break actor_manager state into separate variables
         self.poses = self.actor_manager_state['poses']
@@ -457,8 +459,7 @@ class BaseFakeEnv(gym.Env):
 
             # side_collision = side_collision or (collision and is_side)
             # front_collision = front_collision or (collision and not is_side)
-
-        dist_to_trajectories = np.squeeze(policy_obs[..., 3]) * self.config.obs_config.vehicle_proximity_threshold
+        dist_to_trajectories = np.squeeze(policy_obs[..., 3], axis = -1)
 
         out_of_lanes = torch.abs(dist_to_trajectories) > DIST
 
@@ -562,3 +563,78 @@ class BaseFakeEnv(gym.Env):
         #     self.logger.log_scalar('rollout/average_uncertainty', self.episode_uncertainty / self.steps_elapsed, self.cum_step)
 
         return res
+
+    def render(self):
+        self.actor_manager.render()
+
+
+if __name__ == "__main__":
+    from projects.morel_mopo.config.morel_mopo_config import DefaultMLPObstaclesMOPOConfig
+    from common.loggers.comet_logger import CometLogger
+    from projects.morel_mopo.config.logger_config import ExistingCometLoggerConfig
+    from projects.morel_mopo.algorithm.fake_envs.autopilot_policy import AutopilotPolicy
+
+
+    # Define a testing script, that will rollout autopilot policies to see if we get reasonable results
+
+    # Load the dynamics from a pre-verified dynamics model
+    config = DefaultMLPObstaclesMOPOConfig()
+    config.populate_config(gpu = "1",
+                           policy_algorithm = "PPO",
+                           pretrained_dynamics_model_key = "e1a27faf07f9450a87e6e6c10f29b0d8",
+                           pretrained_dynamics_model_name = "final")
+
+    # Construct a logger temporarily to load the dynamics model
+    logger_conf = ExistingCometLoggerConfig()
+    logger_conf.experiment_key = config.pretrained_dynamics_model_config.key
+    temp_logger = CometLogger(logger_conf)
+
+    # Load dynamics config
+    temp_config = temp_logger.pickle_load("mopo", "config.pkl")
+    dynamics_config = temp_config.dynamics_config
+
+    dynamics_config.dataset_config.dataset_paths = [
+                "/home/swapnil/small_data",
+            ]
+
+
+
+    dynamics = dynamics_config.dynamics_model_type.load(
+                            logger = temp_logger,
+                            model_name = config.pretrained_dynamics_model_config.name,
+                            gpu = "1",
+                            data_config = dynamics_config.dataset_config)
+
+
+    fake_env = dynamics_config.fake_env_type(dynamics,
+                    config = config.fake_env_config,
+                    logger = None)
+
+    # Get first obs
+    obs = fake_env.reset()
+    # print(obs)
+
+    fake_env.render()
+
+    # Get number of actors from obs
+    num_actors = obs.shape[0]
+
+    # Create num_actors autopilot policies
+    autopilot_policies = [AutopilotPolicy(fake_env) for _ in range(num_actors)]
+
+
+    dones = np.array([False for _ in range(num_actors)])
+
+    for i in range(200):
+        print(obs)
+        # Get actions from autopilot policies
+        actions = np.stack([ap.predict(obs[i]) for i, ap in enumerate(autopilot_policies)])
+
+        print(actions)
+
+        # Get next obs, rewards, dones
+        obs, rewards, dones, _ = fake_env.step(actions)
+        fake_env.render()
+
+
+

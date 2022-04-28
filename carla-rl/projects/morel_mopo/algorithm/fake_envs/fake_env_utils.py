@@ -502,7 +502,7 @@ class PIDLateralController():
         self._dt = dt
         self._e_buffer = deque(maxlen=10)
 
-    def pid_control(self, vehicle_pose, angle):
+    def pid_control(self, angle):
         """
         Estimate the steering angle of the vehicle based on the PID equations
 
@@ -527,7 +527,7 @@ class PIDLateralController():
 
 def tensorify(inp, device):
     if(not isinstance(inp, torch.Tensor)):
-        return torch.FloatTensor(inp, device = device)
+        return torch.FloatTensor(inp).to(device)
 
     return inp.to(device)
 
