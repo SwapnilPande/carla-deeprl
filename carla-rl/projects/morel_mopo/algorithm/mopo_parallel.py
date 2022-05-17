@@ -23,10 +23,11 @@ from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.utils import obs_as_tensor, safe_mean
 
-from projects.morel_mopo.scripts.collect_data import DataCollector
+from projects.morel_mopo.scripts.collect_data import AutopilotPolicy, DataCollector
 
 from common.loggers.comet_logger import CometLogger
 from projects.morel_mopo.config.logger_config import ExistingCometLoggerConfig
+from projects.morel_mopo.algorithm.fake_envs.autopilot_policy import AutopilotPolicy
 
 '''
 1. Learn approx dynamics model from OfflineCarlaDataset
@@ -40,12 +41,13 @@ class SIG:
     QUERY = 2
     EXP = 3
     PARAM = 4
+    RETURNS = 5
 
 class MOPO():
     log_dir = "mopo"
 
     def __init__(self, config,
-                    logger,
+                    logger = None,
                     load_data = True):
 
         self.config = config
@@ -132,7 +134,7 @@ class MOPO():
         self.last_save_steps = 0
         self.glb_num_episodes = 0
         self.num_steps_since_update = 0
-        self.save_freq = 5
+        self.save_freq = 100000
         self.N_S = self.policy.observation_space.shape[1]
         self.N_A = self.policy.action_space.shape[0]
 
@@ -148,6 +150,7 @@ class MOPO():
                     src=sender, tag=SIG.EXP, device='cpu')
                 vec_buf = vec_buf.reshape(buffer_len, -1).numpy()
                 # disintegrate them into buffer items derived from buffer_len
+                avg_rewards = 0.0
                 for _buf in vec_buf:
                     _state = _buf[:self.N_S]
                     _action = _buf[self.N_S:self.N_S + self.N_A]
@@ -155,6 +158,7 @@ class MOPO():
                     _next_state = _buf[-self.N_S - 1:-1]
                     _done = _buf[-1:]
                     self.policy.replay_buffer.add(_state, _next_state, _action, _reward, _done, [{}])
+
                 self.glb_num_steps += num_steps_added
                 self.num_steps_since_update += num_steps_added
                 self.glb_num_episodes += num_eps_added
@@ -166,6 +170,12 @@ class MOPO():
                     self.policy.policy.parameters(),
                     dst=sender, tag=SIG.PARAM
                 ).wait()
+            elif signal == SIG.RETURNS:
+                episode_rewards = buffer_len
+                print("LOOOGGIGN RETURSN NOW S_____________________________-")
+                print(175, avg_rewards)
+                if(self.logger is not None):
+                    self.logger.log_scalar("rollout/ep_rew_mean", episode_rewards, self.glb_num_steps)
             else:
                 raise ValueError('signal not seen')
             if self.num_steps_since_update >= self.glb_update_freq:
@@ -178,17 +188,23 @@ class MOPO():
             # save checkpoint
             if self.glb_num_steps - self.last_save_steps >= self.save_freq:
                 self.last_save_steps = self.glb_num_steps
-                self.policy.save(os.path.join(self.logger.log_dir, "policy", "models", "final_policy"))
+                self.policy.save(os.path.join(self.logger.log_dir, "policy", "models", f"{self.glb_num_steps}"))
 
     def work(self):
         self.recv_info_len = 3
         self.num_steps_since_update = 0
         self.num_eps_since_update = 0
         self.local_policy_timestamp = 0
+        # fewer buffer pushes
+        self.buffer_sync_freq = 5
+        self.num_agents = 1
+        self.last_buffer_push_timestep = 0
         self.server_rank = (self.rank - self.num_servers) % self.num_servers
         # Setup dynamics model
         # If we are using a pretrained dynamics model, we need to load it
         # Else, we need to train a new dynamics model
+
+        self.curr_ep_reward = 0
 
         self.get_dynamics_model()
 
@@ -224,7 +240,7 @@ class MOPO():
             carla_logger = self.logger,
             device = self.dynamics.device,
         )
-        policy_collections = deque(maxlen=100)
+        policy_collections = deque(maxlen=105)
 
         self.N_S = self.policy.observation_space.shape[1]
         self.N_A = self.policy.action_space.shape[0]
@@ -238,28 +254,50 @@ class MOPO():
         #     self.steps_per_loop, None, None, -1, 5, None, True, 'OffPolicyAlgorithm'
         # )
         glb_stats = self.update_parameters()
-        policy_collections.append(copy.deepcopy(self.policy.get_parameters()))
-        print(312, glb_stats)
+
 
         prev_obs = fake_env.reset().squeeze(-2)
-        policy_idx_dict = {0: list(range(prev_obs.shape[0]))}
-        done_mask = np.zeros(prev_obs.shape[0])
+        for _ in range(len(prev_obs) - self.num_agents):
+            policy_collections.append(AutopilotPolicy(fake_env))
+
+        # Append trainable policy to the end of the policy_collection
+        policy_collections.append(copy.deepcopy(self.policy.get_parameters()))
+
+        # policy at idx 0 will be applied to a list of actors
+        # policy_idx_dict = {idx-self.num_agents + 1: [idx] for idx in range(self.num_agents, prev_obs.shape[0])}
+        policy_idx_dict = {idx: [idx] for idx in range(0, prev_obs.shape[0] - self.num_agents)}
+
+        policy_idx_dict[prev_obs.shape[0] - self.num_agents] = list(range(prev_obs.shape[0] - self.num_agents, prev_obs.shape[0]))
+
+        # print(312, prev_obs.shape[0], len(policy_collections), list(policy_idx_dict.keys()))
+
+        done_mask = np.ones(prev_obs.shape[0])
+        done_mask[-self.num_agents:] = 0
+
+
 
         for i in range(self.policy_epochs):
-            self.num_steps_since_update += 1
+            self.num_steps_since_update += np.logical_not(done_mask).sum()
             # actions = torch.zeros(prev_obs.shape[0], 2)
             # get actions from sampling old policies
-            action_list = []
+            actions = torch.zeros(prev_obs.shape[0], fake_env.action_space.shape[-1])
             for policy_idx, actor_idx in policy_idx_dict.items():
                 # _policy_param = random.choice(policy_collections)
                 _policy_param = policy_collections[policy_idx]
-                self.policy.set_parameters(_policy_param)
+                if isinstance(_policy_param, AutopilotPolicy):
+                    _curr_policy = _policy_param
+                else:
+                    # self.policy.set_parameters(_policy_param)
+                    _curr_policy = self.policy
                 # print(341, self.policy.predict(prev_obs[actor_idx, None, :]))
-                action_list.append(torch.tensor(self.policy.predict(prev_obs[actor_idx, None, :])[0]))
-            actions = torch.vstack(action_list)
-            print(340, prev_obs.shape, actions.shape)
+                actions[actor_idx] = torch.FloatTensor(_curr_policy.predict(prev_obs[actor_idx, None, :])[0])
+            # actions = torch.vstack(action_list)
+            print(340, 'rank', self.rank, prev_obs.shape, actions.shape)
             start_time = time.time()
             curr_obs, rewards, dones, _ = fake_env.step(actions)
+
+            # fake_env.render()
+            self.curr_ep_reward += rewards[-1].item()
             curr_obs = curr_obs.squeeze(-2)
             # print(273, type(rewards), type(dones), curr_obs.shape, rewards.shape, dones.shape)
             # print(274, self.N_A, self.N_S)
@@ -277,7 +315,7 @@ class MOPO():
             #         [{}],
             #     )
 
-            done_mask = np.logical_and(done_mask, dones)
+            done_mask[-self.num_agents:] = np.logical_and(done_mask[-self.num_agents:], dones[-self.num_agents:])
 
             # self.worker_buffer.append(np.hstack((prev_obs, actions, rewards[:, [0]], curr_obs, dones[:, [0]])))
             self.worker_buffer.append(np.hstack((
@@ -286,31 +324,48 @@ class MOPO():
                 rewards[np.logical_not(done_mask)].reshape(-1, 1),
                 curr_obs[np.logical_not(done_mask)],
                 dones[np.logical_not(done_mask)].reshape(-1, 1))))
-            print(336, [x.shape for x in self.worker_buffer])
+            # self.worker_buffer.append(np.hstack((
+            #     prev_obs[[0]],
+            #     actions[[0]],
+            #     rewards[[0]].reshape(-1, 1),
+            #     curr_obs[[0]],
+            #     dones[[0]].reshape(-1, 1))))
+            print(336, 'rank', self.rank, [x.shape for x in self.worker_buffer])
 
-            done_mask[:] = dones
+            # print(dones)
+
+            done_mask = np.logical_or(done_mask, dones)
             prev_obs = curr_obs
 
-            self.send_buffer()
-            glb_stats = self.update_parameters()
-            policy_collections.append(copy.deepcopy(self.policy.get_parameters()))
+            # fewer buffer pushes
+            if i - self.last_buffer_push_timestep >=  self.buffer_sync_freq:
+                self.send_buffer()
+                glb_stats = self.update_parameters()
+                self.last_buffer_push_timestep = i
+                policy_collections[-1] = copy.deepcopy(self.policy.get_parameters())
+            # for autopilot sanity test
+            # policy_collections.append(copy.deepcopy(self.policy.get_parameters()))
 
-            if dones.all():
+            if done_mask.all():
+            # if dones[0]:
                 prev_obs = fake_env.reset().squeeze(-2)
-                done_mask = np.zeros(prev_obs.shape[0])
+                # done_mask = np.zeros(prev_obs.shape[0])
+                done_mask = np.ones(prev_obs.shape[0])
+                done_mask[-self.num_agents:] = 0
+                self.send_reward()
                 # policy_collections.append(copy.deepcopy(self.policy))
                 # policy_idx_dict = {0: list(range(prev_obs.shape[0]))}
-                rand_idx_list = [random.randrange(0, len(policy_collections)) for _ in range(prev_obs.shape[0] - 1)] + \
-                    [len(policy_collections) - 1]
-                policy_idx_dict = defaultdict(list)
-                for idx in range(prev_obs.shape[0]):
-                    policy_idx_dict[rand_idx_list[idx]].append(idx)
+                # rand_idx_list = [random.randrange(0, len(policy_collections)) for _ in range(prev_obs.shape[0] - 1)] + \
+                #     [len(policy_collections) - 1]
+                # policy_idx_dict = defaultdict(list)
+                # for idx in range(prev_obs.shape[0]):
+                #     policy_idx_dict[rand_idx_list[idx]].append(idx)
 
 
 
 
     def update_parameters(self):
-        print(335, 'rank', self.rank, 'update_parameters')
+        print(360, 'rank', self.rank, 'update_parameters')
         # overhead = [self.rank, self.num_steps_since_update,
         #     self.num_eps_since_update, SIG.PARAM_REQ]
         overhead = [self.rank, self.num_steps_since_update,
@@ -322,6 +377,15 @@ class MOPO():
         self.num_steps_since_update = 0
         self.local_policy_timestamp += 1
         return glb_stats
+
+    def send_reward(self):
+        print(363, 'rank', self.rank, 'send_reward')
+        overhead = [self.rank, self.num_steps_since_update,
+            self.curr_ep_reward, self.num_eps_since_update, SIG.RETURNS]
+        dist.isend(overhead, dst=self.server_rank, tag=SIG.QUERY).wait()
+
+        self.curr_ep_reward = 0
+
 
     def send_buffer(self):
         print(335, 'rank', self.rank, 'send_buffer')
@@ -372,6 +436,8 @@ class MOPO():
             # Load dataset, only if we need it
             #TODO: We need to be able to pass the norm statistics, in case the datasets are not exactly the same
             if(self.load_data):
+                self.dynamics_config.dataset_config.set_parameter("dataset_paths", ["/zfsauton/datasets/ArgoRL/swapnilp/03-29-ncd_no_noise"
+                ])
                 self.dynamics = self.dynamics_config.dynamics_model_type.load(
                             logger = temp_logger,
                             model_name = self.config.pretrained_dynamics_model_config.name,
