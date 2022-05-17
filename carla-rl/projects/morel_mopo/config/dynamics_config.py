@@ -158,7 +158,7 @@ class ObstaclesMLPDynamicsConfig(BaseDynamicsConfig):
         self.dynamics_model_config = DefaultMLPDynamicsEnsembleConfig()
 
         # Config for the associated dataset
-        self.dataset_config = data_module_config.ObstaclesMixedDeterministicMLPDataModuleConfig()
+        self.dataset_config = data_module_config.ObstaclesFullRolloutsMixedDeterministicMLPDataModuleConfig()
 
         self.train_epochs = 200
 
