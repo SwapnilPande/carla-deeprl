@@ -206,6 +206,65 @@ def vehicle_to_line_distance(vehicle_pose, waypoint1, waypoint2, device):
 
     return distance
 
+def compute_trajectory_velocity(next_waypoints, vehicle_pose, vehicle_speed, device, second_last_waypoint = None, last_waypoint = None, previous_waypoint = None):
+    ''' Calculates the velocity of the vehicle in the trajectory axis
+
+    '''
+    trajectory_velocity = torch.squeeze(vehicle_speed)
+
+    waypoint1 = None
+    waypoint2 = None
+    if len(next_waypoints) > 1:
+        if(previous_waypoint is not None):
+            # get dist from vehicle to a line formed by the next two wps
+            waypoint1 = previous_waypoint
+            waypoint2 = next_waypoints[0]
+
+        else:
+            waypoint1 = next_waypoints[0]
+            waypoint2 = next_waypoints[1]
+
+    # if only one next waypoint, use it and second to last
+    elif len(next_waypoints) == 1:
+        if second_last_waypoint:
+            waypoint1 = second_last_waypoint
+            waypoint2 = next_waypoints[0]
+
+        else:
+            print("CODE BROKE HERE UH OH _----------------------")
+
+    else: # Run out of wps
+        if second_last_waypoint and last_waypoint:
+            waypoint1 = second_last_waypoint
+            waypoint2 = last_waypoint
+
+        else:
+            print("CODE BROKE HERE UH OH _----------------------")
+
+
+    if(waypoint1 is not None and waypoint2 is not None):
+        waypoint1 = torch.FloatTensor(waypoint1).to(device)
+        waypoint2 = torch.FloatTensor(waypoint2).to(device)
+
+
+        if torch.allclose(waypoint1, waypoint2):
+            # distance = distance_vehicle(waypoint1, vehicle_pose, device)
+            # return abs(distance)
+            print("WARNING: Waypoints are too close together: {waypoint1}, {waypoint2}")
+
+        else:
+
+            vehicle_yaw   = vehicle_pose[2] # x, y coords
+            # Get unit vecotr of trajectory
+            a_vec = torch.sub(waypoint2, waypoint1)/ torch.norm(torch.sub(waypoint2, waypoint1))
+
+            # Vehicle velocity vector (unit)
+            v_vec = trajectory_velocity * torch.Tensor([torch.cos(torch.deg2rad(vehicle_yaw)), \
+                                            torch.sin(torch.deg2rad(vehicle_yaw))]).to(device)
+
+            # Project Speed (in direction of vehicle heading) onto trajectory
+            trajectory_velocity = torch.dot(v_vec, a_vec)
+    return trajectory_velocity
 
 def filter_waypoints(waypoints):
     """This function will remove duplicate waypoints from the waypoint list
@@ -306,17 +365,22 @@ def process_waypoints(waypoints, vehicle_pose, device, second_last_waypoint = No
     # only keep next N waypoints
     # for i, waypoint in enumerate(waypoints[:num_next_waypoints]):
 
-    def get_angles(waypoint):
-        # dist to waypoint
-        dot, angle, w_vec = get_dot_product_and_angle(vehicle_pose, waypoint, device)
+    next_waypoints_angles = []
+    # Only compute if we have more than 2 waypoints left.
+    # Else we are terminating the episode anyway
+    if(wp_len >= 2):
+        def get_angles(waypoint):
+            # dist to waypoint
+            dot, angle, w_vec = get_dot_product_and_angle(vehicle_pose, waypoint, device)
 
-        return angle
-        # # add back waypoints
-        # next_waypoints_angles.append(angle)
-        # next_waypoints.append(waypoint)
-        # next_waypoints_vectors.append(w_vec)
+            return angle
+            # # add back waypoints
+            # next_waypoints_angles.append(angle)
+            # next_waypoints.append(waypoint)
+            # next_waypoints_vectors.append(w_vec)
 
-    next_waypoints_angles = [get_angles(waypoint) for waypoint in waypoints[:num_next_waypoints]]
+        next_waypoints_angles = [get_angles(waypoint) for waypoint in waypoints[:num_next_waypoints]]
+
 
 
 
@@ -325,7 +389,7 @@ def process_waypoints(waypoints, vehicle_pose, device, second_last_waypoint = No
         angle = torch.mean(torch.FloatTensor(next_waypoints_angles))
     else:
         # print("No next waypoint found!")
-        angle = 0
+        angle = torch.FloatTensor([0.0])
 
 
 
@@ -355,7 +419,7 @@ def process_waypoints(waypoints, vehicle_pose, device, second_last_waypoint = No
                                     device)
         else:
             print("CODE BROKE HERE UH OH _----------------------")
-            dist_to_trajectory = 0.0
+            dist_to_trajectory = torch.FloatTensor([0.0])
 
     else: # Run out of wps
         if second_last_waypoint and last_waypoint:
@@ -367,7 +431,7 @@ def process_waypoints(waypoints, vehicle_pose, device, second_last_waypoint = No
 
         else:
             print("CODE BROKE HERE UH OH _----------------------")
-            dist_to_trajectory = 0.0
+            dist_to_trajectory = torch.FloatTensor([0.0])
 
     return (angle,
            dist_to_trajectory,

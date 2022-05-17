@@ -214,8 +214,9 @@ class BaseFakeEnv(gym.Env):
         # We maintain a done array so that we can artificall delay the termination for a given actor
         # by only setting done true after a done_delay steps of being done for the actor
         # TODO: Move this to config
-        self.dones_delay = 2
+        self.dones_delay = 1
         self.dones = torch.zeros(self.num_actors, dtype=torch.bool)
+        self.successes = torch.zeros(self.num_actors, dtype=torch.bool)
         # Store the indices of the actors that are not done
         self.active_indices = torch.arange(self.num_actors).to(self.device)
 
@@ -466,8 +467,21 @@ class BaseFakeEnv(gym.Env):
         #TODO: Change this back to when number of waypoints is 1
         # success = len(self.waypoints) == 1 or self.steps_elapsed >= len(self.npc_poses)
         successes = torch.tensor([len(waypoints) <= 3 for waypoints in self.waypoints])# or self.steps_elapsed >= len(self.npc_poses)
+        self.successes = successes
+        # Compute velocity along trajectory
 
-        active_rewards = compute_reward(np.squeeze(self.speeds[torch.logical_not(self.dones)]),
+        def get_trajectory_velocity_single_actor(i):
+            return feutils.compute_trajectory_velocity(self.waypoints[i],
+                                                        self.poses[i],
+                                                        self.speeds[i],
+                                                        self.device,
+                                                        second_last_waypoint = self.second_last_waypoint,
+                                                        last_waypoint = self.last_waypoint,
+                                                        previous_waypoint = self.previous_waypoint)
+
+        trajectory_velocities = torch.stack([get_trajectory_velocity_single_actor(i) for i in range(self.num_actors)])
+
+        active_rewards = compute_reward(np.squeeze(trajectory_velocities[torch.logical_not(self.dones)]),
                                 dist_to_trajectories[torch.logical_not(self.dones)],
                                 torch.logical_or(collisions[torch.logical_not(self.dones)], out_of_lanes[torch.logical_not(self.dones)]),
                                 self.config)
@@ -565,7 +579,7 @@ class BaseFakeEnv(gym.Env):
         return res
 
     def render(self):
-        self.actor_manager.render()
+        self.actor_manager.render(self.dones, self.successes)
 
 
 if __name__ == "__main__":
@@ -593,10 +607,8 @@ if __name__ == "__main__":
     temp_config = temp_logger.pickle_load("mopo", "config.pkl")
     dynamics_config = temp_config.dynamics_config
 
-    dynamics_config.dataset_config.dataset_paths = [
-                "/home/swapnil/small_data",
-            ]
-
+    dynamics_config.dataset_config.dataset_paths = [dynamics_config.dataset_config.dataset_paths[0]]
+    print(dynamics_config.dataset_config.dataset_paths)
 
 
     dynamics = dynamics_config.dynamics_model_type.load(
@@ -620,17 +632,17 @@ if __name__ == "__main__":
     num_actors = obs.shape[0]
 
     # Create num_actors autopilot policies
-    autopilot_policies = [AutopilotPolicy(fake_env) for _ in range(num_actors)]
+    autopilot_policies = [ (fake_env) for _ in range(num_actors)]
 
 
     dones = np.array([False for _ in range(num_actors)])
 
-    for i in range(200):
+    while not dones.all():
         print(obs)
         # Get actions from autopilot policies
         actions = np.stack([ap.predict(obs[i]) for i, ap in enumerate(autopilot_policies)])
+        actions = actions.squeeze(-2)
 
-        print(actions)
 
         # Get next obs, rewards, dones
         obs, rewards, dones, _ = fake_env.step(actions)
