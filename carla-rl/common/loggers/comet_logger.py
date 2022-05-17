@@ -3,7 +3,7 @@ from comet_ml import Experiment, experiment
 from comet_ml.api import API, APIExperiment
 
 from common.loggers.base_logger import BaseLogger
-from common.loggers.logger_utils import lock_open
+from common.loggers.logger_utils import lock_open, lock_open_dir
 
 import os
 import sys
@@ -160,7 +160,6 @@ class CometLogger(BaseLogger):
 
         If step is empty, the timestep is not logged with the scalar
         """
-
         self.logger.log_metric(name, value, step = step)
 
     def log_hyperparameters(self, hyperparameters):
@@ -187,8 +186,9 @@ class CometLogger(BaseLogger):
         full_log_path = os.path.join(self.log_dir, dir)
 
         # If this subdirectory does not exist, create it first
-        if(not os.path.isdir(full_log_path)):
-            os.makedirs(full_log_path)
+        with lock_open_dir(full_log_path) as f:
+            if(not os.path.isdir(full_log_path)):
+                os.makedirs(full_log_path)
 
         return full_log_path
 
