@@ -22,16 +22,18 @@ def launch_server(rank, resources):
     config = DefaultMLPObstaclesMOPOConfig()
     print(args.gpu[rank % len(args.gpu)])
     config.populate_config(gpu = args.gpu[rank % len(args.gpu)],
-                           policy_algorithm = "SAC",
+                           policy_algorithm = "PPO",
                            pretrained_dynamics_model_key = "e1a27faf07f9450a87e6e6c10f29b0d8",
                            pretrained_dynamics_model_name = "final")
 
     config.fake_env_config.uncertainty_coeff = args.uncertainty
     config.fake_env_config.uncertainty_coeff = 1
 
+    logger = CometLogger(resources['logger_conf'])
+
 
     model = MOPO(config=config,
-                logger=resources['logger'],)
+                logger=logger)
                 # dynamics=resources['dynamics'])
     # train MOReL
     model.serve()
@@ -42,7 +44,7 @@ def launch_worker(rank, resources):
     config = DefaultMLPObstaclesMOPOConfig()
     print(args.gpu[rank % len(args.gpu)])
     config.populate_config(gpu = args.gpu[rank % len(args.gpu)],
-                           policy_algorithm = "SAC",
+                           policy_algorithm = "PPO",
                            pretrained_dynamics_model_key = "e1a27faf07f9450a87e6e6c10f29b0d8",
                            pretrained_dynamics_model_name = "final")
 
@@ -51,7 +53,7 @@ def launch_worker(rank, resources):
 
 
     model = MOPO(config=config,
-                logger=resources['logger'],)
+                logger=None,)
                 # dynamics=resources['dynamics'])
     # train MOReL
     model.work()
@@ -63,14 +65,12 @@ def main(args):
     logger_conf = CometLoggerConfig()
     logger_conf.populate(experiment_name = args.exp_name, tags = ["MOPO", "uncertainty_sweep"])
 
-    logger = CometLogger(logger_conf)
-
 
     # dynamics = MOPO.get_dynamics_model(config)
     # 1 server, 3 workers
     run_param_server(launch_server, launch_worker, 1, 5,
         # {'config': config, 'logger': logger, 'dynamics': dynamics},
-        {'gpu': args.gpu, 'logger': logger},
+        {'gpu': args.gpu, 'logger_conf': logger_conf},
         get_host_ip(),
         random.randint(10000, 60000), mp_method='fork')
 
@@ -80,7 +80,8 @@ if __name__ == '__main__':
     parser.add_argument('--gpu', type=int, nargs = '+')
     parser.add_argument('--exp_name', type=str)
     parser.add_argument("--uncertainty", type=float)
-    args = parser.parse_args()
+    # Parse known args
+    args = parser.parse_known_args()[0]
     main(args)
 
 
