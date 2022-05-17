@@ -2,10 +2,25 @@ from collections import OrderedDict
 import projects.morel_mopo.algorithm.fake_envs.fake_env_utils as feutils
 
 import numpy as np
+import cv2
 import torch
 import time
 import matplotlib.pyplot as plt
-from common.debug_code import DebugCode
+# from common.debug_code import DebugCode
+
+
+# TOWN-SPECIFIC MAP SETTINGS
+SCALE = 1.0
+PIXELS_PER_METER = 12.0
+WORLD_OFFSET = {
+    'Town01': (-52.059906005859375, -52.04996085166931),
+    'Town02': (-57.45972919464111, 55.3907470703125),
+    'Town03': (-199.0638427734375, -259.27125549316406),
+    'Town04': (-565.26904296875, -446.1461181640625),
+    'Town05': (-326.0445251464844, -257.8750915527344)
+}
+
+
 
 def delta_update_func(deltas: feutils.NormalizedTensor):
     """Preprocess delta before they are applied to the state
@@ -50,6 +65,8 @@ class ActorManager():
         # For rendering
         self.fig = None
 
+        self.i = 0
+
 
     def reset(self,
                 ego_pose,
@@ -73,6 +90,7 @@ class ActorManager():
                                  for the entire rollout
                                 [time_steps, num_actors, 4 (x,y,theta,speed)]
         """
+        self.i = 0
 
         # Additional + 1 for the ego vehicle
         self.num_actors = actor_trajectories.shape[1] + 1
@@ -136,8 +154,8 @@ class ActorManager():
 
         # Generate the output dictionary
         output = {
-            "speeds" : self.states[...,1:2],
-            "steers" : self.states[...,0:1],
+            "speeds" : self.states[..., 1:2],
+            "steers" : self.states[..., 0:1],
             "poses" : self.poses,
             "waypoints" : self.waypoints
         }
@@ -193,27 +211,49 @@ class ActorManager():
 
         # Generate the output dictionary
         output = {
-            "speeds" : self.state[...,0:1],
-            "steers" : self.state[...,1:2],
+            "speeds" : self.state[..., 1:2],
+            "steers" : self.state[..., 0:1],
             "poses" : self.poses,
             "waypoints" : self.waypoints
         }
 
         return output
 
-    def render(self):
-        if(self.fig is None):
-            self.fig = plt.figure()
-            self.ax = self.fig.subplots()
-        else:
-            # Clear plot
-            self.ax.clear()
-        self.ax.set_ylim(-10, 10)
-        self.ax.plot(self.poses[...,0].cpu().numpy(), self.poses[...,1].cpu().numpy(), '.')
-        self.ax.set_title("Vehicle Positions")
-        plt.draw()
-        plt.pause(1)
+    def render(self, dones, successes):
+        img = cv2.imread("/home/scratch/swapnilp/Town01.png")
 
+        # Draw circles for each vehicle pose
+
+        # Blue color in BGR
+        color1 = (0, 255, 0)
+        color2 = (0, 0, 255)
+        color3 = (0, 255, 255)
+        color4 = (255, 255, 0)
+        for i in range(self.poses.shape[0]):
+
+
+            img_coordinate = self.world_to_pixel((self.poses[i,0], self.poses[i,1]))
+            if (i < 5):
+                cv2.circle(img, tuple(img_coordinate), 10, color4, 5)
+            elif successes[i]:
+                cv2.rectangle(img, (img_coordinate[0] - 10, img_coordinate[1] - 10),
+                              (img_coordinate[0] + 10, img_coordinate[1] + 10), color3, -1)
+            elif dones[i]:
+                # Draw rectangle cenetered at img_coordinate
+                cv2.rectangle(img, (img_coordinate[0] - 10, img_coordinate[1] - 10),
+                              (img_coordinate[0] + 10, img_coordinate[1] + 10), color1, -1)
+            else:
+                # Draw circle centered at img_coordinate
+                cv2.circle(img, tuple(img_coordinate), 10, color2, 5)
+        img  = cv2.resize(img, (2000, 2000))
+        cv2.imwrite(f"/home/scratch/swapnilp/test/{self.i:04d}.png", img)
+
+        self.i += 1
+
+    def world_to_pixel(self, location):
+        x = SCALE * PIXELS_PER_METER * (location[0] - WORLD_OFFSET['Town01'][0])
+        y = SCALE * PIXELS_PER_METER * (location[1] - WORLD_OFFSET['Town01'][1])
+        return np.array([int(x), int(y)])
 
 
 
