@@ -13,6 +13,7 @@ class AutopilotPolicy():
                                 )
         self.observation_space = env.observation_space
         self.action_space = env.action_space
+
     def predict(self, obs):
         return self.get_autopilot_action(obs)
 
@@ -29,4 +30,6 @@ class AutopilotPolicy():
         if(obstacle_dist < 0.6):
             target_speed = -1.0
 
-        return np.array([steer[0], target_speed])
+        steer = np.squeeze(steer)
+
+        return np.array([[steer, target_speed]])
