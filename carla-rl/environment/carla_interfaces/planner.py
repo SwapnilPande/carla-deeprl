@@ -219,6 +219,7 @@ class GlobalPlanner():
         next_waypoints = []
         next_waypoint_found = False
         num_next_waypoints = 5
+        num_extended_lookahead_waypoints = 5
         max_index = -1
         min_dist = np.inf
         for i, (waypoint, _, dist) in enumerate(self._waypoints_queue):
@@ -253,7 +254,7 @@ class GlobalPlanner():
                     self.previous_waypoint = waypoint
 
         for i, (waypoint, _, dist) in enumerate(self._waypoints_queue):
-            if i > num_next_waypoints - 1:
+            if i > num_next_waypoints + num_extended_lookahead_waypoints - 1:
                 break
             dist_to_waypoint = distance_vehicle(waypoint, vehicle_transform)
             dot, angle, w_vec = self.get_dot_product_and_angle(vehicle_transform, waypoint)
@@ -306,11 +307,17 @@ class GlobalPlanner():
         # elif len(next_waypoints_angles) > 1:
         #     angle = np.mean(next_waypoints_angles_array[1:])
         if len(next_waypoints_angles) > 0:
-            angle = np.mean(next_waypoints_angles_array)
+            angle = np.mean(next_waypoints_angles_array[:num_next_waypoints])
         else:
             print("No next waypoint found!")
             dist_to_goal = 0
             angle = 0
+
+        if(len(next_waypoints_angles) > num_next_waypoints):
+            angle_extended_lookahead = np.mean(next_waypoints_angles_array[num_next_waypoints:])
+        else:
+            angle_extended_lookahead = 0
+
 
         if len(next_waypoints) > 1:
             if(self.previous_waypoint is not None):
@@ -345,7 +352,7 @@ class GlobalPlanner():
         # Below is an approximation of dist_to_goal which was used earlier.
         dist_to_goal_approx = len(self._waypoints_queue) *self._hop_resolution
 
-        return angle, self.dist_to_trajectory, dist_to_goal, next_waypoints, next_waypoints_angles, next_waypoints_vectors, self.waypoints_to_list()
+        return angle, angle_extended_lookahead, self.dist_to_trajectory, dist_to_goal, next_waypoints, next_waypoints_angles, next_waypoints_vectors, self.waypoints_to_list()
 
     def get_dot_product_and_angle(self, vehicle_transform, waypoint):
 
