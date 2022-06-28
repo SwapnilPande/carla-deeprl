@@ -239,6 +239,7 @@ class CarlaEnv(gym.Env):
             # Set state variables for reward calculation
             # Update episode_measurements to compute reward
             self.episode_measurements['next_orientation'] = carla_obs['next_orientation']
+            self.episode_measurements['extended_lookahead_orientation'] = carla_obs['extended_lookahead_orientation']
             self.episode_measurements['control_steer'] = carla_obs['control_steer']
             self.episode_measurements['steer_angle'] = carla_obs['steer_angle']
             self.episode_measurements['dist_to_trajectory'] = carla_obs['dist_to_trajectory']
@@ -889,6 +890,13 @@ class CarlaEnv(gym.Env):
 
             obs_output = np.concatenate((np.array([self.episode_measurements['next_orientation']]), np.array([speed]), np.array([steer]), np.array([ldist])))
 
+        elif self.config.obs_config.input_type == "wp_obs_info_extended_speed_steer":
+            speed = self.episode_measurements['speed'] / 10
+            steer = self.episode_measurements['steer_angle']
+            ldist = self.episode_measurements['dist_to_trajectory']
+
+            obs_output = np.concatenate((np.array([self.episode_measurements['next_orientation']]), np.array([self.episode_measurements['extended_lookahead_orientation']]), np.array([speed]), np.array([steer]), np.array([ldist])))
+
 
         return obs_output
 
@@ -1049,6 +1057,7 @@ class CarlaEnv(gym.Env):
 
 
         self.episode_measurements['next_orientation'] = carla_obs["next_orientation"]
+        self.episode_measurements['extended_lookahead_orientation'] = carla_obs["extended_lookahead_orientation"]
         self.episode_measurements['distance_to_goal_trajec'] = carla_obs["distance_to_goal_trajec"]
         if self.unseen:
             self.total_distance += carla_obs["distance_to_goal_trajec"]

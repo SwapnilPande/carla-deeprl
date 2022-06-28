@@ -188,6 +188,13 @@ class Carla910Interface():
             self.spectator.set_transform(transform)
             world_frame = self.world.tick()
 
+        # Switch to manual and back to automatic
+        # Without this, the car takes about 1.5-2 seconds to switch into drive, delaying the movement of the car and creating instability in the controller
+        self.actor_fleet.ego_vehicle._vehicle.apply_control(carla.VehicleControl(manual_gear_shift=True, gear=1))
+        world_frame = self.world.tick()
+        self.actor_fleet.ego_vehicle._vehicle.apply_control(carla.VehicleControl(manual_gear_shift=False))
+        world_frame = self.world.tick()
+
         left_steer = self.actor_fleet.ego_vehicle._vehicle.get_wheel_steer_angle(carla.VehicleWheelLocation.FL_Wheel)
         right_steer = self.actor_fleet.ego_vehicle._vehicle.get_wheel_steer_angle(carla.VehicleWheelLocation.FR_Wheel)
         # Average steering angle between front two wheels, and normalize by dividing by 90
@@ -201,6 +208,7 @@ class Carla910Interface():
         speed = util.get_speed_from_velocity(ego_vehicle_velocity)
 
         next_orientation, \
+        extended_lookahead_orientation, \
         self.dist_to_trajectory, \
         distance_to_goal_trajec, \
         self.next_waypoints, \
@@ -213,6 +221,7 @@ class Carla910Interface():
 
         ep_measurements = {
             'next_orientation' : next_orientation,
+            'extended_lookahead_orientation' : extended_lookahead_orientation,
             'distance_to_goal_trajec' : self.dist_to_trajectory,
             'dist_to_trajectory' : self.dist_to_trajectory,
             'next_waypoints' : self.next_waypoints,
@@ -267,6 +276,7 @@ class Carla910Interface():
         speed = util.get_speed_from_velocity(ego_vehicle_velocity)
 
         next_orientation, \
+        extended_lookahead_orientation, \
         self.dist_to_trajectory, \
         distance_to_goal_trajec, \
         self.next_waypoints, \
@@ -276,6 +286,7 @@ class Carla910Interface():
 
         ep_measurements = {
             'next_orientation' : next_orientation,
+            'extended_lookahead_orientation' : extended_lookahead_orientation,
             "next_waypoints" : self.next_waypoints,
             'distance_to_goal_trajec' : self.dist_to_trajectory,
             'dist_to_trajectory' : self.dist_to_trajectory,

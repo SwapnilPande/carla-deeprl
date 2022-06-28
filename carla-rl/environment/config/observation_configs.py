@@ -149,8 +149,8 @@ class VehicleDynamicsObstacleConfig(BaseObservationConfig):
                             "sensor.camera.rgb/top": {'x': 7,
                                                     'z':25,
                                                     'pitch': -90.0,
-                                                    'sensor_x_res':'512',
-                                                    'sensor_y_res':'512',
+                                                    'sensor_x_res':'112',
+                                                    'sensor_y_res':'112',
                                                     'fov':'90',
                                                     'sensor_tick': '0.0'}
                         }
@@ -248,8 +248,8 @@ class VehicleDynamicsConfig(BaseObservationConfig):
                             "sensor.camera.rgb/top": {'x':0,
                                                     'z':10,
                                                     'pitch': -90.0,
-                                                    'sensor_x_res':'112',
-                                                    'sensor_y_res':'112',
+                                                    'sensor_x_res':'1080',
+                                                    'sensor_y_res':'1920',
                                                     'fov':'90',
                                                     'sensor_tick': '0.0'}
                         }
@@ -279,7 +279,7 @@ class VehicleDynamicsNoCameraConfig(BaseObservationConfig):
 
         self.sensors = {
                             "lane_invasion_sensor":None,
-                            "collision_sensor": None
+                            "collision_sensor": None,
                     }
         self.observation_sensors = []
 
@@ -295,6 +295,71 @@ class VehicleDynamicsNoCameraConfig(BaseObservationConfig):
         self.traffic_light_proximity_threshold = 15
         self.obstacle_dist_norm = 60
         self.disable_lane_invasion_sensor = False
+
+
+
+class VehicleDynamicsExtendedLookaheadConfig(BaseObservationConfig):
+    def __init__(self):
+        self.input_type = "wp_obs_info_extended_speed_steer"
+        self.observation_space = Box(low=np.array([[-4.0, -4.0, 0.0, -0.5, -1.0]]),
+                            high=np.array([[4.0, 4.0, 1.0, 0.5, 1.0]]),
+                            dtype=np.float32)
+
+
+        self.sensors = {
+                            "lane_invasion_sensor":None,
+                            "collision_sensor": None,
+                            "sensor.camera.rgb/top": {'x':0,
+                                                    'z':10,
+                                                    'pitch': -90.0,
+                                                    'sensor_x_res':'112',
+                                                    'sensor_y_res':'112',
+                                                    'fov':'90',
+                                                    'sensor_tick': '0.0'}
+                        }
+
+        self.observation_sensors = []
+
+        self.single_channel_image = False
+        self.noise_dim = 1
+        self.preprocess_crop_image = True
+        self.grayscale = False
+        self.default_obs_traffic_val = 1
+        self.min_dist_from_red_light = 4
+        self.disable_obstacle_info = False
+        self.frame_stack_size = 1
+        self.vehicle_proximity_threshold = 15
+        self.traffic_light_proximity_threshold = 15
+        self.obstacle_dist_norm = 60
+        self.disable_lane_invasion_sensor = False
+
+class VehicleDynamicsExtendedLookaheadNoCameraConfig(BaseObservationConfig):
+    def __init__(self):
+        self.input_type = "wp_obs_info_extended_speed_steer"
+        self.observation_space = Box(low=np.array([[-4.0, -4.0, 0.0, -0.5, -1.0]]),
+                            high=np.array([[4.0, 4.0, 1.0, 0.5, 1.0]]),
+                            dtype=np.float32)
+
+
+        self.sensors = {
+                            "lane_invasion_sensor":None,
+                            "collision_sensor": None,
+                    }
+        self.observation_sensors = []
+
+        self.single_channel_image = False
+        self.noise_dim = 1
+        self.preprocess_crop_image = True
+        self.grayscale = False
+        self.default_obs_traffic_val = 1
+        self.min_dist_from_red_light = 4
+        self.disable_obstacle_info = False
+        self.frame_stack_size = 1
+        self.vehicle_proximity_threshold = 15
+        self.traffic_light_proximity_threshold = 15
+        self.obstacle_dist_norm = 60
+        self.disable_lane_invasion_sensor = False
+
 
 
 class PerspectiveRGBObservationConfig(BaseObservationConfig):
