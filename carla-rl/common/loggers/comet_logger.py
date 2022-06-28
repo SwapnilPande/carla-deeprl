@@ -30,7 +30,8 @@ class CometLogger(BaseLogger):
                                     workspace = self.config.workspace,
                                     project_name = self.config.project_name,
                                     auto_metric_logging = True,
-                                    disabled = disabled)
+                                    disabled = disabled,
+                                    auto_output_logging=self.config.output_logging)
 
             # Set name of experiment
             self.logger.set_name(self.experiment_name)

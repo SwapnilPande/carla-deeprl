@@ -33,6 +33,9 @@ class BaseCometLoggerConfig(BaseLoggerConfig):
         # Whether to clear temporary logs if temp log directory already exists
         self.clear_temp_logs = None
 
+        # Whether to save stdout/stderr to comet
+        self.output_logging = None
+
     def populate(self, experiment_name, tags = [], clear_temp_logs = False):
         self.experiment_name = experiment_name
         self.tags = tags
@@ -42,7 +45,7 @@ class BaseCometLoggerConfig(BaseLoggerConfig):
     def verify(self):
         # None of these need to be passed if we passed experiment key
         if(self.experiment_key is not None):
-            super().verify(ignore_keys = ["workspace", "project_name", "tags", "experiment_name"])
+            super().verify(ignore_keys = ["workspace", "project_name", "tags", "experiment_name", "output_logging"])
         # If none, all other fields must be populated
         else:
             super().verify(ignore_keys = ["experiment_key"])
