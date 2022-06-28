@@ -73,12 +73,12 @@ class ActorManager910():
         # Parameters for ego vehicle
         self.ego_vehicle = self.spawn_ego_vehicle(source_transform)
         self.args_longitudinal_dict = {
-            'K_P': 0.1,
-            'K_D': 0.0005,
-            'K_I': 0.4,
+            'K_P': 0.2,
+            'K_D': 0.005,
+            'K_I': 0.2,
             'dt': 1/10.0}
         self.args_lateral_dict = {
-            'K_P': 0.88,
+            'K_P': 0.94,
             'K_D': 0.02,
             'K_I': 0.5,
             'dt': 1/10.0}
@@ -95,6 +95,22 @@ class ActorManager910():
             number_of_vehicles = self.config.scenario_config.num_npc
 
         self.spawn_npc(number_of_vehicles, unseen)
+
+    def update_pid_parameters(self, kp, ki, kd, dt = None):
+        # Update dt if passed
+        if dt is not None:
+            self.args_longitudinal_dict['dt'] = dt
+
+        self.args_longitudinal_dict['K_P'] = kp
+        self.args_longitudinal_dict['K_I'] = ki
+        self.args_longitudinal_dict['K_D'] = kd
+
+        # Update the controller
+        self.controller = controller.PIDLongitudinalController(
+            K_P=self.args_longitudinal_dict['K_P'],
+            K_D=self.args_longitudinal_dict['K_D'],
+            K_I=self.args_longitudinal_dict['K_I'],
+            dt=self.args_longitudinal_dict['dt'])
 
     def spawn_ego_vehicle(self, source_transform):
         '''
@@ -130,6 +146,7 @@ class ActorManager910():
         # Hence we use traffic_light_proximity_threshold while creating an Agent.
         vehicle_agent = BasicAgent(self.vehicle_actor, self.config.obs_config.traffic_light_proximity_threshold)
         return vehicle_agent
+
 
     def get_ego_vehicle_transform(self):
         return self.ego_vehicle._vehicle.get_transform()
@@ -197,8 +214,17 @@ class ActorManager910():
                 throttle = gas
                 brake = 0.0
         elif self.config.action_config.action_type == "merged_speed_scaled_tanh":
-            steer = np.clip(float(action[0]), -1.0, 1.0)
-            target_speed = (action[1] * 1.5) + 1
+            lower_bound_steer = self.config.action_config.action_space.low[0]
+            upper_bound_steer = self.config.action_config.action_space.high[0]
+
+            lower_bound_speed = self.config.action_config.action_space.low[1]
+            upper_bound_speed = self.config.action_config.action_space.high[1]
+
+            steer = np.clip(float(action[0]), lower_bound_steer, upper_bound_steer)
+            speed_action = np.clip(float(action[1]), lower_bound_speed, upper_bound_speed)
+
+            speed_action_scalar = (self.target_speed) / 10 - 0.5
+            target_speed = (speed_action * speed_action_scalar) + 1
             target_speed = float(np.clip(target_speed * 10, 0, self.target_speed))
             current_speed = util.get_speed_from_velocity(self.vehicle_actor.get_velocity()) * 3.6
             gas = self.controller.pid_control(target_speed, current_speed, enable_brake=self.config.action_config.enable_brake)
@@ -247,8 +273,7 @@ class ActorManager910():
             brake=brake,
             hand_brake=False,
             reverse=False,
-            manual_gear_shift=False,
-            gear=0)
+            manual_gear_shift=False)
 
         episode_measurements["target_speed"] = target_speed
 
@@ -575,8 +600,17 @@ class ActorManager910_Leaderboard():
                 throttle = gas
                 brake = 0.0
         elif self.config.action_config.action_type == "merged_speed_scaled_tanh":
-            steer = np.clip(float(action[0]), -1.0, 1.0)
-            target_speed = (action[1] * 1.5) + 1
+            lower_bound_steer = self.config.action_config.action_space.low[0]
+            upper_bound_steer = self.config.action_config.action_space.high[0]
+
+            lower_bound_speed = self.config.action_config.action_space.low[1]
+            upper_bound_speed = self.config.action_config.action_space.high[1]
+
+            steer = np.clip(float(action[0]), lower_bound_steer, upper_bound_steer)
+            speed_action = np.clip(float(action[1]), lower_bound_speed, upper_bound_speed)
+
+            speed_action_scalar = (self.target_speed) / 10 - 0.5
+            target_speed = (speed_action * speed_action_scalar) + 1
             target_speed = float(np.clip(target_speed * 10, 0, self.target_speed))
             current_speed = util.get_speed_from_velocity(self.vehicle_actor.get_velocity()) * 3.6
             gas = self.controller.pid_control(target_speed, current_speed, enable_brake=self.config.action_config.enable_brake)
@@ -623,8 +657,7 @@ class ActorManager910_Leaderboard():
             brake=brake,
             hand_brake=False,
             reverse=False,
-            manual_gear_shift=False,
-            gear=0)
+            manual_gear_shift=False)
 
         episode_measurements["target_speed"] = target_speed
 
