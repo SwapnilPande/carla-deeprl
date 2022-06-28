@@ -185,6 +185,8 @@ class BaseFakeEnv(gym.Env):
         ego_pose = feutils.tensorify(ego_pose, self.device)
         waypoints = feutils.tensorify(waypoints, self.device)
         npc_poses = feutils.tensorify(np.stack(npc_poses), self.device)
+        # TODO: Add edge case support for no other vehicles
+        # npc_poses = feutils.tensorify(np.zeros(shape = (len(npc_poses), 0, 4)), self.device)
 
         # This removes duplicate waypoints from the waypoints list'
         # TODO Revisit this - shouldn't be needed
