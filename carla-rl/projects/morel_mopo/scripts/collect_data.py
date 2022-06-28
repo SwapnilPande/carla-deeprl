@@ -214,20 +214,19 @@ if __name__ == "__main__":
     config = DefaultMainConfig()
     config.populate_config(
             observation_config = "VehicleDynamicsObstacleNoCameraConfig",
-            action_config = "MergedSpeedScaledTanhConfig",
+            action_config = "MergedSpeedScaledTanhSpeed40Config",
             reward_config = "Simple2RewardConfig",
             scenario_config = "NoCrashDenseTown01Config",
             carla_gpu = args.gpu,
-            render_server = False
+            render_server = True
         )
-    # Set speed to 40 km/h
-    config.action_config.set_parameter("target_velocity", 40)
 
-    # config.scenario_config.set_parameter("disable_traffic_light", True)
+    config.scenario_config.set_parameter("disable_traffic_light", True)
     env = CarlaEnv(config = config)
 
-    policy = AutopilotNoisePolicy(env, 0.1, 0.1)
+    # policy = AutopilotNoisePolicy(env, 0.1, 0.1)
     # policy = RandomPolicy(env)
+    policy = AutopilotPolicy(env)
 
     data_collector.collect_data(env = env, policy = policy, path = args.path, n_samples = args.n_samples, carla_gpu = args.gpu)
 
