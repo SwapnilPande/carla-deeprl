@@ -22,7 +22,7 @@ def launch_server(rank, resources):
     config = DefaultMLPObstaclesMOPOConfig()
     print(args.gpu[rank % len(args.gpu)])
     config.populate_config(gpu = args.gpu[rank % len(args.gpu)],
-                           policy_algorithm = "PPO",
+                           policy_algorithm = "SAC",
                            pretrained_dynamics_model_key = "e1a27faf07f9450a87e6e6c10f29b0d8",
                            pretrained_dynamics_model_name = "final")
 
@@ -44,7 +44,7 @@ def launch_worker(rank, resources):
     config = DefaultMLPObstaclesMOPOConfig()
     print(args.gpu[rank % len(args.gpu)])
     config.populate_config(gpu = args.gpu[rank % len(args.gpu)],
-                           policy_algorithm = "PPO",
+                           policy_algorithm = "SAC",
                            pretrained_dynamics_model_key = "e1a27faf07f9450a87e6e6c10f29b0d8",
                            pretrained_dynamics_model_name = "final")
 
