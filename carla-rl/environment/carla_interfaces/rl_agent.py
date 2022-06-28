@@ -108,9 +108,9 @@ class RLAgent(AutonomousAgent):
         # Define controllers
         # Parameters for ego vehicle
         self.args_longitudinal_dict = {
-            'K_P': 0.1,
-            'K_D': 0.0005,
-            'K_I': 0.4,
+            'K_P': 0.2,
+            'K_D': 0.005,
+            'K_I': 0.2,
             'dt': 1/10.0}
         self.args_lateral_dict = {
             'K_P': 0.88,
@@ -214,6 +214,7 @@ class RLAgent(AutonomousAgent):
 
 
         next_orientation, \
+        extended_lookahead_orientation, \
         dist_to_trajectory, \
         distance_to_goal_trajec, \
         self.next_waypoints, \
@@ -232,6 +233,7 @@ class RLAgent(AutonomousAgent):
             'distance_to_goal_trajec' : distance_to_goal_trajec,
             'dist_to_goal' : ego_transform.location.distance(self.destination_transform.location),
             'next_orientation': next_orientation,
+            'extended_lookahead_orientation' : extended_lookahead_orientation,
             # 'next_waypoints' : next_waypoints,
             'waypoints' : all_waypoints
         })
@@ -282,6 +284,16 @@ class RLAgent(AutonomousAgent):
     def run_step(self, input_data, timestamp):
         if self.step == 0:
             self.initialize(input_data)
+
+        # Accelerate car for 2.2 seconds and then apply full brakes
+        # The purpose of this is to force the car into the "drive" gear, so that the car begins accelerating immediately
+        if self.step < 22:
+            self.step += 1
+            return self.get_control(np.array([0,1]))
+        elif self.step < 43:
+            self.step += 1
+            return self.get_control(np.array([0,-1]))
+
 
         # # get episode measurements (features, rewards, images, etc...)
         ep_measurements = self.update_measurements(input_data)
