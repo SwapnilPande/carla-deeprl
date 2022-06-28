@@ -2,6 +2,7 @@
 from ssl import get_default_verify_paths
 import sys, os
 import numpy as np
+from stable_baselines3.sac.sac import SAC
 from tqdm import tqdm
 from collections import deque, defaultdict
 import copy
@@ -141,11 +142,11 @@ class MOPO():
         while self.glb_num_steps < self.total_equivalent_glb_steps:
             sender, num_steps_added, buffer_len, num_eps_added, signal = dist.recv(
                 self.recv_info_len, tag=SIG.QUERY)
-            print('server', self.rank, 'QUERY', sender,
-                num_steps_added, 'buffer_len', buffer_len, signal)
+            # print('server', self.rank, 'QUERY', sender,
+            #     num_steps_added, 'buffer_len', buffer_len, signal)
             if signal == SIG.EXP_PUSH:
                 total_len = (2 * self.N_S + self.N_A + 2) * buffer_len
-                print(185, 'total_len', total_len)
+                # print(185, 'total_len', total_len)
                 _, vec_buf = dist.recv(self.recv_info_len, total_len,
                     src=sender, tag=SIG.EXP, device='cpu')
                 vec_buf = vec_buf.reshape(buffer_len, -1).numpy()
@@ -167,13 +168,12 @@ class MOPO():
                     num_steps_added, signal)
                 dist.isend(
                     [self.glb_num_steps, self.glb_num_episodes],
-                    self.policy.policy.parameters(),
+                    copy.deepcopy(parameters_to_vector(self.policy.policy.parameters()).detach()),
                     dst=sender, tag=SIG.PARAM
                 ).wait()
             elif signal == SIG.RETURNS:
                 episode_rewards = buffer_len
-                print("LOOOGGIGN RETURSN NOW S_____________________________-")
-                print(175, avg_rewards)
+                # print(175, episode_rewards)
                 if(self.logger is not None):
                     self.logger.log_scalar("rollout/ep_rew_mean", episode_rewards, self.glb_num_steps)
             else:
@@ -191,13 +191,13 @@ class MOPO():
                 self.policy.save(os.path.join(self.logger.log_dir, "policy", "models", f"{self.glb_num_steps}"))
 
     def work(self):
-        self.recv_info_len = 3
+        self.recv_info_len = 2
         self.num_steps_since_update = 0
         self.num_eps_since_update = 0
         self.local_policy_timestamp = 0
         # fewer buffer pushes
         self.buffer_sync_freq = 5
-        self.num_agents = 1
+        self.num_agents = 50
         self.last_buffer_push_timestep = 0
         self.server_rank = (self.rank - self.num_servers) % self.num_servers
         # Setup dynamics model
@@ -256,7 +256,9 @@ class MOPO():
         glb_stats = self.update_parameters()
 
 
+
         prev_obs = fake_env.reset().squeeze(-2)
+
         for _ in range(len(prev_obs) - self.num_agents):
             policy_collections.append(AutopilotPolicy(fake_env))
 
@@ -295,13 +297,14 @@ class MOPO():
             print(340, 'rank', self.rank, prev_obs.shape, actions.shape)
             start_time = time.time()
             curr_obs, rewards, dones, _ = fake_env.step(actions)
-
+            # #TODO: Remove this
             # fake_env.render()
+
             self.curr_ep_reward += rewards[-1].item()
             curr_obs = curr_obs.squeeze(-2)
             # print(273, type(rewards), type(dones), curr_obs.shape, rewards.shape, dones.shape)
             # print(274, self.N_A, self.N_S)
-            print(f"Time taken: {time.time() - start_time}")
+            # print(f"Reward: {rewards[-1].item()} {self.curr_ep_reward} {dones[-self.num_agents:]}")
 
             # # add to buffer
             # for j in range(prev_obs.shape[0]):
@@ -330,7 +333,7 @@ class MOPO():
             #     rewards[[0]].reshape(-1, 1),
             #     curr_obs[[0]],
             #     dones[[0]].reshape(-1, 1))))
-            print(336, 'rank', self.rank, [x.shape for x in self.worker_buffer])
+            # print(336, 'rank', self.rank, [x.shape for x in self.worker_buffer])
 
             # print(dones)
 
@@ -365,7 +368,7 @@ class MOPO():
 
 
     def update_parameters(self):
-        print(360, 'rank', self.rank, 'update_parameters')
+        # print(360, 'rank', self.rank, 'update_parameters')
         # overhead = [self.rank, self.num_steps_since_update,
         #     self.num_eps_since_update, SIG.PARAM_REQ]
         overhead = [self.rank, self.num_steps_since_update,
@@ -379,7 +382,7 @@ class MOPO():
         return glb_stats
 
     def send_reward(self):
-        print(363, 'rank', self.rank, 'send_reward')
+        # print(363, 'rank', self.rank, 'send_reward')
         overhead = [self.rank, self.num_steps_since_update,
             self.curr_ep_reward, self.num_eps_since_update, SIG.RETURNS]
         dist.isend(overhead, dst=self.server_rank, tag=SIG.QUERY).wait()
@@ -388,13 +391,13 @@ class MOPO():
 
 
     def send_buffer(self):
-        print(335, 'rank', self.rank, 'send_buffer')
+        # print(335, 'rank', self.rank, 'send_buffer')
         exp_buf = torch.from_numpy(np.vstack(self.worker_buffer))
         assert len(exp_buf.shape) == 2, exp_buf.shape
         overhead = [self.rank, self.num_steps_since_update,
             len(exp_buf), self.num_eps_since_update, SIG.EXP_PUSH]
         dist.isend(overhead, dst=self.server_rank, tag=SIG.QUERY).wait()
-        print(369, 'buffer_size', len(exp_buf), len(exp_buf.reshape(-1)))
+        # print(369, 'buffer_size', len(exp_buf), len(exp_buf.reshape(-1)))
         dist.isend(overhead, exp_buf.reshape(-1), dst=self.server_rank, tag=SIG.EXP).wait()
         self.num_steps_since_update = 0
         # reset buffer
