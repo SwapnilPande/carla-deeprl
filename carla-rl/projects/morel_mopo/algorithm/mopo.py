@@ -20,6 +20,8 @@ from projects.morel_mopo.scripts.collect_data import DataCollector
 from common.loggers.comet_logger import CometLogger
 from projects.morel_mopo.config.logger_config import ExistingCometLoggerConfig
 
+from stable_baselines3.sac import SAC
+
 
 
 
@@ -122,8 +124,6 @@ class MOPO():
 
         # If we are not using a pretrained dynamics model, we need to train a new dynamics model
         # Initialize a new one
-        # If we are not using a pretrained dynamics model, we need to train a new dynamics model
-        # Initialize a new one
         else:
             print("MOPO: Loading dataset")
             # We have to load the dataset here, because we need to train the dynamics model
@@ -169,7 +169,7 @@ class MOPO():
         self.dynamics.save(save_dir)
 
     def policy_predict(self, obs, deterministic = True):
-        action, _ = self.policy.predict(obs, deterministic = False)
+        action, _ = self.policy.predict(obs, deterministic = deterministic)
         return action
 
     @classmethod
