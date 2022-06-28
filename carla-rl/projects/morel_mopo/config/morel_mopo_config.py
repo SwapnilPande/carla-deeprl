@@ -1,7 +1,7 @@
 from environment.config.base_config import BaseConfig
 from environment.config.config import DefaultMainConfig
 
-
+import projects.morel_mopo.config.data_module_config as data_module_config
 from projects.morel_mopo.config import dynamics_config
 from projects.morel_mopo.config import fake_env_config
 
@@ -91,6 +91,9 @@ class BaseMOPOConfig(BaseConfig):
 
         self.policy_hyperparameters = None
 
+        # Dataset module used for training the policy
+        self.policy_training_dataset = None
+
     def populate_config(self, gpu = 0, policy_algorithm = "PPO", pretrained_dynamics_model_key = None, pretrained_dynamics_model_name = None):
         self.gpu = gpu
 
@@ -157,6 +160,8 @@ class DefaultMLPObstaclesMOPOConfig(BaseMOPOConfig):
 
         self.dynamics_config = dynamics_config.ObstaclesMLPDynamicsConfig()
 
+        self.policy_training_dataset = data_module_config.ObstaclesFullRolloutsMixedDeterministicMLPDataModuleConfig()
+
         self.fake_env_config = fake_env_config.NoTimeoutFakeEnvConfig()
 
         self.fake_env_config.populate_config(
@@ -173,6 +178,7 @@ class DefaultMLPObstaclesMOPOConfig(BaseMOPOConfig):
             scenario_config = "NoCrashDenseTown01Config",
             carla_gpu = self.gpu
         )
+
         # Disable traffic lights
         self.eval_env_config.scenario_config.set_parameter("disable_traffic_light", True)
 class DefaultProbMLPMOPOConfig(BaseMOPOConfig):

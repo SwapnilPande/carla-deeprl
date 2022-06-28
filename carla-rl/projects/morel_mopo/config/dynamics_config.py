@@ -30,7 +30,7 @@ class BaseDynamicsConfig(BaseConfig):
         self.train_epochs = None
 
         # Type of fake env to use with this dynamics model
-        self.fake_env_type = None\
+        self.fake_env_type = None
 
     def populate_config(self, gpu = 0):
         self.gpu = gpu

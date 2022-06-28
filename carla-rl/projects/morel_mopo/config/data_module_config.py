@@ -72,6 +72,22 @@ class ObstaclesMixedDeterministicMLPDataModuleConfig(BaseDataModuleConfig):
             self.dataset_type = data_modules.OfflineCarlaDataModule
 
 
+class ObstaclesFullRolloutsMixedDeterministicMLPDataModuleConfig(BaseDataModuleConfig):
+        def __init__(self):
+            super().__init__()
+            self.dataset_paths = [
+                "/zfsauton/datasets/ArgoRL/swapnilp/03-29-ncd_no_noise",
+
+            ]
+
+            self.batch_size = 512
+            self.frame_stack = 2
+            self.num_workers = 10
+            self.train_val_split = 0.95
+            self.normalize_data = True
+            self.dataset_type = data_modules.OfflineCarlaDataModule
+
+
 class MixedProbabilisticMLPDataModuleConfig(BaseDataModuleConfig):
         def __init__(self):
             super().__init__()
