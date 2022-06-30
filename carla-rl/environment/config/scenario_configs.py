@@ -208,3 +208,8 @@ class NoTrafficLightNoCrashDenseConfig(NoCrashDenseTown01Config):
     def __init__(self):
         super().__init__()
         self.disable_traffic_light = True
+
+class SimpleSingleTurnConfig(NoTrafficLightNoCrashEmptyConfig):
+    def __init__(self):
+        super().__init__()
+        self.scenarios = "simple_single_turn"

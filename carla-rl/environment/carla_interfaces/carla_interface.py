@@ -136,6 +136,10 @@ class Carla910Interface():
             source_idx, destination_idx = scenarios.get_no_crash_path(unseen, town, index)
             self.source_transform = self.spawn_points[source_idx]
             self.destination_transform = self.spawn_points[destination_idx]
+        elif self.config.scenario_config.scenarios == 'simple_single_turn':
+            # Short straight-right turn-straight scenario (For multi-alpha)
+            self.source_transform = self.spawn_points[105]
+            self.destination_transform = self.spawn_points[21]
         else:
             raise ValueError("Invalid Scenario Type {}. Check scenario config!".format(self.config.scenario_config.scenarios))
 
@@ -310,6 +314,10 @@ class Carla910Interface():
     def get_traffic_light_states(self):
         ego_vehicle = self.actor_fleet.ego_vehicle
         traffic_actor, dist, traffic_light_orientation, nearest_light_transform = ego_vehicle.find_nearest_traffic_light(self.traffic_actors)
+
+        if self.config.scenario_config.scenarios == 'simple_single_turn' and traffic_actor is not None:
+            traffic_actor.set_state(carla.TrafficLightState.Green)
+            traffic_actor, dist, traffic_light_orientation, nearest_light_transform = ego_vehicle.find_nearest_traffic_light(self.traffic_actors)
 
 
         if traffic_light_orientation is not None:
