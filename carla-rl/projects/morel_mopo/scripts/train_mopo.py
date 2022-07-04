@@ -1,7 +1,9 @@
 import sys
 import os
 import argparse
+import importlib
 from typing import Optional
+
 
 # Setup imports for algorithm and environment
 sys.path.append(os.path.abspath(os.path.join('../../../')))
@@ -11,7 +13,8 @@ import carla
 from common.loggers.comet_logger import CometLogger
 from projects.morel_mopo.config.logger_config import CometLoggerConfig
 from projects.morel_mopo.algorithm.mopo import MOPO
-from projects.morel_mopo.config.morel_mopo_config import DefaultMLPObstaclesMOPOConfig, DefaultMLPObstaclesSpeed40MOPOConfig
+
+mopo_configs = importlib.import_module("projects.morel_mopo.config.morel_mopo_config")
 
 
 
@@ -29,13 +32,21 @@ def main(args):
         logger.log_hyperparameters({'exp_group', args.exp_group})
 
     # Load the dynamics from a pre-verified dynamics model
-    config = DefaultMLPObstaclesSpeed40MOPOConfig()
-    config.populate_config(gpu = args.gpu,
-                           policy_algorithm = "PPO")
+    import ipdb; ipdb.set_trace()
+    # Import desired variant from mopo_configs
+    config = getattr(mopo_configs, args.variant)()
+    # Check if pretrained_key is passed
+    if args.pretrained_key is not None:
+        config.populate_config(gpu = args.gpu,
+                           policy_algorithm = "PPO",
+                           pretrained_dynamics_model_key = args.pretrained_key,
+                           pretrained_dynamics_model_name = "final")
+    else:
+        config.populate_config(gpu = args.gpu,
+                            policy_algorithm = "PPO")
 
     # config.populate_config(gpu = args.gpu, policy_algorithm = "SAC")
 
-    config.fake_env_config.uncertainty_coeff = args.uncertainty
     config.fake_env_config.uncertainty_coeff = 1
 
     model = MOPO(config = config,
@@ -49,8 +60,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--gpu', type=str)
     parser.add_argument('--exp_name', type=str)
-    parser.add_argument("--uncertainty", type=float)
     parser.add_argument("--exp_group", type=str, required = False)
+    parser.add_argument("--variant", type=str)
+    parser.add_argument("--pretrained_key", type=str, required = False)
     args = parser.parse_known_args()[0]
     main(args)
 

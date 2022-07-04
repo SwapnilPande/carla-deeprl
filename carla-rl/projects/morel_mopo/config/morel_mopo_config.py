@@ -182,7 +182,7 @@ class DefaultMLPObstaclesMOPOConfig(BaseMOPOConfig):
         # Disable traffic lights
         self.eval_env_config.scenario_config.set_parameter("disable_traffic_light", True)
 
-class DefaultMLPObstaclesSpeed40MOPOConfig(BaseMOPOConfig):
+class MLPObstaclesSpeed40MOPOConfig(BaseMOPOConfig):
     def __init__(self):
         super().__init__()
 
@@ -209,7 +209,6 @@ class DefaultMLPObstaclesSpeed40MOPOConfig(BaseMOPOConfig):
 
         # Disable traffic lights
         self.eval_env_config.scenario_config.set_parameter("disable_traffic_light", True)
-
 
 class DefaultProbMLPMOPOConfig(BaseMOPOConfig):
     def __init__(self):
