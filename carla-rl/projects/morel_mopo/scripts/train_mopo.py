@@ -11,7 +11,7 @@ import carla
 from common.loggers.comet_logger import CometLogger
 from projects.morel_mopo.config.logger_config import CometLoggerConfig
 from projects.morel_mopo.algorithm.mopo import MOPO
-from projects.morel_mopo.config.morel_mopo_config import DefaultMLPMOPOConfig, DefaultProbMLPMOPOConfig, DefaultProbGRUMOPOConfig, DefaultMLPObstaclesMOPOConfig
+from projects.morel_mopo.config.morel_mopo_config import DefaultMLPObstaclesMOPOConfig, DefaultMLPObstaclesSpeed40MOPOConfig
 
 
 
@@ -29,11 +29,9 @@ def main(args):
         logger.log_hyperparameters({'exp_group', args.exp_group})
 
     # Load the dynamics from a pre-verified dynamics model
-    config = DefaultMLPObstaclesMOPOConfig()
+    config = DefaultMLPObstaclesSpeed40MOPOConfig()
     config.populate_config(gpu = args.gpu,
-                           policy_algorithm = "PPO",
-                           pretrained_dynamics_model_key = "e1a27faf07f9450a87e6e6c10f29b0d8",
-                           pretrained_dynamics_model_name = "final")
+                           policy_algorithm = "PPO")
 
     # config.populate_config(gpu = args.gpu, policy_algorithm = "SAC")
 

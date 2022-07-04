@@ -79,7 +79,7 @@ class BaseMOPOConfig(BaseConfig):
 
         ## Config for the dynamics model
         # If pretrained dynamics model is not None, we will load it from comet
-        self.pretrained_dynamics_model = None
+        self.pretrained_dynamics_model_config = None
         # Else, we will train a new dynamics model using the dynamics_config passed
         self.dynamics_config = None
 
@@ -101,8 +101,8 @@ class BaseMOPOConfig(BaseConfig):
         # Use pretrained model if available. Else, use the dynamics_config passed
         if(pretrained_dynamics_model_key is not None):
             # self.dynamics_config = DefaultMLPObstaclesMOPOConfig()
-            self.pretrained_dynamics_model = PretrainedDynamicsModelConfig()
-            self.pretrained_dynamics_model.populate(key = pretrained_dynamics_model_key,
+            self.pretrained_dynamics_model_config = PretrainedDynamicsModelConfig()
+            self.pretrained_dynamics_model_config.populate(key = pretrained_dynamics_model_key,
                                                     name = pretrained_dynamics_model_name,
                                                     gpu = gpu)
 
@@ -181,6 +181,36 @@ class DefaultMLPObstaclesMOPOConfig(BaseMOPOConfig):
 
         # Disable traffic lights
         self.eval_env_config.scenario_config.set_parameter("disable_traffic_light", True)
+
+class DefaultMLPObstaclesSpeed40MOPOConfig(BaseMOPOConfig):
+    def __init__(self):
+        super().__init__()
+
+        self.dynamics_config = dynamics_config.ObstaclesSpeed40MLPDynamicsConfig()
+
+        self.policy_training_dataset = data_module_config.ObstaclesFullRolloutsSpeed40DeterministicMLPDataModuleConfig()
+
+        self.fake_env_config = fake_env_config.NoTimeoutFakeEnvConfig()
+
+        self.fake_env_config.populate_config(
+            observation_config = "VehicleDynamicsObstacleNoCameraConfig",
+            action_config = "MergedSpeedScaledTanhSpeed40Config",
+            reward_config="Simple2RewardConfig"
+        )
+
+        self.eval_env_config = DefaultMainConfig()
+        self.eval_env_config.populate_config(
+            observation_config = "VehicleDynamicsObstacleNoCameraConfig",
+            action_config = "MergedSpeedScaledTanhSpeed40Config",
+            reward_config = "Simple2RewardConfig",
+            scenario_config = "NoCrashDenseTown01Config",
+            carla_gpu = self.gpu
+        )
+
+        # Disable traffic lights
+        self.eval_env_config.scenario_config.set_parameter("disable_traffic_light", True)
+
+
 class DefaultProbMLPMOPOConfig(BaseMOPOConfig):
     def __init__(self):
         super().__init__()

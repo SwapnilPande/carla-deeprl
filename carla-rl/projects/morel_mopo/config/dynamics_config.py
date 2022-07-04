@@ -182,6 +182,24 @@ class RewardMLPDynamicsConfig(BaseDynamicsConfig):
 
         self.fake_env_type = fake_envs.FakeEnv
 
+class ObstaclesSpeed40MLPDynamicsConfig(BaseDynamicsConfig):
+    def __init__(self):
+        super().__init__()
+
+        self.gpu = None
+
+        # Which model class to import
+        self.dynamics_model_type = dynamics_models.MLPDynamicsEnsemble
+
+        self.dynamics_model_config = DefaultMLPDynamicsEnsembleConfig()
+
+        # Config for the associated dataset
+        self.dataset_config = data_module_config.ObstaclesMixedSpeed40DeterministicMLPDataModuleConfig()
+
+        self.train_epochs = 200
+
+        self.fake_env_type = fake_envs.FakeEnv
+
 
 ################# Deterministic GRU #################
 
