@@ -32,7 +32,6 @@ def main(args):
         logger.log_hyperparameters({'exp_group', args.exp_group})
 
     # Load the dynamics from a pre-verified dynamics model
-    import ipdb; ipdb.set_trace()
     # Import desired variant from mopo_configs
     config = getattr(mopo_configs, args.variant)()
     # Check if pretrained_key is passed
