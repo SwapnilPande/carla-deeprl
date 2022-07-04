@@ -11,11 +11,20 @@ fi
 # Experiment name
 exp_name=$1
 
+variant=$2
+
 # Number of experiments
-num_exp=$2
+num_exp=$3
 
 # GPUS to use
-gpus=$3
+gpus=$4
+
+# Check if pretrained_key is passed, save it to a variable
+if [ "$5" != "" ]; then
+    pretrained_key=$5
+else
+    pretrained_key="none"
+fi
 
 # If GPU contains a comma, split it into an array
 IFS=',' read -ra gpu_array <<< "$gpus"
@@ -33,7 +42,12 @@ exp_group_id=${exp_name}_${num_exp}_$(date +%Y%m%d)
 # Loop num_exp times
 for i in $(seq 1 $num_exp); do
     # Run train_mopo.py in a tmux session
-    tmux new-session -s ${exp_group_id}_${i} -d "source ~/anaconda3/etc/profile.d/conda.sh && conda activate carla-rl-cuda-11 && source ../../../../configure_env.setup && python train_mopo.py --exp_name $exp_name --gpu ${gpu_array[i - 1]} --exp_group $exp_group_id"
+    # Pass pretrained_key as an argument if it is not "none"
+    if [ "$pretrained_key" != "none" ]; then
+        tmux new-session -s ${exp_group_id}_${i} -d "source ~/anaconda3/etc/profile.d/conda.sh && conda activate carla-rl-cuda-11 && source ../../../../configure_env.setup && python train_mopo.py --exp_name $exp_name --gpu ${gpu_array[i - 1]} --exp_group $exp_group_id --variant $variant --pretrained_key ${pretrained_key}"
+    else
+        tmux new-session -s ${exp_group_id}_${i} -d "source ~/anaconda3/etc/profile.d/conda.sh && conda activate carla-rl-cuda-11 && source ../../../../configure_env.setup && python train_mopo.py --exp_name $exp_name --gpu ${gpu_array[i - 1]} --exp_group $exp_group_id --variant $variant"
+    fi
     echo "Launched tmux session ${exp_group_id}_${i}"
     sleep 60
 done
