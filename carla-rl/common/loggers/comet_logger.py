@@ -23,7 +23,7 @@ class CometLogger(BaseLogger):
 
             # Check if no_logger is passed as command line argument
             # If true, set disabled = True
-            disabled = "--no_logger" in sys.argv
+            disabled = "--no_logger" in sys.argv or "--disable_logger" in sys.argv
             # Configure comet experiment
             self.logger = Experiment(api_key = self.config.api_key,
                                     workspace = self.config.workspace,
