@@ -154,6 +154,7 @@ class DefaultMLPMOPOConfig(BaseMOPOConfig):
             carla_gpu = self.gpu
         )
 
+
 class DefaultMLPObstaclesMOPOConfig(BaseMOPOConfig):
     def __init__(self):
         super().__init__()
@@ -178,9 +179,6 @@ class DefaultMLPObstaclesMOPOConfig(BaseMOPOConfig):
             scenario_config = "NoCrashDenseTown01Config",
             carla_gpu = self.gpu
         )
-
-        # Disable traffic lights
-        self.eval_env_config.scenario_config.set_parameter("disable_traffic_light", True)
 
 class MLPObstaclesSpeed40MOPOConfig(BaseMOPOConfig):
     def __init__(self):
@@ -207,9 +205,6 @@ class MLPObstaclesSpeed40MOPOConfig(BaseMOPOConfig):
             carla_gpu = self.gpu
         )
 
-        # Disable traffic lights
-        self.eval_env_config.scenario_config.set_parameter("disable_traffic_light", True)
-
 class MLPObstaclesSpeed40ReducedOutOfLanePenaltyMOPOConfig(BaseMOPOConfig):
     def __init__(self):
         super().__init__()
@@ -235,8 +230,6 @@ class MLPObstaclesSpeed40ReducedOutOfLanePenaltyMOPOConfig(BaseMOPOConfig):
             carla_gpu = self.gpu
         )
 
-        # Disable traffic lights
-        self.eval_env_config.scenario_config.set_parameter("disable_traffic_light", True)
 
 
 class DefaultProbMLPMOPOConfig(BaseMOPOConfig):

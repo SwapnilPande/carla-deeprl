@@ -110,11 +110,12 @@ class NoCrashConfig(BaseScenarioConfig):
         # Disable episode termination due to vehicle being static
         self.disable_static = False
         # Disable episode termination due to traffic light
-        self.disable_traffic_light = False
+        self.disable_traffic_light = True
+        self.disable_lane_invasion_sensor = True
+        self.disable_lane_invasion_collision = True
         self.zero_speed_threshold = 0.05
         self.num_episodes = 25
         self.updated_scenarios = False
-        self.disable_lane_invasion_collision = False
 
 
 class NoCrashEmptyTown01Config(NoCrashConfig):
