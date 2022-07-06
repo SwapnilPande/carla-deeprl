@@ -507,7 +507,7 @@ class BaseFakeEnv(gym.Env):
                                                                         second_last_waypoint = self.second_last_waypoint,
                                                                         last_waypoint = self.last_waypoint,
                                                                         previous_waypoint = self.previous_waypoint)
-            reward_out = compute_reward(trajectory_velocity, dist_to_trajectory, side_collision or front_collision or out_of_lane, self.config)
+            reward_out = compute_reward(trajectory_velocity, dist_to_trajectory, side_collision or front_collision, out_of_lane, self.config)
 
             uncertain =  self.usad(self.deltas.normalized.detach().cpu().numpy())
             reward_out[0] = reward_out[0] - uncertain * self.uncertainty_coeff
