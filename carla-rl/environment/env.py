@@ -1409,6 +1409,9 @@ class CarlaEvalEnv(CarlaEnv):
             "unknown" : 0
         }
 
+        self.sum_speed = 0.0
+        self.num_steps = 0
+
     def reset(self):
         if(self.cur_eval_episode == 0):
             print("CARLA EVAL ENVIRONMENT: Starting test scenarios")
@@ -1418,6 +1421,9 @@ class CarlaEvalEnv(CarlaEnv):
 
     def step(self, action):
         obs, reward, done, info = self.env.step(action)
+
+        self.sum_speed += info["speed"]
+        self.num_steps += 1
 
          # Evaluation episode complete
         if done:
@@ -1441,6 +1447,9 @@ class CarlaEvalEnv(CarlaEnv):
                     if self.logger is not None:
                         self.logger.log_scalar('eval/termination_{}'.format(key), val, step)
                 print("--------------------------------------------------------------")
+
+                if self.logger is not None:
+                    self.logger.log_scalar('eval/avg_speed', self.sum_speed / self.num_steps, step)
 
                 # Reset running evaluation counts
                 self.reset_eval_metrics()
