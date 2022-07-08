@@ -553,6 +553,11 @@ class CarlaEnv(gym.Env):
         for key, val in carla_obs["obstacles"].items():
             episode_measurements[key] = val
 
+        if("obstacle_sensor" in carla_obs):
+            episode_measurements["obstacle_sensor"] = carla_obs["obstacle_sensor"]
+
+
+
         episode_measurements["symbolic_features"] = carla_obs.get("symbolic_features")
 
         return episode_measurements
@@ -897,6 +902,118 @@ class CarlaEnv(gym.Env):
 
             obs_output = np.concatenate((np.array([self.episode_measurements['next_orientation']]), np.array([self.episode_measurements['extended_lookahead_orientation']]), np.array([speed]), np.array([steer]), np.array([ldist])))
 
+        elif self.config.obs_config.input_type == "wp_360_obstacle_speed_steer":
+            speed = self.episode_measurements['speed'] / 10
+            steer = self.episode_measurements['steer_angle']
+            ldist = self.episode_measurements['dist_to_trajectory']
+
+            light = self.episode_measurements['red_light_dist']
+
+            front_obs_vec = np.array([1.5, 1.5])
+            front_obs_vel = np.array([1.5, 1.5])
+            front_min_dist = 10000
+
+            front_right_obs_vec = np.array([1.5, 1.5])
+            front_right_obs_vel = np.array([1.5, 1.5])
+            front_right_min_dist = 10000
+
+            front_left_obs_vec = np.array([1.5, 1.5])
+            front_left_obs_vel = np.array([1.5, 1.5])
+            front_left_min_dist = 10000
+
+            back_right_obs_vec = np.array([1.5, 1.5])
+            back_right_obs_vel = np.array([1.5, 1.5])
+            back_right_min_dist = 10000
+
+            back_left_obs_vec = np.array([1.5, 1.5])
+            back_left_obs_vel = np.array([1.5, 1.5])
+            back_left_min_dist = 10000
+
+
+            for id, obstacle_data in self.episode_measurements['obstacle_sensor']['state'].items():
+                # Compute dot product of obstacle vector with car vector
+                normalized_obstacle_vector = obstacle_data['position'] / np.linalg.norm(obstacle_data['position'])
+                # Dot product is simply the first element of the normalized vector
+                dot_product = normalized_obstacle_vector[0]
+
+                # Obstacle is in front of vehicle
+                if dot_product > 0.995 and obstacle_data['distance'] < front_min_dist:
+                    front_min_dist = obstacle_data['distance']
+                    front_obs_vec = obstacle_data['position']
+                    front_obs_vel = obstacle_data['velocity']
+
+                # Obstacle is in front right
+                elif dot_product > 0 and obstacle_data['position'][1] > 0 and obstacle_data['distance'] < front_right_min_dist:
+                    front_right_min_dist = obstacle_data['distance']
+                    front_right_obs_vec = obstacle_data['position']
+                    front_right_obs_vel = obstacle_data['velocity']
+
+                # Obstacle is in front left
+                elif dot_product > 0 and obstacle_data['position'][1] < 0 and obstacle_data['distance'] < front_left_min_dist:
+                    front_left_min_dist = obstacle_data['distance']
+                    front_left_obs_vec = obstacle_data['position']
+                    front_left_obs_vel = obstacle_data['velocity']
+
+                # Obstacle is in back right
+                elif dot_product <= 0 and obstacle_data['position'][1] > 0 and obstacle_data['distance'] < back_right_min_dist:
+                    back_right_min_dist = obstacle_data['distance']
+                    back_right_obs_vec = obstacle_data['position']
+                    back_right_obs_vel = obstacle_data['velocity']
+
+                # Obstacle is in back left
+                elif dot_product <= 0 and obstacle_data['position'][1] < 0 and obstacle_data['distance'] < back_left_min_dist:
+                    back_left_min_dist = obstacle_data['distance']
+                    back_left_obs_vec = obstacle_data['position']
+                    back_left_obs_vel = obstacle_data['velocity']
+
+
+
+            # normalization
+            if light != -1:
+                light /= 20.0
+            else:
+                light = self.config.obs_config.default_obs_traffic_val
+
+            # We see both an obstacle and the light
+            if(light != self.config.obs_config.default_obs_traffic_val):
+                unnorm_obs_dist = front_obs_vec[0]
+                unnorm_light = light * 20
+
+                # If the light is further do nothing
+                if(obstacle_dist != self.config.obs_config.default_obs_traffic_val and unnorm_light > unnorm_obs_dist):
+                    pass
+                else:
+                    front_obs_vec = np.array([light, 0])
+                    front_obs_vel = np.array([0,0])
+
+            obs_output = np.concatenate(
+                (
+                    np.array([self.episode_measurements['next_orientation']]),
+                    np.array([speed]),
+                    np.array([steer]),
+                    np.array([ldist]),
+                    np.array([front_obs_vec[0]]),
+                    np.array([front_obs_vec[1]]),
+                    np.array([front_obs_vel[0]]),
+                    np.array([front_obs_vel[1]]),
+                    np.array([front_right_obs_vec[0]]),
+                    np.array([front_right_obs_vec[1]]),
+                    np.array([front_right_obs_vel[0]]),
+                    np.array([front_right_obs_vel[1]]),
+                    np.array([front_left_obs_vec[0]]),
+                    np.array([front_left_obs_vec[1]]),
+                    np.array([front_left_obs_vel[0]]),
+                    np.array([front_left_obs_vel[1]]),
+                    np.array([back_right_obs_vec[0]]),
+                    np.array([back_right_obs_vec[1]]),
+                    np.array([back_right_obs_vel[0]]),
+                    np.array([back_right_obs_vel[1]]),
+                    np.array([back_left_obs_vec[0]]),
+                    np.array([back_left_obs_vec[1]]),
+                    np.array([back_left_obs_vel[0]]),
+                    np.array([back_left_obs_vel[1]]),
+                )
+            )
 
         return obs_output
 
