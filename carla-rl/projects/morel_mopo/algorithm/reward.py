@@ -22,4 +22,4 @@ def compute_reward(velocity, dist_to_traj, collision, out_of_lane, config):
 
     # Penalize for straying from target trajectory
     #off_route = torch.abs(dist_to_trajectory) > 10
-    return torch.unsqueeze(speed - torch.abs(dist_to_trajectory) * reward_config.dist_to_trajectory_coeff - collision_penalty - out_of_lane_penalty, dim = 0)
+    return torch.unsqueeze(speed - torch.abs(dist_to_trajectory) - collision_penalty - out_of_lane_penalty, dim = 0)
