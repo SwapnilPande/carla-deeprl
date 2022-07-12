@@ -44,9 +44,9 @@ for i in $(seq 1 $num_exp); do
     # Run train_mopo.py in a tmux session
     # Pass pretrained_key as an argument if it is not "none"
     if [ "$pretrained_key" != "none" ]; then
-        tmux new-session -s ${exp_group_id}_${i} -d "source ~/anaconda3/etc/profile.d/conda.sh && conda activate carla-rl-cuda-11 && source ../../../../configure_env.setup && python train_mopo.py --exp_name $exp_name --gpu ${gpu_array[i - 1]} --exp_group $exp_group_id --variant $variant --pretrained_key ${pretrained_key}"
+        tmux new-session -s ${exp_group_id}_${i} -d "source ~/anaconda3/etc/profile.d/conda.sh && conda activate carla-rl && source ../../../../configure_env.setup && python train_mopo.py --exp_name $exp_name --gpu ${gpu_array[i - 1]} --exp_group $exp_group_id --variant $variant --pretrained_key ${pretrained_key}"
     else
-        tmux new-session -s ${exp_group_id}_${i} -d "source ~/anaconda3/etc/profile.d/conda.sh && conda activate carla-rl-cuda-11 && source ../../../../configure_env.setup && python train_mopo.py --exp_name $exp_name --gpu ${gpu_array[i - 1]} --exp_group $exp_group_id --variant $variant"
+        tmux new-session -s ${exp_group_id}_${i} -d "source ~/anaconda3/etc/profile.d/conda.sh && conda activate carla-rl && source ../../../../configure_env.setup && python train_mopo.py --exp_name $exp_name --gpu ${gpu_array[i - 1]} --exp_group $exp_group_id --variant $variant"
     fi
     echo "Launched tmux session ${exp_group_id}_${i}"
     sleep 60
