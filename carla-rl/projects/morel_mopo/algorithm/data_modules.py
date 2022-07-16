@@ -36,6 +36,25 @@ def compute_mean_std(data, n):
     return {"mean" : mean, "std" : std}
 
 
+def get_nested_dict(d, keys):
+    """
+    Get a nested dictionary from a list of keys.
+    """
+    for key in keys:
+        d = d[key]
+    return d
+
+def is_in_nested_dict(d, keys):
+    """
+    Get a nested dictionary from a list of keys.
+    """
+    for key in keys:
+        if key not in d:
+            return False
+        d = d[key]
+    return True
+
+
 ''' Instantiate WaypointModule for each dataset'''
 class WaypointModule():
     ''' init waypoints '''
@@ -120,6 +139,94 @@ class NPCModule():
 
         return self.pose_sequence[traj_idx][step_idx : step_idx + rollout_len]
 
+
+class LeaderboardNPCModule():
+    """ NPCModule stores the sequence of poses of NPCs for an entire dataset.
+
+    The dataset is stored in an array of shape [n_samples, n_agents, 4]. The module will return sequences of length rollout_len, except if the
+    npc trajectory in the dataset ends (The next sequence of NPC poses has started). In that case, the module will return the remaining poses.
+    """
+    ''' init waypoints '''
+    def __init__(self):
+        # Stores the sequence of poses of all NPCs
+        # [n_trajectories, trajectory_length, n_agents, 4]
+        self.pose_sequence = []
+
+        # Stores mapping from global idx to specific pose sequence index
+        # [n_trajectories, 2]
+        # First element is the trajectory idx, second element is the step idx
+        self.global_idx_to_pose_idx = []
+
+        self.traj_idx = 0
+
+    def store_poses(self, poses):
+        """Stores the sequence of poses of all NPCs in the dataset.
+
+        Args:
+            poses: dict containing the poses for all NPCs that exist at the current timestep
+        """
+
+        for id, pose_data in poses.items():
+            if(id not in self.pose_dict):
+                # Pad the pose sequence up until the current timestep
+                # Pad with [0,0,0,0]
+                self.pose_dict[id] = [torch.zeros((4)) for _ in range(self.step_idx)]
+
+            # Store the pose
+            self.pose_dict[id].append(torch.tensor([pose_data['x'], pose_data['y'], pose_data['theta'], pose_data['speed']]))
+
+        # Store the mapping from global idx to specific pose sequence index
+        self.global_idx_to_pose_idx.append((self.traj_idx, self.step_idx))
+
+        self.step_idx += 1
+
+
+    def initialize_trajectory(self):
+        """Initializes a new trajectory."""
+
+        # Pose dict will store trajectories for all vehicles that we see
+        self.pose_dict = {}
+
+        self.step_idx = 0
+
+
+    def finalize_trajectory(self):
+
+        padded_poses = []
+        for id, pose_list in self.pose_dict.items():
+            pose_tensor = torch.stack(pose_list)
+
+            if(len(pose_list) < self.step_idx):
+                # Pad the pose_tensor to match length
+                pose_tensor = torch.cat((pose_tensor, torch.zeros((self.step_idx - len(pose_list), 4))), dim = 0)
+
+            padded_poses.append(pose_tensor)
+        padded_poses = torch.stack(padded_poses)
+        self.pose_sequence.append(padded_poses)
+
+        # Completed trajectory, increment trajectory index here
+        self.traj_idx += 1
+
+    def get_poses(self, idx, rollout_len):
+        """Returns the sequence of poses of all NPCs in the dataset, for the remaining length of the trajectory.
+
+        If rollout_len is greater than the remaining length of the trajectory, the remaining poses will be returned. Else, the poses will be
+        returned for the next rollout_len poses.
+
+        Args:
+            idx: global index of the sequence
+            rollout_len: length of the sequence
+
+        Returns:
+            poses: [n_agents, 4]
+        """
+
+        # Get traj_idx and step_idx from global idx
+        traj_idx, step_idx = self.global_idx_to_pose_idx[idx]
+
+
+
+        return torch.transpose(self.pose_sequence[traj_idx][:, step_idx : step_idx + rollout_len], 0, 1)
 
 
 # def construct_obs(self,)
@@ -217,7 +324,7 @@ class OfflineCarlaDataset(Dataset):
                     # at each timestep, collect observations for last <frame_stack> frames
                     for j in range(self.frame_stack):
 
-                        # [[speed_t, steer_t], [speed_t-1, steer_t-1], ...]
+                        # [[steer_t, speed_t], [steer_t-1,speed_t-1], ...]
                         obs.append(torch.FloatTensor([samples[i-j-1][steer_key], samples[i-j-1][speed_key]]))
 
                         # Check that none of the observations are nan, break if nan is present
@@ -350,6 +457,7 @@ class OfflineCarlaDataset(Dataset):
                 self.npc_module.get_poses(idx, rollout_len))
 
 
+
 class OfflineCarlaDataModule():
     """ Datamodule for offline driving data """
     def __init__(self, cfg, norm_stats = None):
@@ -389,7 +497,6 @@ class OfflineCarlaDataModule():
 
         # If new_path passed in, simply add newly collected data to existing datasets
         if new_path is not None:
-            # import pdb; pdb.set_trace();
             self.new_paths.append(new_path)
             self.datasets.append(OfflineCarlaDataset(path=new_path, frame_stack=self.frame_stack))
             self.datasets[-1].obs= (self.datasets[-1].obs - self.normalization_stats["obs"]["mean"]) / self.normalization_stats["obs"]["std"]
@@ -520,6 +627,382 @@ class OfflineCarlaDataModule():
                           batch_size=self.batch_size,
                           shuffle=False,
                           num_workers=self.num_workers)
+
+
+class OfflineLeaderboardDataset(Dataset):
+    """ Offline dataset """
+
+    # pull data from buffer
+    # don't normalize data
+    def __init__(self,
+                    path,
+                    use_images=True,
+                    frame_stack=1,
+                    obs_dim = 2,
+                    additional_state_dim = 0,
+                    action_dim = 2,
+                    state_dim_out = 5):
+
+        if(frame_stack < 1):
+            raise Exception("Frame stack must be greater than or equal to 1")
+
+        trajectory_paths = glob.glob('{}/*'.format(path))
+        # assert len(trajectory_paths) > 0, 'No trajectories found in {}'.format(path)
+        self.path = path
+        self.use_images = use_images
+
+        # Save data shape
+        self.frame_stack = frame_stack
+        self.obs_dim = obs_dim
+
+        self.additional_state_dim = additional_state_dim
+        self.action_dim = action_dim
+        self.state_dim_out = state_dim_out
+
+        # obs: features predicted for the next time step
+        # additional_state: change in wall time
+        # delta: change in x, y, yaw, speed, steer
+        self.obs, self.additional_state, self.delta = [], [], []
+        self.actions, self.rewards, self.terminals = [], [], []
+        self.vehicle_poses = []
+        self.red_light = []
+
+        # Keys to accesss values in the dataset
+        steer_key = ["scene_graph","ego_features", "steer_angle"]
+        speed_key = ["scene_graph","ego_features", "speed"]
+        vehicle_x_key = ["scene_graph","ego_features", "ego_vehicle_x"]
+        vehicle_y_key = ["scene_graph","ego_features", "ego_vehicle_y"]
+        vehicle_theta_key = ["scene_graph","ego_features", "ego_vehicle_theta"]
+        waypoints_key = ["scene_graph","ego_features", "waypoints"]
+        reward_key = None
+        done_key = None
+        action_key = None
+        npc_pose_key = ["scene_graph","vehicle_features"]
+        traffic_light_loc_key = "nearest_traffic_actor_location"
+        traffic_light_state_key = "nearest_traffic_light_state"
+
+        self.waypoint_module = WaypointModule()
+        self.npc_module = LeaderboardNPCModule()
+        self.traffic_light_module = TrafficLightModule()
+
+        print("Loading data from: {}".format(path))
+        # Don't calculate gradients for descriptive statistics
+        with torch.no_grad():
+            # Loop over all trajectories
+            i = 0
+            for trajectory_path in tqdm(trajectory_paths):
+                samples = []
+                json_paths = sorted(glob.glob('{}/measurements/*.json'.format(trajectory_path)))
+                traj_length = len(json_paths)
+
+                # Loop over files and load in each timestep (represented by a single json file) for each trajectory
+                for i in range(traj_length):
+                    with open(json_paths[i]) as f:
+                        sample = json.load(f)
+
+                    samples.append(sample)
+
+                # Exit if the trajectory is too short
+                if traj_length <= (self.frame_stack + 1):
+                    continue
+
+                # Initialize new trajectory in npc module
+                self.npc_module.initialize_trajectory()
+
+                # Construct observations across all timesteps i in trajectory
+                for i in range(self.frame_stack, traj_length-1):
+
+                    # Frame stacks for each element
+                    obs = []
+                    additional_state = []
+                    action = []
+                    delta = []
+
+                    # at each timestep, collect observations for last <frame_stack> frames
+                    for j in range(self.frame_stack):
+
+                        # [[speed_t, steer_t], [speed_t-1, steer_t-1], ...]
+                        obs.append(torch.FloatTensor([get_nested_dict(samples[i-j-1], steer_key), get_nested_dict(samples[i-j-1], speed_key)]))
+
+                        # Check that none of the observations are nan, break if nan is present
+                        if np.isnan(obs[-1]).any():
+                            print(trajectory_path)
+                            break
+
+                        # Additional state: delta time between each frame/timestep
+                        # additional_state.append(torch.FloatTensor([samples[i-j+1]['wall'] - samples[i-j]['wall']]))
+
+                        # Action taken
+                        # TEMPORARY: SET ACTIONS TO 0 on init
+                        action.append(torch.FloatTensor([0, -1]))
+
+                    # vehicle pose at timestep t
+                    vehicle_pose_cur = torch.FloatTensor([get_nested_dict(samples[i], vehicle_x_key),
+                                                          get_nested_dict(samples[i], vehicle_y_key),
+                                                          get_nested_dict(samples[i], vehicle_theta_key)])
+
+                    vehicle_pose_prev = torch.FloatTensor([get_nested_dict(samples[i-1], vehicle_x_key),
+                                                           get_nested_dict(samples[i-1], vehicle_y_key),
+                                                           get_nested_dict(samples[i-1], vehicle_theta_key)])
+
+                    # split vehicle pose into location [x,y], and yaw
+                    vehicle_loc_cur = vehicle_pose_cur[:2]
+                    vehicle_loc_prev = vehicle_pose_prev[:2]
+                    vehicle_theta_cur = vehicle_pose_cur[2]
+                    vehicle_theta_prev = vehicle_pose_prev[2]
+
+
+                    # homogeneous transform: get relative change in vehicle pose
+                    global_loc_offset = vehicle_loc_cur - vehicle_loc_prev
+                    vehicle_loc_delta = torch.inverse(rot(torch.deg2rad(vehicle_theta_prev))) @ global_loc_offset.unsqueeze(-1)
+
+                    # Construct next state prediction delta
+                    delta_x, delta_y = vehicle_loc_delta[:2]
+                    delta_theta = vehicle_theta_cur - vehicle_theta_prev
+
+                    if(delta_theta < -180):
+                        delta_theta += 360
+                    elif(delta_theta > 180):
+                        delta_theta -= 360
+
+                    assert delta_theta >= -180 and delta_theta <= 180
+
+                    delta = torch.FloatTensor([delta_x,
+                                                delta_y,
+                                                delta_theta,
+                                                get_nested_dict(samples[i], steer_key) - get_nested_dict(samples[i-1], steer_key),
+                                                get_nested_dict(samples[i], speed_key) - get_nested_dict(samples[i-1], speed_key)])
+
+                    # convert stacked frame list to torch tensor
+                    self.obs.append(torch.stack(obs))
+                    # self.additional_state.append(torch.stack(additional_state))
+                    self.actions.append(torch.stack(action))
+                    self.delta.append(delta)
+                    self.vehicle_poses.append(vehicle_pose_prev)
+
+                    # get waypoints for current timestep
+                    waypoints = torch.FloatTensor(get_nested_dict(samples[i], waypoints_key))
+                    self.waypoint_module.store_waypoints(waypoints)
+
+                    # if(traffic_light_loc_key in samples[i] and samples[i][traffic_light_loc_key] is not None):
+                    #     traffic_light_loc = torch.FloatTensor(samples[i][traffic_light_loc_key])
+                    #     traffic_light_state = samples[i][traffic_light_state_key]
+                    #     if(traffic_light_state == "Green"):
+                    #         self.traffic_light_state = torch.FLoatTensor([0])
+                    #     else:
+                    #         self.traffic_light_state = torch.FLoatTensor([1])
+                    #     self.traffic_light_module.store_traffic_light_loc(traffic_light_loc, traffic_light_state)
+
+                    # else:
+                    #     self.traffic_light_module.store_traffic_light_loc(torch.FloatTensor(([-1,-1])), 0)
+
+                    # Get NPC poses for current timestep
+                    # NPC poses at the current timestep is a list of lists of [x, y, theta, speed] (n_npcs x 4)
+                    # TODO: Need to convert current NPC representation to the same format as the one in the dataset
+
+                    if(is_in_nested_dict(samples[i], npc_pose_key)):
+                        npc_poses = get_nested_dict(samples[i], npc_pose_key)
+                    else:
+                        npc_poses = {}
+                    self.npc_module.store_poses(npc_poses)
+
+                self.npc_module.finalize_trajectory()
+                i += 1
+
+            self.obs = torch.stack(self.obs)
+
+            # Set actions to braking
+            self.actions = torch.zeros((1, self.frame_stack, 2))
+            self.actions[...,-1]  = -1
+            # self.additional_state = torch.stack(self.additional_state)
+            # self.delta = torch.stack(self.delta)
+            self.vehicle_poses = torch.stack(self.vehicle_poses)
+
+
+    def __getitem__(self, idx):
+        '''
+        obs:              B x F x 2
+        additional_state: B x F x 1
+        mlp_features:     B x F x 3
+        action:           B x F x 2
+        reward:           B x 1
+        delta:            B x 5
+        done:             B x 1
+        vehicle_pose:     B x 3
+        '''
+
+        obs = self.obs[idx]
+        # additional_state = self.additional_state[idx]
+
+        mlp_features = obs #torch.cat([obs, additional_state.reshape(-1,1)], dim = 1)
+        vehicle_pose = self.vehicle_poses[idx]
+
+        action = self.actions[0]
+
+        return mlp_features, action, None, None, None, vehicle_pose
+
+    def __len__(self):
+        return len(self.vehicle_poses)
+
+    ''' randomly sample from dataset '''
+    def sample_with_waypoints(self, idx, rollout_len):
+        # traffic_light_loc, traffic_light_state = self.traffic_light_module.get_traffic_light(idx, rollout_len)
+        return (self[idx],
+                self.waypoint_module.get_waypoints(idx),
+                self.npc_module.get_poses(idx, rollout_len))
+
+class OfflineLeaderboardDataModule():
+    """ Datamodule for offline driving data """
+    def __init__(self, cfg, norm_stats = None):
+        super().__init__()
+        self.normalize_data = cfg.normalize_data
+        self.paths = cfg.dataset_paths
+        self.num_paths = len(self.paths)
+        self.batch_size = cfg.batch_size
+        self.frame_stack = cfg.frame_stack
+        self.num_workers = cfg.num_workers
+        self.train_val_split = cfg.train_val_split
+        self.datasets = None
+        self.train_data = None
+        self.val_data = None
+        self.received_normalization_stats = False
+        if(norm_stats is not None):
+            self.normalization_stats = norm_stats
+            self.received_normalization_stats = True
+        else:
+            self.normalization_stats = {
+                "obs": None,
+                "additional_state" : None,
+                "delta" : None,
+                "action" : None
+            }
+
+        self.new_paths = []
+    # Updates dataset with newly-collected trajectories saved to new_path
+    def update(self, new_path):
+        self.setup(new_path)
+
+
+    def setup(self, new_path = None):
+        # Create a dataset for each trajectory
+        print('DATAMODULES SETUP: self.paths', self.paths)
+
+
+        # If new_path passed in, simply add newly collected data to existing datasets
+        if new_path is not None:
+            # import pdb; pdb.set_trace();
+            self.new_paths.append(new_path)
+            self.datasets.append(OfflineLeaderboardDataset(path=new_path, frame_stack=self.frame_stack))
+            self.datasets[-1].obs= (self.datasets[-1].obs - self.normalization_stats["obs"]["mean"]) / self.normalization_stats["obs"]["std"]
+            # self.datasets[i].additional_state = (self.datasets[i].additional_state - self.normalization_stats["additional_state"]["mean"]) / self.normalization_stats["additional_state"]["std"]
+            # self.datasets[-1].actions =  (self.datasets[-1].actions - self.normalization_stats["action"]["mean"]) / self.normalization_stats["action"]["std"]
+            self.datasets[-1].delta = (self.datasets[-1].delta - self.normalization_stats["delta"]["mean"]) / self.normalization_stats["delta"]["std"]
+            self.num_paths += 1
+
+            self.new_data = torch.utils.data.ConcatDataset(self.datasets[-1 * self.num_new_paths:])
+        else:
+            self.datasets = [OfflineLeaderboardDataset(path=path, frame_stack=self.frame_stack) for path in self.paths]
+
+        # Dimensions
+        self.state_dim_in = self.datasets[0].obs_dim + self.datasets[0].additional_state_dim
+        self.state_dim_out = self.datasets[0].state_dim_out
+        self.action_dim = self.datasets[0].action_dim
+        self.frame_stack = self.frame_stack
+
+        # normalize across all trajectories
+        if self.normalize_data and not self.received_normalization_stats:
+            raise Exception("Leaderboard Dataset is not complete and cannot be used for dynamics training. Please provide a pretrained dynamics model")
+
+        elif not self.received_normalization_stats:
+            print('DATA_MODULE: No normalization: Setting normalization stats to Mean=0, Std=1')
+            self.normalization_stats["obs"] = {"mean" : torch.zeros((1, self.datasets[0].obs_dim)), "std" : torch.ones((1, self.datasets[0].obs_dim))}
+            self.normalization_stats["action"] = {"mean" : torch.zeros((1, self.datasets[0].action_dim)), "std" : torch.ones((1, self.datasets[0].action_dim))}
+            self.normalization_stats["delta"] = {"mean" : torch.zeros((1, self.datasets[0].state_dim_out)), "std" : torch.ones((1, self.datasets[0].state_dim_out))}
+
+            # print('obs',self.normalization_stats["obs"])
+            # print('act', self.normalization_stats["action"])
+            # print('delta', self.normalization_stats["delta"])
+
+        else:
+            print('DATA_MODULE: Already normalized')
+            print('DATA_MODULE: Obs stats: ', self.normalization_stats["obs"])
+            print('DATA_MODULE: Action stats: ',  self.normalization_stats["action"])
+            print('DATA_MODULE: Delta stats: ', self.normalization_stats["delta"])
+
+        # normalize
+        for i in range(len(self.datasets)):
+            self.datasets[i].obs= (self.datasets[i].obs - self.normalization_stats["obs"]["mean"]) / self.normalization_stats["obs"]["std"]
+            # self.datasets[i].additional_state = (self.datasets[i].additional_state - self.normalization_stats["additional_state"]["mean"]) / self.normalization_stats["additional_state"]["std"]
+            self.datasets[i].actions =  (self.datasets[i].actions - self.normalization_stats["action"]["mean"]) / self.normalization_stats["action"]["std"]
+            # self.datasets[i].delta = (self.datasets[i].delta - self.normalization_stats["delta"]["mean"]) / self.normalization_stats["delta"]["std"]
+
+
+        # concat datasets across all trajectories (used for dynamics training)
+        self.concat_dataset = torch.utils.data.ConcatDataset(self.datasets)
+
+        # split into train, val datasets for dynamics training
+        train_size = int(len(self.concat_dataset) * self.train_val_split)
+        val_size = len(self.concat_dataset) - train_size
+        self.train_data, self.val_data = torch.utils.data.random_split(self.concat_dataset, (train_size, val_size))
+
+    ''' This is used in FakeEnv for dynamics evaluation (with waypoints, batch size = 1) '''
+    def sample_with_waypoints(self, rollout_len):
+        # selects a trajectory path
+        path_idx = np.random.randint(self.num_paths)
+        dataset = self.datasets[path_idx]
+
+        # selects a timestep along trajectory to sample from
+        num_timesteps = len(dataset)
+        #TODO: FIX EROR EHRE
+        idx = np.random.randint(num_timesteps)
+        return dataset.sample_with_waypoints(idx, rollout_len)
+
+
+    ''' This is used for dynamics training (no waypoint input needed, batch size set)'''
+    def train_dataloader(self, weighted = True, batch_size_override = None, only_new_datasets = False):
+        if only_new_datasets:
+            dataset = self.new_data
+        else:
+            dataset = self.train_data
+
+        weights = torch.ones(size = (len(dataset),))
+        sampler = None
+        if(weighted):
+            for i in tqdm(range(len(dataset))):
+                _, _, _, delta, _, _ = dataset[i]
+                weight = torch.sqrt(torch.square(delta[...,3]) + torch.square(delta[...,4]))
+                weights[i] = weights[i] + weight
+
+            sampler = torch.utils.data.WeightedRandomSampler(
+                weights=weights,
+                num_samples=len(weights),
+                replacement=True
+            )
+        else:
+
+            sampler = None #torch.utils.data.WeightedRandomSampler(
+            #    weights=weights,
+            #    num_samples=len(weights),
+            #    replacement=True
+            #)
+
+        if(batch_size_override is None):
+            batch_size = self.batch_size
+        else:
+            batch_size = batch_size_override
+
+        return DataLoader(dataset,
+                            batch_size=batch_size,
+                            num_workers=self.num_workers,
+                            sampler = sampler)
+
+    def val_dataloader(self):
+        return DataLoader(self.val_data,\
+                          batch_size=self.batch_size,
+                          shuffle=False,
+                          num_workers=self.num_workers)
+
+
 
 
 class RNNOfflineCarlaDataset(Dataset):
@@ -737,6 +1220,19 @@ class RNNOfflineCarlaDataset(Dataset):
     ''' randomly sample from dataset '''
     def sample_with_waypoints(self, idx):
         return self[idx], self.waypoint_module.get_waypoints(idx)
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 class RNNOfflineCarlaDataModule():
