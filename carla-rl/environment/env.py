@@ -939,32 +939,32 @@ class CarlaEnv(gym.Env):
                 # Obstacle is in front of vehicle
                 if dot_product > 0.995 and obstacle_data['distance'] < front_min_dist:
                     front_min_dist = obstacle_data['distance']
-                    front_obs_vec = obstacle_data['position']
-                    front_obs_vel = obstacle_data['velocity']
+                    front_obs_vec = obstacle_data['position'] / self.config.obs_config.vehicle_proximity_threshold
+                    front_obs_vel = obstacle_data['velocity'] / 20
 
                 # Obstacle is in front right
                 elif dot_product > 0 and obstacle_data['position'][1] > 0 and obstacle_data['distance'] < front_right_min_dist:
                     front_right_min_dist = obstacle_data['distance']
-                    front_right_obs_vec = obstacle_data['position']
-                    front_right_obs_vel = obstacle_data['velocity']
+                    front_right_obs_vec = obstacle_data['position'] / self.config.obs_config.vehicle_proximity_threshold
+                    front_right_obs_vel = obstacle_data['velocity'] / 20
 
                 # Obstacle is in front left
                 elif dot_product > 0 and obstacle_data['position'][1] < 0 and obstacle_data['distance'] < front_left_min_dist:
                     front_left_min_dist = obstacle_data['distance']
-                    front_left_obs_vec = obstacle_data['position']
-                    front_left_obs_vel = obstacle_data['velocity']
+                    front_left_obs_vec = obstacle_data['position']  / self.config.obs_config.vehicle_proximity_threshold
+                    front_left_obs_vel = obstacle_data['velocity'] / 20
 
                 # Obstacle is in back right
                 elif dot_product <= 0 and obstacle_data['position'][1] > 0 and obstacle_data['distance'] < back_right_min_dist:
                     back_right_min_dist = obstacle_data['distance']
-                    back_right_obs_vec = obstacle_data['position']
-                    back_right_obs_vel = obstacle_data['velocity']
+                    back_right_obs_vec = obstacle_data['position']  / self.config.obs_config.vehicle_proximity_threshold
+                    back_right_obs_vel = obstacle_data['velocity'] / 20
 
                 # Obstacle is in back left
                 elif dot_product <= 0 and obstacle_data['position'][1] < 0 and obstacle_data['distance'] < back_left_min_dist:
                     back_left_min_dist = obstacle_data['distance']
-                    back_left_obs_vec = obstacle_data['position']
-                    back_left_obs_vel = obstacle_data['velocity']
+                    back_left_obs_vec = obstacle_data['position']  / self.config.obs_config.vehicle_proximity_threshold
+                    back_left_obs_vel = obstacle_data['velocity'] / 20
 
 
 
@@ -976,14 +976,14 @@ class CarlaEnv(gym.Env):
 
             # We see both an obstacle and the light
             if(light != self.config.obs_config.default_obs_traffic_val):
-                unnorm_obs_dist = front_obs_vec[0]
+                unnorm_obs_dist = front_obs_vec[0] * self.config.obs_config.vehicle_proximity_threshold
                 unnorm_light = light * 20
 
                 # If the light is further do nothing
-                if(obstacle_dist != self.config.obs_config.default_obs_traffic_val and unnorm_light > unnorm_obs_dist):
+                if(front_obs_vec[0] != self.config.obs_config.default_obs_traffic_val and unnorm_light > unnorm_obs_dist):
                     pass
                 else:
-                    front_obs_vec = np.array([light, 0])
+                    front_obs_vec = np.array([light, 0]) / 20.0
                     front_obs_vel = np.array([0,0])
 
             obs_output = np.concatenate(
