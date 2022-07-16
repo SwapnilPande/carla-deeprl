@@ -232,6 +232,59 @@ class MLPObstaclesSpeed40ReducedOutOfLanePenaltyMOPOConfig(BaseMOPOConfig):
 
 
 
+class MLPObstaclesLeaderboardObsMOPOConfig(BaseMOPOConfig):
+    def __init__(self):
+        super().__init__()
+
+        self.dynamics_config = dynamics_config.ObstaclesSpeed40MLPDynamicsConfig()
+
+        self.policy_training_dataset = data_module_config.ObstaclesFullRolloutsMixedDeterministicMLPDataModuleConfig()
+
+        self.fake_env_config = fake_env_config.NoTimeoutFakeEnvConfig()
+
+        self.fake_env_config.populate_config(
+            observation_config = "LeaderboardObsNoCameraConfig",
+            action_config = "MergedSpeedScaledTanhConfig",
+            reward_config="Simple2RewardConfig"
+        )
+
+        self.eval_env_config = DefaultMainConfig()
+        self.eval_env_config.populate_config(
+            observation_config = "LeaderboardObsNoCameraConfig",
+            action_config = "MergedSpeedScaledTanhConfig",
+            reward_config = "Simple2RewardConfig",
+            scenario_config = "NoCrashDenseTown01Config",
+            carla_gpu = self.gpu
+        )
+
+
+class MLPLeaderboardMOPOConfig(BaseMOPOConfig):
+    def __init__(self):
+        super().__init__()
+
+        self.dynamics_config = dynamics_config.ObstaclesMLPDynamicsConfig()
+
+        self.policy_training_dataset = data_module_config.LeaderboardDataset()
+
+        self.fake_env_config = fake_env_config.NoTimeoutFakeEnvConfig()
+
+        self.fake_env_config.populate_config(
+            observation_config = "LeaderboardObsNoCameraConfig",
+            action_config = "MergedSpeedScaledTanhConfig",
+            reward_config="Simple2RewardConfig"
+        )
+
+        self.eval_env_config = DefaultMainConfig()
+        self.eval_env_config.populate_config(
+            observation_config = "LeaderboardObsNoCameraConfig",
+            action_config = "MergedSpeedScaledTanhConfig",
+            reward_config = "Simple2RewardConfig",
+            scenario_config = "NoCrashDenseTown01Config",
+            carla_gpu = self.gpu
+        )
+
+
+
 class DefaultProbMLPMOPOConfig(BaseMOPOConfig):
     def __init__(self):
         super().__init__()
