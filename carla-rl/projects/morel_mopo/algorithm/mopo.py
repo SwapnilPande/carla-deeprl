@@ -23,7 +23,6 @@ from projects.morel_mopo.config.logger_config import ExistingCometLoggerConfig
 
 
 
-
 '''
 1. Learn approx dynamics model from OfflineCarlaDataset
 3. Construct pessimistic MDP FakeEnv with USAD detector
@@ -93,6 +92,7 @@ class MOPO():
         # Log MOPO hyperparameters
         self.logger.log_hyperparameters(hyperparameters_to_log)
 
+
         # Setup dynamics model
         # If we are using a pretrained dynamics model, we need to load it
         # Else, we need to train a new dynamics model
@@ -109,11 +109,10 @@ class MOPO():
             self.dynamics_config = temp_config.dynamics_config
 
             print(f"MOPO: Loading dynamics model {self.config.pretrained_dynamics_model_config.name} from experiment {self.config.pretrained_dynamics_model_config.key}")
-            # Load dataset, only if we need it
-            #TODO: We need to be able to pass the norm statistics, in case the datasets are not exactly the same
-            if(self.load_data):
 
-                self.dynamics_config.dataset_config
+            # Load dataset, only if we need it
+            # We will load the dynamics dataset if a policy training dataset is not passed
+            if(self.config.policy_training_dataset is None):
                 self.dynamics = self.dynamics_config.dynamics_model_type.load(
                             logger = temp_logger,
                             model_name = self.config.pretrained_dynamics_model_config.name,
@@ -124,7 +123,12 @@ class MOPO():
 
                 self.data_module = self.dynamics.data_module #self.dynamics_config.dataset_config.dataset_type(self.dynamics_config.dataset_config)
             else:
-                print("MOPO: Skipping Loading dataset")
+                print("MOPO: Skipping loading dynamics dataset")
+                self.dynamics = self.dynamics_config.dynamics_model_type.load(
+                            logger = temp_logger,
+                            model_name = self.config.pretrained_dynamics_model_config.name,
+                            gpu = self.config.gpu)
+
 
         # If we are not using a pretrained dynamics model, we need to train a new dynamics model
         # Initialize a new one
@@ -146,9 +150,15 @@ class MOPO():
 
         print("MOPO: Constructing Fake Env")
 
+        # Check if policy_dataset config is passed, pass to fake_env if it is
+        if(self.config.policy_training_dataset is not None):
+            policy_data_module_config = self.config.policy_training_dataset
+        else:
+            policy_data_module_config = None
 
         fake_env = self.dynamics_config.fake_env_type(self.dynamics,
                         config = self.fake_env_config,
+                        policy_data_module_config = policy_data_module_config,
                         logger = self.logger)
 
         print("MOPO: Constructing Real Env for evaluation")
