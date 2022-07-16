@@ -76,6 +76,7 @@ class PIDLateralController():
 class BaseFakeEnv(gym.Env):
     def __init__(self, dynamics,
                         config,
+                        policy_data_module_config = None,
                         logger = None):
 
         # Save logger
@@ -122,7 +123,14 @@ class BaseFakeEnv(gym.Env):
         self.frame_stack = self.dynamics.frame_stack
 
         # self.offline_data_module = fescenarios.StraightWithStaticObstacle(self.frame_stack, self.norm_stats)#self.dynamics.data_module
-        self.offline_data_module = self.dynamics.data_module
+        self.policy_data_module_config = policy_data_module_config
+        if(self.policy_data_module_config is not None):
+            print("FAKE ENV: Loading policy training dataset")
+            self.offline_data_module = self.policy_data_module_config.dataset_type(self.policy_data_module_config, self.norm_stats)
+            self.offline_data_module.setup()
+        else:
+            print("No policy training dataset passed, using dataset from dynamics")
+            self.offline_data_module = self.dynamics.data_module
         if(self.offline_data_module is None):
             print("FAKE_ENV: Data module does not have associated dataset. Reset must be called with an initial state input.")
 
@@ -174,7 +182,11 @@ class BaseFakeEnv(gym.Env):
             self.state.normalized = obs[:,:2]
             self.past_action.normalized = action
             try:
-                self.npc_poses = torch.stack(npc_poses)
+                if(not isinstance(npc_poses, torch.Tensor)):
+                    self.npc_poses = torch.stack(npc_poses)
+
+                else:
+                    self.npc_poses = npc_poses
             except:
                 self.npc_poses = torch.empty(self.timeout_steps, 0)
 
@@ -337,17 +349,136 @@ class BaseFakeEnv(gym.Env):
 
             return torch.cat([angle, state[1:2] / 10, state[0:1], dist_to_trajectory, torch.tensor([obstacle_dist]).to(self.device), torch.tensor([obstacle_vel]).to(self.device)], dim=0).float().to(self.device), dist_to_trajectory, angle
 
-        elif(self.config.obs_config.input_type == "wp_obstacle_speed_steer"):
+        elif(self.config.obs_config.input_type == "wp_360_obstacle_speed_steer"):
             cur_npc_poses = self.npc_poses[self.steps_elapsed]
-            obstacle_dist, obstacle_vel = self.get_obstacle_states(cur_npc_poses, self.waypoints)
-            if(obstacle_dist == -1):
-                obstacle_dist = 1
-                obstacle_vel = 1
-            else:
-                obstacle_dist /= self.config.obs_config.vehicle_proximity_threshold
-                obstacle_vel /= 20
 
-            return torch.cat([angle, state[1:2] / 10, state[0:1], dist_to_trajectory, torch.tensor([obstacle_dist]).to(self.device), torch.tensor([obstacle_vel]).to(self.device)], dim=0).float().to(self.device), dist_to_trajectory, angle
+            # Initialize obstacle outputs
+            front_obs_vec = torch.tensor([1.5, 1.5]).to(self.device)
+            front_obs_vel = torch.tensor([1.5, 1.5]).to(self.device)
+            front_min_dist = 10000
+
+            front_right_obs_vec = torch.tensor([1.5, 1.5]).to(self.device)
+            front_right_obs_vel = torch.tensor([1.5, 1.5]).to(self.device)
+            front_right_min_dist = 10000
+
+            front_left_obs_vec = torch.tensor([1.5, 1.5]).to(self.device)
+            front_left_obs_vel = torch.tensor([1.5, 1.5]).to(self.device)
+            front_left_min_dist = 10000
+
+            back_right_obs_vec = torch.tensor([1.5, 1.5]).to(self.device)
+            back_right_obs_vel = torch.tensor([1.5, 1.5]).to(self.device)
+            back_right_min_dist = 10000
+
+            back_left_obs_vec = torch.tensor([1.5, 1.5]).to(self.device)
+            back_left_obs_vel = torch.tensor([1.5, 1.5]).to(self.device)
+            back_left_min_dist = 10000
+
+
+
+            # Get distance between ego vehicle and all other vehicles
+            vehicle_vectors = cur_npc_poses[...,0:2] - self.vehicle_pose[0:2]
+            distances = torch.norm(vehicle_vectors, dim=1)
+            # Next, get the indices for all distances less than the threshold
+            in_range_npcs = (distances < self.config.obs_config.vehicle_proximity_threshold).nonzero()
+
+            # Vehicles in range
+            if(in_range_npcs.shape[0] > 0):
+
+                in_range_npcs = in_range_npcs[0]
+                # Get poses for all vehicles in range
+                in_range_npc_poses = cur_npc_poses[in_range_npcs]
+                in_range_distances = distances[in_range_npcs]
+
+                # Construct ego H_transform
+                ego_frame_rot = feutils.rot(self.vehicle_pose[2])
+                ego_H_transform = torch.eye(3).to(self.device)
+                ego_H_transform[0:2, 2] = self.vehicle_pose[0:2]
+                ego_H_transform[0:2, 0:2] = ego_frame_rot
+
+                # Construct H_transform for all vehicles
+                # Stack of len(in_range_npcs) 3x3 matrices
+                in_range_H_transform = torch.eye(3).to(self.device).repeat(in_range_npcs.shape[0], 1, 1)
+                in_range_H_transform[:, 0:2, 2] = in_range_npc_poses[:, 0:2]
+                in_range_H_transform[:, 0:2, 0:2] = feutils.rot(in_range_npc_poses[:, 2])
+
+                # Compute vector of all vehicles in ego frame
+                in_range_vehicle_vectors_in_ego_frame = torch.matmul(torch.inverse(ego_H_transform), in_range_H_transform)
+
+                relative_rotations = in_range_vehicle_vectors_in_ego_frame[..., 0:2, 0:2]
+                relative_positions = in_range_vehicle_vectors_in_ego_frame[..., 0:2, 2]
+                relative_positions_normalized = relative_positions / torch.norm(relative_positions, dim=1, keepdim=True)
+                relative_velocities = relative_rotations[:,0:2, 0] * in_range_npc_poses[:, 3]
+
+                # Dot product is simply the first element of the normalized vector
+                dot_products = relative_positions_normalized[...,0]
+
+                # Finally, compute observations
+                for index, (dot_product, distance) in enumerate(zip(dot_products, in_range_distances)):
+                    # Obstacle is in front of vehicle
+                    if dot_product > 0.995 and distance < front_min_dist:
+                        front_min_dist = distance
+                        front_obs_vec = relative_positions[index] / self.config.obs_config.vehicle_proximity_threshold
+                        front_obs_vel = relative_velocities[index] / 20
+
+                    # Obstacle is in front right
+                    elif dot_product > 0 and relative_positions[index][1] > 0 and distance < front_right_min_dist:
+                        front_right_min_dist = distance
+                        front_right_obs_vec = relative_positions[index] / self.config.obs_config.vehicle_proximity_threshold
+                        front_right_obs_vel = relative_velocities[index] / 20
+
+                    # Obstacle is in front left
+                    elif dot_product > 0 and relative_positions[index][1] < 0 and distance < front_left_min_dist:
+                        front_left_min_dist = distance
+                        front_left_obs_vec = relative_positions[index] / self.config.obs_config.vehicle_proximity_threshold
+                        front_left_obs_vel = relative_velocities[index] / 20
+
+                    # Obstacle is in back right
+                    elif dot_product <= 0 and relative_positions[index][1] > 0 and distance < back_right_min_dist:
+                        back_right_min_dist = distance
+                        back_right_obs_vec = relative_positions[index] / self.config.obs_config.vehicle_proximity_threshold
+                        back_right_obs_vel = relative_velocities[index] / 20
+
+                    # Obstacle is in back left
+                    elif dot_product <= 0 and relative_positions[index][1] < 0 and distance < back_left_min_dist:
+                        back_left_min_dist = distance
+                        back_left_obs_vec = relative_positions[index] / self.config.obs_config.vehicle_proximity_threshold
+                        back_left_obs_vel = relative_velocities[index] / 20
+
+            return torch.cat(
+                [
+                    angle,
+                    state[1:2] / 10,
+                    state[0:1],
+                    dist_to_trajectory,
+                    front_obs_vec[0:1],
+                    front_obs_vec[1:2],
+                    front_obs_vel[0:1],
+                    front_obs_vel[1:2],
+                    front_right_obs_vec[0:1],
+                    front_right_obs_vec[1:2],
+                    front_right_obs_vel[0:1],
+                    front_right_obs_vel[1:2],
+                    front_left_obs_vec[0:1],
+                    front_left_obs_vec[1:2],
+                    front_left_obs_vel[0:1],
+                    front_left_obs_vel[1:2],
+                    back_right_obs_vec[0:1],
+                    back_right_obs_vec[1:2],
+                    back_right_obs_vel[0:1],
+                    back_right_obs_vel[1:2],
+                    back_left_obs_vec[0:1],
+                    back_left_obs_vec[1:2],
+                    back_left_obs_vel[0:1],
+                    back_left_obs_vel[1:2],
+                ]
+            ).float(), dist_to_trajectory, angle
+
+
+
+
+
+
+
 
     def check_collision(self, other_vehicle_pose):
         # This is cos(theta) from the centroid of our vehicle to one of the corners
@@ -502,7 +633,7 @@ class BaseFakeEnv(gym.Env):
             # Compute velocity along trajectory
             trajectory_velocity = feutils.compute_trajectory_velocity(self.waypoints,
                                                                         self.vehicle_pose,
-                                                                        self.state.unnormalized[0],
+                                                                        self.state.unnormalized[0,1],
                                                                         self.device,
                                                                         second_last_waypoint = self.second_last_waypoint,
                                                                         last_waypoint = self.last_waypoint,
@@ -576,8 +707,10 @@ class BaseFakeEnv(gym.Env):
             #         info["termination"] = "unknown"
             #         print(len(self.npc_poses))
 
-            res = policy_obs.cpu().numpy(), float(reward_out.item()), done, info
-
+            try:
+                res = policy_obs.cpu().numpy(), float(reward_out.item()), done, info
+            except:
+                import ipdb; ipdb.set_trace()
 
             #Logging
             if(done and self.logger is not None):
