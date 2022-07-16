@@ -135,6 +135,22 @@ class ObstaclesFullRolloutsSpeed40DeterministicMLPDataModuleConfig(BaseDataModul
             self.dataset_type = data_modules.OfflineCarlaDataModule
 
 
+class LeaderboardDataset(BaseDataModuleConfig):
+        def __init__(self):
+            super().__init__()
+            self.dataset_paths = [
+                "/zfsauton/datasets/ArgoRL/swapnilp/carla-rl_datasets/7_12_leaderboard",
+                "/zfsauton/datasets/ArgoRL/swapnilp/carla-rl_datasets/7_12_leaderboard_2"
+
+            ]
+
+            self.batch_size = 512
+            self.frame_stack = 2
+            self.num_workers = 10
+            self.train_val_split = 0.95
+            self.normalize_data = True
+            self.dataset_type = data_modules.OfflineLeaderboardDataModule
+
 
 
 
