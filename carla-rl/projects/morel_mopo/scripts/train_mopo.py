@@ -5,8 +5,8 @@ import importlib
 from typing import Optional
 
 
-# Setup imports for algorithm and environment
-sys.path.append(os.path.abspath(os.path.join('../../../')))
+# # Setup imports for algorithm and environment
+# sys.path.append(os.path.abspath(os.path.join('../../../')))
 
 import carla
 
@@ -15,8 +15,6 @@ from projects.morel_mopo.config.logger_config import CometLoggerConfig
 from projects.morel_mopo.algorithm.mopo import MOPO
 
 mopo_configs = importlib.import_module("projects.morel_mopo.config.morel_mopo_config")
-
-
 
 def main(args):
     ########################################## logger  ####################################
@@ -46,8 +44,8 @@ def main(args):
 
     # config.populate_config(gpu = args.gpu, policy_algorithm = "SAC")
 
-    config.fake_env_config.uncertainty_coeff = 1
-
+    print("NO UNCERTAINTY")
+    config.fake_env_config.uncertainty_coeff = 0
     model = MOPO(config = config,
                 logger=logger)
 
