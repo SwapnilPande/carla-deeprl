@@ -236,7 +236,7 @@ class MLPObstaclesLeaderboardObsMOPOConfig(BaseMOPOConfig):
     def __init__(self):
         super().__init__()
 
-        self.dynamics_config = dynamics_config.ObstaclesSpeed40MLPDynamicsConfig()
+        self.dynamics_config = dynamics_config.ObstaclesMLPDynamicsConfig()
 
         self.policy_training_dataset = data_module_config.ObstaclesFullRolloutsMixedDeterministicMLPDataModuleConfig()
 
