@@ -107,6 +107,7 @@ class ActorManager():
                                     self.frame_stack,
                                     self.dynamics.state_dim_in,
                                     device=self.device)
+        initial_states[..., -1] = torch.rand(*initial_states[..., -1].shape) / 5
         # Save the ego state in the last position
         # Unnormalize state before saving it, using the NormalizedTensor in prediction_wrapper
         initial_states[-1] = self.prediction_wrapper.states.unnormalize_array(ego_states)
@@ -132,7 +133,7 @@ class ActorManager():
                                           device=self.device)
 
         # Set the target_speed to -1 for all actors - this corresponds to full braking
-        initial_actions[...,1] = -1
+        # initial_actions[...,1] = -1
 
         # Save initial actions for ego vehicle
         # Unnormalize state before saving it, using the NormalizedTensor in prediction_wrapper
@@ -219,7 +220,7 @@ class ActorManager():
 
         return output
 
-    def render(self, dones, successes):
+    def render(self, dones, waypoints):
         img = cv2.imread("/home/scratch/swapnilp/Town01.png")
 
         # Draw circles for each vehicle pose
@@ -229,22 +230,26 @@ class ActorManager():
         color2 = (0, 0, 255)
         color3 = (0, 255, 255)
         color4 = (255, 255, 0)
+        color5 = (255, 0, 255)
+        colors = [color1, color2, color3, color4, color5]
+        color6 = (255, 255, 255)
         for i in range(self.poses.shape[0]):
 
 
             img_coordinate = self.world_to_pixel((self.poses[i,0], self.poses[i,1]))
-            if (i < 5):
-                cv2.circle(img, tuple(img_coordinate), 10, color4, 5)
-            elif successes[i]:
-                cv2.rectangle(img, (img_coordinate[0] - 10, img_coordinate[1] - 10),
-                              (img_coordinate[0] + 10, img_coordinate[1] + 10), color3, -1)
+            if (i < 1):
+                cv2.circle(img, tuple(img_coordinate), 10, colors[0], 5)
+            elif(i < 5):
+                cv2.circle(img, tuple(img_coordinate), 10, colors[1], 5)
             elif dones[i]:
                 # Draw rectangle cenetered at img_coordinate
                 cv2.rectangle(img, (img_coordinate[0] - 10, img_coordinate[1] - 10),
-                              (img_coordinate[0] + 10, img_coordinate[1] + 10), color1, -1)
-            else:
-                # Draw circle centered at img_coordinate
-                cv2.circle(img, tuple(img_coordinate), 10, color2, 5)
+                              (img_coordinate[0] + 10, img_coordinate[1] + 10), color6, -1)
+
+        for wp_list in waypoints:
+            for wp in wp_list:
+                img_coordinate = self.world_to_pixel((wp[0], wp[1]))
+                cv2.circle(img, tuple(img_coordinate), 10, color3, 5)
         img  = cv2.resize(img, (2000, 2000))
         cv2.imwrite(f"/home/scratch/swapnilp/test/{self.i:04d}.png", img)
 
