@@ -297,7 +297,7 @@ def process_waypoints(waypoints, vehicle_pose, device, second_last_waypoint = No
     # This number is taken from GlobalPlanner
     MIN_REMOVE_DISTANCE = 1.8
 
-    for i, waypoint in enumerate(waypoints):
+    for i, waypoint in enumerate(waypoints[:20]):
         # find wp that yields min dist between itself and car
         dist_i = distance_vehicle(waypoint, vehicle_pose, device)
         # print(f'wp {i},  {waypoint}, dist: {dist_i}')
@@ -391,8 +391,16 @@ def process_waypoints(waypoints, vehicle_pose, device, second_last_waypoint = No
 
 
 def rot(theta):
-    R = torch.Tensor([[ torch.cos(theta), -torch.sin(theta)],
-                      [ torch.sin(theta), torch.cos(theta)]])
+    # New implementation that can take a list of thetas
+    # Returns a list of rot matrices
+    cos_theta = torch.cos(theta)
+    sin_theta = torch.sin(theta)
+
+    row1 = torch.stack([cos_theta, -sin_theta], dim=-1)
+    row2 = torch.stack([sin_theta,  cos_theta], dim=-1)
+
+    R = torch.stack([row1, row2], dim=-2)
+
     return R
 
 
