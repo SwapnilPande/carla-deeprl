@@ -212,18 +212,24 @@ class BaseFakeEnv(gym.Env):
         self.poses = self.actor_manager_state['poses']
         self.waypoints = self.actor_manager_state['waypoints']
 
+        # To store the previous waypoint, second_last, and last waypoints for computing dist_to_trajectory
+        self.previous_waypoint = [None] * len(self.waypoints)
+        self.second_last_waypoint = [None] * len(self.waypoints)
+        self.last_waypoint = [None] * len(self.waypoints)
+
         ## Instantiate the done array for all of the actors
         # We maintain a done array so that we can artificall delay the termination for a given actor
         # by only setting done true after a done_delay steps of being done for the actor
         # TODO: Move this to config
         self.dones_delay = 1
-        self.dones = torch.zeros(self.num_actors, dtype=torch.bool)
-        self.successes = torch.zeros(self.num_actors, dtype=torch.bool)
+        self.dones = torch.zeros(self.num_actors, dtype=torch.bool).to(self.device)
+        self.successes = torch.zeros(self.num_actors, dtype=torch.bool).to(self.device)
+        self.collisions = torch.zeros(self.num_actors, dtype=torch.bool).to(self.device)
         # Store the indices of the actors that are not done
         self.active_indices = torch.arange(self.num_actors).to(self.device)
 
         # done_counter is used to keep track of how many steps an actor has been done for
-        self.dones_counter = torch.zeros(self.num_actors, dtype=torch.int)
+        self.dones_counter = torch.zeros(self.num_actors, dtype=torch.int).to(self.device)
 
 
         # TODO: Add handling of the last few waypoints back
@@ -275,23 +281,21 @@ class BaseFakeEnv(gym.Env):
         if(self.dones[agent_idx]):
             return torch.zeros(1, self.observation_space.shape[-1]).to(self.device)
 
-
+        # print('------------------------------------------------------')
+        # print(len(self.waypoints[agent_idx]))
+        # print(self.previous_waypoint[agent_idx])
+        # print("------------------------------------------------------")
         angle, \
         dist_to_trajectory, \
         remaining_waypoints, \
-        self.second_last_waypoint, \
-        self.last_waypoint, \
-        self.previous_waypoint = feutils.process_waypoints(self.waypoints[agent_idx],
+        self.second_last_waypoint[agent_idx], \
+        self.last_waypoint[agent_idx], \
+        self.previous_waypoint[agent_idx] = feutils.process_waypoints(self.waypoints[agent_idx],
                                                         self.poses[agent_idx],
-                                                        self.device)
-        #TODO: Fix handling of waypoints at the end of the route
-
-                                 #                       second_last_waypoint = self.second_last_waypoint,
-                                  #                      last_waypoint = self.last_waypoint,
-                                                        #previous_waypoint = self.previous_waypoint)
-              # next_waypoints,\
-        # _, _, \
-
+                                                        self.device,
+                                                        second_last_waypoint=self.second_last_waypoint[agent_idx],
+                                                        last_waypoint=self.last_waypoint[agent_idx],
+                                                        previous_waypoint=self.previous_waypoint[agent_idx])
 
         # convert to tensors
         self.waypoints[agent_idx] = torch.FloatTensor(remaining_waypoints)
@@ -425,7 +429,7 @@ class BaseFakeEnv(gym.Env):
         new_actions = torch.clamp(
                         new_actions,
                         -1, 1
-                    ).to(self.device)
+                    )
 
         ## Step actor manager to get new states
         self.actor_manager_state = self.actor_manager.step(new_actions, self.dones)
@@ -459,17 +463,20 @@ class BaseFakeEnv(gym.Env):
             # If previously collided, continue to set collision to true
             collisions[actor_i] = collisions[actor_i] | collision
             collisions[actor_j] = collisions[actor_j] | collision
-
             # side_collision = side_collision or (collision and is_side)
             # front_collision = front_collision or (collision and not is_side)
+
+        self.collisions = torch.logical_or(self.collisions, collisions)
+
         dist_to_trajectories = np.squeeze(policy_obs[..., 3], axis = -1)
+        # print(dist_to_trajectories[-5:])
 
         out_of_lanes = torch.abs(dist_to_trajectories) > DIST
 
         #TODO: Change this back to when number of waypoints is 1
         # success = len(self.waypoints) == 1 or self.steps_elapsed >= len(self.npc_poses)
-        successes = torch.tensor([len(waypoints) <= 3 for waypoints in self.waypoints])# or self.steps_elapsed >= len(self.npc_poses)
-        self.successes = successes
+        successes = torch.tensor([len(waypoints) <= 3 for waypoints in self.waypoints]).to(self.device)# or self.steps_elapsed >= len(self.npc_poses)
+        self.successes = torch.logical_or(successes, self.successes)
         # Compute velocity along trajectory
 
         def get_trajectory_velocity_single_actor(i):
@@ -477,9 +484,9 @@ class BaseFakeEnv(gym.Env):
                                                         self.poses[i],
                                                         self.speeds[i],
                                                         self.device,
-                                                        second_last_waypoint = self.second_last_waypoint,
-                                                        last_waypoint = self.last_waypoint,
-                                                        previous_waypoint = self.previous_waypoint)
+                                                        second_last_waypoint = self.second_last_waypoint[i],
+                                                        last_waypoint = self.last_waypoint[i],
+                                                        previous_waypoint = self.previous_waypoint[i])
 
         trajectory_velocities = torch.stack([get_trajectory_velocity_single_actor(i) for i in range(self.num_actors)])
 
@@ -519,6 +526,8 @@ class BaseFakeEnv(gym.Env):
         # TODO: predictions should return ALL pose predictions, but currently only keeps
         # the sampled one
         info = {
+                    "collisions" : self.collisions,
+                    "successes" : self.successes,
                     # "delta" : self.deltas.normalized[self.model_idx].cpu().numpy(),
                     # "uncertain" : self.uncertainty_coeff * uncertain,
                     # "predictions": self.vehicle_pose.cpu().numpy(),
@@ -526,8 +535,8 @@ class BaseFakeEnv(gym.Env):
                 }
 
         # Check done condition for this step
-        cur_dones = torch.logical_or(successes, out_of_lanes.cpu())
-        cur_dones = torch.logical_or(cur_dones, collisions.cpu())
+        cur_dones = torch.logical_or(successes, out_of_lanes)
+        cur_dones = torch.logical_or(cur_dones, collisions)
 
         # For all actors that are not done, set done_counter to 0
         # Otherwise, increment done_counter
@@ -537,6 +546,9 @@ class BaseFakeEnv(gym.Env):
         # If done_counter is greater than or equal to done_delay, set done to true
         # Done is latching, stays done once done
         self.dones = torch.logical_or(self.dones, self.dones_counter >= self.dones_delay)
+
+        # if(self.dones.all() and self.steps_elapsed == 1):
+        #     from common import forked_ipdb; forked_ipdb.ForkedIpdb().set_trace()
 
         # Update active indices
         self.active_indices = torch.where(torch.logical_not(self.dones))[0]
@@ -581,7 +593,7 @@ class BaseFakeEnv(gym.Env):
         return res
 
     def render(self):
-        self.actor_manager.render(self.dones, self.successes)
+        self.actor_manager.render(self.dones, self.waypoints)
 
 
 if __name__ == "__main__":
