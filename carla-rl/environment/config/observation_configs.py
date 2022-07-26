@@ -133,7 +133,7 @@ class VehicleDynamicsObstacleNoCameraConfig(BaseObservationConfig):
         self.vehicle_proximity_threshold = 15
         self.traffic_light_proximity_threshold = 15
         self.obstacle_dist_norm = 60
-        self.disable_lane_invasion_sensor = False
+        self.disable_lane_invasion_sensor = True
 
 class VehicleDynamicsObstacleConfig(BaseObservationConfig):
     def __init__(self):
@@ -370,7 +370,6 @@ class LeaderboardObsNoCameraConfig(BaseObservationConfig):
 
         hit_radius = 2
         self.sensors = {
-                            "lane_invasion_sensor":None,
                             "collision_sensor": None,
                             "obstacle_sensor_0" : {
                                 "x" : 0,
@@ -694,13 +693,13 @@ class LeaderboardObsNoCameraConfig(BaseObservationConfig):
         self.obstacle_dist_norm = 60
         self.disable_lane_invasion_sensor = True
 
-
 class LeaderboardObsConfig(BaseObservationConfig):
     def __init__(self):
         self.input_type = "wp_360_obstacle_speed_steer"
         self.observation_space = Box(low=np.array([[-4.0, 0.0, -0.5, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]]),
                             high=np.array([[4.0, 1.0, 0.5, 1.0, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5]]),
                             dtype=np.float32)
+
 
         hit_radius = 2
         self.sensors = {
