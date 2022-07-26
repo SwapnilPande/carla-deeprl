@@ -28,7 +28,7 @@ from copy import deepcopy
 from environment.reward import compute_reward
 from environment.config.config import episode_measurements
 from environment.carla_interfaces.carla_interface import Carla910Interface
-from environment.carla_interfaces.carla_interface_leaderboard import LeaderboardInterface
+# from environment.carla_interfaces.carla_interface_leaderboard import LeaderboardInterface
 from environment import env_util as util
 from environment.config.config import DefaultMainConfig
 from environment.config.observation_configs import *
