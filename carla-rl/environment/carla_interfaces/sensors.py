@@ -78,8 +78,7 @@ class SensorManager():
                         "state" : {}
                     }
 
-                # Get the obstacle sensor readings
-                ego_actor = self.parent_actor
+
                 other_actor, distance = self.sensors[k]._read_data()
                 if other_actor is not None:
                     # Get the current number of actors to see if we added a new unique actor
@@ -92,21 +91,29 @@ class SensorManager():
                     if(len(obstacle_set) > num_actors):
                         # Get the pose, and velocity of the new actor relative to our vehicle
 
-                        ego_transform = ego_actor.get_transform()
+                        # Get the obstacle sensor readings
+                        ego_actor = self.parent_actor
+                        ego_velocity = ego_actor.get_velocity()
+                        ego_velocity = np.array([ego_velocity.x, ego_velocity.y, ego_velocity.z])
+                        ego_inverse_matrix = np.array(ego_actor.get_transform().get_inverse_matrix())
+
+                        # Get transform of other object
                         other_transform = other_actor.get_transform()
+                        other_velocity = other_actor.get_velocity()
+                        other_velocity = np.array([other_velocity.x, other_velocity.y, other_velocity.z])
 
                         # Get the relative transform of the new actor
-                        relative_transform = np.array(ego_transform.get_inverse_matrix()) @ np.array(other_transform.get_matrix())
+                        relative_transform = ego_inverse_matrix @ np.array(other_transform.get_matrix())
 
                         # Extract relative position
                         x = relative_transform[0, 3]
                         y = relative_transform[1, 3]
 
-                        rotation = relative_transform[0:3, 0:3]
-                        other_speed = env_util.get_speed_from_velocity(other_actor.get_velocity())
-                        vel_x = other_speed * rotation[0, 0]
-                        vel_y = other_speed * rotation[1, 0]
 
+                        # Compute relative velocity
+                        relative_velocity = ego_inverse_matrix[0:3,0:3] @ (other_velocity - ego_velocity)
+                        vel_x = relative_velocity[0]
+                        vel_y = relative_velocity[1]
 
                         sensor_readings['obstacle_sensor']["state"][other_actor.id] = {
                             "position" : np.array([x,y]),

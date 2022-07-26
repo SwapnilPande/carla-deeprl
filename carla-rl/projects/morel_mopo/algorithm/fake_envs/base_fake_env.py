@@ -1,4 +1,3 @@
-from re import S
 import numpy as np
 from numpy.lib.arraysetops import isin
 from tqdm import tqdm
@@ -15,6 +14,20 @@ from projects.morel_mopo.algorithm.reward import compute_reward
 from projects.morel_mopo.algorithm.fake_envs import fake_env_utils as feutils
 from projects.morel_mopo.algorithm.fake_envs import fake_env_scenarios as fescenarios
 DIST = 0.5
+
+import cv2
+
+
+# TOWN-SPECIFIC MAP SETTINGS
+SCALE = 1.0
+PIXELS_PER_METER = 12.0
+WORLD_OFFSET = {
+    'Town01': (-52.059906005859375, -52.04996085166931),
+    'Town02': (-57.45972919464111, 55.3907470703125),
+    'Town03': (-199.0638427734375, -259.27125549316406),
+    'Town04': (-565.26904296875, -446.1461181640625),
+    'Town05': (-326.0445251464844, -257.8750915527344)
+}
 
 
 class PIDLateralController():
@@ -272,7 +285,6 @@ class BaseFakeEnv(gym.Env):
         #TODO Return policy features, not dynamics features
         policy_obs, _, _ = self.get_policy_obs(self.state.unnormalized[0])
 
-
         return policy_obs.cpu().numpy()
 
     def get_current_state(self):
@@ -373,6 +385,7 @@ class BaseFakeEnv(gym.Env):
             back_left_obs_vel = torch.tensor([1.5, 1.5]).to(self.device)
             back_left_min_dist = 10000
 
+            self.detections = [None] * 5
 
 
             # Get distance between ego vehicle and all other vehicles
@@ -384,30 +397,35 @@ class BaseFakeEnv(gym.Env):
             # Vehicles in range
             if(in_range_npcs.shape[0] > 0):
 
-                in_range_npcs = in_range_npcs[0]
+                in_range_npcs = in_range_npcs.squeeze(-1)
                 # Get poses for all vehicles in range
                 in_range_npc_poses = cur_npc_poses[in_range_npcs]
                 in_range_distances = distances[in_range_npcs]
 
                 # Construct ego H_transform
-                ego_frame_rot = feutils.rot(self.vehicle_pose[2])
+                ego_frame_rot = feutils.rot(torch.deg2rad(self.vehicle_pose[2]))
                 ego_H_transform = torch.eye(3).to(self.device)
                 ego_H_transform[0:2, 2] = self.vehicle_pose[0:2]
                 ego_H_transform[0:2, 0:2] = ego_frame_rot
+                ego_velocity = ego_frame_rot[0:2,0] * state[1:2]
 
                 # Construct H_transform for all vehicles
                 # Stack of len(in_range_npcs) 3x3 matrices
                 in_range_H_transform = torch.eye(3).to(self.device).repeat(in_range_npcs.shape[0], 1, 1)
                 in_range_H_transform[:, 0:2, 2] = in_range_npc_poses[:, 0:2]
-                in_range_H_transform[:, 0:2, 0:2] = feutils.rot(in_range_npc_poses[:, 2])
+                in_range_H_transform[:, 0:2, 0:2] = feutils.rot(torch.deg2rad(in_range_npc_poses[:, 2]))
+                in_range_velocities = in_range_H_transform[:,0:2,0]*in_range_npc_poses[:, 3][...,np.newaxis]
 
                 # Compute vector of all vehicles in ego frame
-                in_range_vehicle_vectors_in_ego_frame = torch.matmul(torch.inverse(ego_H_transform), in_range_H_transform)
+                inv_ego_H_transform = torch.inverse(ego_H_transform)
+                in_range_vehicle_vectors_in_ego_frame = torch.matmul(inv_ego_H_transform, in_range_H_transform)
 
                 relative_rotations = in_range_vehicle_vectors_in_ego_frame[..., 0:2, 0:2]
                 relative_positions = in_range_vehicle_vectors_in_ego_frame[..., 0:2, 2]
                 relative_positions_normalized = relative_positions / torch.norm(relative_positions, dim=1, keepdim=True)
-                relative_velocities = relative_rotations[:,0:2, 0] * in_range_npc_poses[:, 3]
+
+                # relative_velocities = relative_rotations[:,0:2, 0] * in_range_npc_poses[:, 3][...,np.newaxis]
+                relative_velocities = torch.matmul(inv_ego_H_transform[0:2,0:2], (in_range_velocities - ego_velocity)[...,np.newaxis]).squeeze(-1)
 
                 # Dot product is simply the first element of the normalized vector
                 dot_products = relative_positions_normalized[...,0]
@@ -415,10 +433,16 @@ class BaseFakeEnv(gym.Env):
                 # Finally, compute observations
                 for index, (dot_product, distance) in enumerate(zip(dot_products, in_range_distances)):
                     # Obstacle is in front of vehicle
-                    if dot_product > 0.995 and distance < front_min_dist:
-                        front_min_dist = distance
-                        front_obs_vec = relative_positions[index] / self.config.obs_config.vehicle_proximity_threshold
-                        front_obs_vel = relative_velocities[index] / 20
+                    if dot_product > 0.995:
+                        # This is inside to handle edge cases in the fake env
+                        # Since we aren't reasoning about occlusions, a car in front of the leading vehicle can be seen
+                        # If this was part of the above statement, the car in front would get counted as a front right or front left obstacle
+                        if(distance < front_min_dist):
+                            front_min_dist = distance
+                            front_obs_vec = relative_positions[index] / self.config.obs_config.vehicle_proximity_threshold
+                            front_obs_vel = relative_velocities[index] / 20
+
+                            self.detections[0] = in_range_npcs[index]
 
                     # Obstacle is in front right
                     elif dot_product > 0 and relative_positions[index][1] > 0 and distance < front_right_min_dist:
@@ -426,11 +450,15 @@ class BaseFakeEnv(gym.Env):
                         front_right_obs_vec = relative_positions[index] / self.config.obs_config.vehicle_proximity_threshold
                         front_right_obs_vel = relative_velocities[index] / 20
 
+                        self.detections[1] = in_range_npcs[index]
+
                     # Obstacle is in front left
                     elif dot_product > 0 and relative_positions[index][1] < 0 and distance < front_left_min_dist:
                         front_left_min_dist = distance
                         front_left_obs_vec = relative_positions[index] / self.config.obs_config.vehicle_proximity_threshold
                         front_left_obs_vel = relative_velocities[index] / 20
+
+                        self.detections[2] = in_range_npcs[index]
 
                     # Obstacle is in back right
                     elif dot_product <= 0 and relative_positions[index][1] > 0 and distance < back_right_min_dist:
@@ -438,11 +466,15 @@ class BaseFakeEnv(gym.Env):
                         back_right_obs_vec = relative_positions[index] / self.config.obs_config.vehicle_proximity_threshold
                         back_right_obs_vel = relative_velocities[index] / 20
 
+                        self.detections[3] = in_range_npcs[index]
+
                     # Obstacle is in back left
                     elif dot_product <= 0 and relative_positions[index][1] < 0 and distance < back_left_min_dist:
                         back_left_min_dist = distance
                         back_left_obs_vec = relative_positions[index] / self.config.obs_config.vehicle_proximity_threshold
                         back_left_obs_vel = relative_velocities[index] / 20
+
+                        self.detections[4] = in_range_npcs[index]
 
             return torch.cat(
                 [
@@ -611,6 +643,7 @@ class BaseFakeEnv(gym.Env):
             ###################### calculate waypoint features (in global frame)  ##############################
             policy_obs, dist_to_trajectory, angle = self.get_policy_obs(self.state.unnormalized[0])
 
+
             ################## calc reward with penalty for uncertainty ##############################
             collision = False
             cur_npc_poses = self.npc_poses[self.steps_elapsed]
@@ -720,7 +753,6 @@ class BaseFakeEnv(gym.Env):
                 self.logger.log_scalar('rollout/success', int(success), self.cum_step)
                 # Log average uncertainty over the episode
                 self.logger.log_scalar('rollout/average_uncertainty', self.episode_uncertainty / self.steps_elapsed, self.cum_step)
-
             return res
 
     def get_autopilot_action(self, target_speed=0.5):
@@ -744,3 +776,36 @@ class BaseFakeEnv(gym.Env):
             target_speed = -1.0
 
         return np.array([steer, target_speed])
+
+
+    def render(self):
+        img = cv2.imread("/home/scratch/swapnilp/Town01.png")
+
+        # Draw circles for each vehicle pose
+
+        # Blue color in BGR
+        color1 = (0, 255, 0)
+        color2 = (0, 0, 255)
+        color3 = (255, 0, 0)
+
+        img_coordinate = self.world_to_pixel(self.vehicle_pose.cpu().numpy()[0:2])
+        cv2.circle(img, tuple(img_coordinate), 10, color1, 5)
+
+        cur_npc_poses = self.npc_poses[self.steps_elapsed]
+        for i in range(cur_npc_poses.shape[0]):
+            img_coordinate = self.world_to_pixel((cur_npc_poses[i,0], cur_npc_poses[i,1]))
+            cv2.circle(img, tuple(img_coordinate), 10, color2, 5)
+
+        for detection in self.detections:
+            if(detection is not None):
+                img_coordinate = self.world_to_pixel((cur_npc_poses[detection,0], cur_npc_poses[detection,1]))
+                cv2.circle(img, tuple(img_coordinate), 10, color3, 5)
+
+        img  = cv2.resize(img, (2000, 2000))
+        cv2.imwrite(f"/home/scratch/swapnilp/test2/{self.steps_elapsed:04d}.png", img)
+
+    def world_to_pixel(self, location):
+        x = SCALE * PIXELS_PER_METER * (location[0] - WORLD_OFFSET['Town01'][0])
+        y = SCALE * PIXELS_PER_METER * (location[1] - WORLD_OFFSET['Town01'][1])
+        return np.array([int(x), int(y)])
+
