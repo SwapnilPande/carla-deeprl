@@ -61,6 +61,7 @@ class MOPO():
             self.logger.pickle_save(self.config, MOPO.log_dir, "config.pkl")
 
     def train(self):
+
         # Construct env first to reserve GPU space
         env = CarlaEnv(config = self.eval_env_config, logger = self.logger, log_dir = self.logger.log_dir)
 
@@ -211,13 +212,37 @@ class MOPO():
                 device = device)
 
         if(not policy_only):
-            mopo.dynamics = config.dynamics_config.dynamics_model_type.load(
-                    logger = logger,
-                    model_name = dynamics_model_name,
-                    gpu = gpu)
+            if(config.pretrained_dynamics_model_config is not None):
+                print("MOPO: Using pretrained dynamics model")
+
+                # Construct a logger temporarily to load the dynamics model
+                logger_conf = ExistingCometLoggerConfig()
+                logger_conf.experiment_key = config.pretrained_dynamics_model_config.key
+                temp_logger = CometLogger(logger_conf)
+
+                # Load dynamics config
+                temp_config = temp_logger.pickle_load("mopo", "config.pkl")
+                dynamics_config = temp_config.dynamics_config
+                config.dynamics_config = dynamics_config
+
+                print(f"MOPO: Loading dynamics model {config.pretrained_dynamics_model_config.name} from experiment {config.pretrained_dynamics_model_config.key}")
+
+                # Load dataset, only if we need it
+                # We will load the dynamics dataset if a policy training dataset is not passed
+                mopo.dynamics = dynamics_config.dynamics_model_type.load(
+                            logger = temp_logger,
+                            model_name = config.pretrained_dynamics_model_config.name,
+                            gpu = gpu)
+
+            else:
+                mopo.dynamics = config.dynamics_config.dynamics_model_type.load(
+                        logger = logger,
+                        model_name = dynamics_model_name,
+                        gpu = gpu)
 
             mopo.fake_env = config.dynamics_config.fake_env_type(mopo.dynamics,
                         config = config.fake_env_config,
+                        policy_data_module_config = mopo.config.policy_training_dataset,
                         logger = logger)
 
         return mopo
