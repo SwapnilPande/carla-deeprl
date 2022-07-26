@@ -3,6 +3,7 @@ from ssl import get_default_verify_paths
 import sys, os
 import numpy as np
 from stable_baselines3.sac.sac import SAC
+from stable_baselines3.ppo.ppo import PPO
 from tqdm import tqdm
 from collections import deque, defaultdict
 import copy
@@ -43,6 +44,8 @@ class SIG:
     EXP = 3
     PARAM = 4
     RETURNS = 5
+    TERM_COLLISIONS = 6
+    TERM_SUCCESSES = 7
 
 class MOPO():
     log_dir = "mopo"
@@ -172,10 +175,33 @@ class MOPO():
                     dst=sender, tag=SIG.PARAM
                 ).wait()
             elif signal == SIG.RETURNS:
-                episode_rewards = buffer_len
+
+                abs_buffer_len = abs(buffer_len)
+                sign = buffer_len / abs_buffer_len
+                # Decode episode length and reward from message
+                if(abs_buffer_len >= 10000):
+                    episode_len = abs_buffer_len // 10000
+                    abs_buffer_len = abs_buffer_len % 10000
+                else:
+                    episode_len = 0
+                episode_rewards = sign * abs_buffer_len / 1000
+
                 # print(175, episode_rewards)
                 if(self.logger is not None):
                     self.logger.log_scalar("rollout/ep_rew_mean", episode_rewards, self.glb_num_steps)
+                    self.logger.log_scalar("rollout/ep_len_mean", episode_len, self.glb_num_steps)
+
+            elif signal == SIG.TERM_COLLISIONS:
+                term_collisions = buffer_len / 100
+                # print(175, episode_rewards)
+                if(self.logger is not None):
+                    self.logger.log_scalar("rollout/obstacle_collision", term_collisions, self.glb_num_steps)
+
+            elif signal == SIG.TERM_SUCCESSES:
+                term_successes = buffer_len / 100
+                # print(175, episode_rewards)
+                if(self.logger is not None):
+                    self.logger.log_scalar("rollout/success", term_successes, self.glb_num_steps)
             else:
                 raise ValueError('signal not seen')
             if self.num_steps_since_update >= self.glb_update_freq:
@@ -197,7 +223,7 @@ class MOPO():
         self.local_policy_timestamp = 0
         # fewer buffer pushes
         self.buffer_sync_freq = 5
-        self.num_agents = 50
+        self.num_agents = 5
         self.last_buffer_push_timestep = 0
         self.server_rank = (self.rank - self.num_servers) % self.num_servers
         # Setup dynamics model
@@ -229,8 +255,6 @@ class MOPO():
                             config = self.fake_env_config,
                             logger = self.logger)
 
-            print("MOPO: Constructing Real Env for evaluation")
-
             print("MOPO: Beginning Policy Training")
 
         ################################## Worker ##################################
@@ -253,9 +277,7 @@ class MOPO():
         # total_timesteps, callback = self.policy._setup_learn(
         #     self.steps_per_loop, None, None, -1, 5, None, True, 'OffPolicyAlgorithm'
         # )
-        glb_stats = self.update_parameters()
-
-
+        # glb_stats = self.update_parameters()
 
         prev_obs = fake_env.reset().squeeze(-2)
 
@@ -264,43 +286,76 @@ class MOPO():
 
         # Append trainable policy to the end of the policy_collection
         policy_collections.append(copy.deepcopy(self.policy.get_parameters()))
+        cur_policy_idx = len(policy_collections) - 1
 
-        # policy at idx 0 will be applied to a list of actors
+
+        # Policy_idx_dict stores the mapping between agents at policy
+        # The key is the index of the policy in policy collection
+        # The value is the list of indices for agents that are using this policy
         # policy_idx_dict = {idx-self.num_agents + 1: [idx] for idx in range(self.num_agents, prev_obs.shape[0])}
         policy_idx_dict = {idx: [idx] for idx in range(0, prev_obs.shape[0] - self.num_agents)}
+        # policy_idx_dict = {idx: [idx] for idx in range(0, prev_obs.shape[0])}
 
+        # policy_idx_dict = {}
+        # For the last num_agents agent, use teh
         policy_idx_dict[prev_obs.shape[0] - self.num_agents] = list(range(prev_obs.shape[0] - self.num_agents, prev_obs.shape[0]))
 
         # print(312, prev_obs.shape[0], len(policy_collections), list(policy_idx_dict.keys()))
 
-        done_mask = np.ones(prev_obs.shape[0])
-        done_mask[-self.num_agents:] = 0
+        # Create a mask of the agents that are using the current policy
+        cur_policy_mask = np.zeros(prev_obs.shape[0], dtype=np.bool)
+        cur_policy_mask[policy_idx_dict[cur_policy_idx]] = True
+
+        done_mask = np.zeros(prev_obs.shape[0], dtype=np.bool)
+        # done_mask[-self.num_agents:] = 0
+        self.total_steps = 0
+        self.loop_steps = 0
 
 
-
+        np.set_printoptions(suppress=True)
+        torch.set_printoptions(precision=10, sci_mode = False)
+        obs_history = []
+        action_history = []
         for i in range(self.policy_epochs):
+            # The number of steps we increment is the number of agents that are not done
             self.num_steps_since_update += np.logical_not(done_mask).sum()
             # actions = torch.zeros(prev_obs.shape[0], 2)
             # get actions from sampling old policies
             actions = torch.zeros(prev_obs.shape[0], fake_env.action_space.shape[-1])
             for policy_idx, actor_idx in policy_idx_dict.items():
-                # _policy_param = random.choice(policy_collections)
+
+                # Retrieve the parameters for the policy
+                # print(policy_idx)
                 _policy_param = policy_collections[policy_idx]
+
+                # Special case, we are actually using an autopilot policy, which doesn't have parameters
                 if isinstance(_policy_param, AutopilotPolicy):
                     _curr_policy = _policy_param
                 else:
-                    # self.policy.set_parameters(_policy_param)
+                    #TODO This needs to change back once we are using a diverse set of policies
+                    self.policy.set_parameters(_policy_param)
                     _curr_policy = self.policy
                 # print(341, self.policy.predict(prev_obs[actor_idx, None, :]))
                 actions[actor_idx] = torch.FloatTensor(_curr_policy.predict(prev_obs[actor_idx, None, :])[0])
-            # actions = torch.vstack(action_list)
-            print(340, 'rank', self.rank, prev_obs.shape, actions.shape)
+            # print(340, 'rank', self.rank, prev_obs.shape, actions.shape)
             start_time = time.time()
-            curr_obs, rewards, dones, _ = fake_env.step(actions)
-            # #TODO: Remove this
-            # fake_env.render()
 
-            self.curr_ep_reward += rewards[-1].item()
+
+            curr_obs, rewards, dones, infos = fake_env.step(actions)
+            # fake_env.render()
+            # print(curr_obs)
+            # print(actions)
+            # print(rewards)
+            # print(dones)
+
+            # obs_history.append(curr_obs)
+            # action_history.append(actions)
+
+            not_finished_latest_policy = np.logical_and(np.logical_not(dones), cur_policy_mask)
+            self.curr_ep_reward += rewards[np.logical_not(not_finished_latest_policy)].sum()
+            self.loop_steps += np.any(not_finished_latest_policy)
+            # Num agents not done
+            self.total_steps += np.logical_not(not_finished_latest_policy).sum()
             curr_obs = curr_obs.squeeze(-2)
             # print(273, type(rewards), type(dones), curr_obs.shape, rewards.shape, dones.shape)
             # print(274, self.N_A, self.N_S)
@@ -318,7 +373,6 @@ class MOPO():
             #         [{}],
             #     )
 
-            done_mask[-self.num_agents:] = np.logical_and(done_mask[-self.num_agents:], dones[-self.num_agents:])
 
             # self.worker_buffer.append(np.hstack((prev_obs, actions, rewards[:, [0]], curr_obs, dones[:, [0]])))
             self.worker_buffer.append(np.hstack((
@@ -337,25 +391,39 @@ class MOPO():
 
             # print(dones)
 
-            done_mask = np.logical_or(done_mask, dones)
+
             prev_obs = curr_obs
 
             # fewer buffer pushes
             if i - self.last_buffer_push_timestep >=  self.buffer_sync_freq:
                 self.send_buffer()
+
                 glb_stats = self.update_parameters()
+
                 self.last_buffer_push_timestep = i
                 policy_collections[-1] = copy.deepcopy(self.policy.get_parameters())
             # for autopilot sanity test
             # policy_collections.append(copy.deepcopy(self.policy.get_parameters()))
 
+            # Update the done mask by incorporating the new dones
+            # done_mask[-self.num_agents:] = np.logical_and(done_mask[-self.num_agents:], dones[-self.num_agents:])
+            # TODO: We need to remove the upper one, which handles the case in which we are not training with all of the agents
+            done_mask = np.logical_or(done_mask, dones)
+
             if done_mask.all():
-            # if dones[0]:
-                prev_obs = fake_env.reset().squeeze(-2)
                 # done_mask = np.zeros(prev_obs.shape[0])
-                done_mask = np.ones(prev_obs.shape[0])
-                done_mask[-self.num_agents:] = 0
+                done_mask = np.zeros(prev_obs.shape[0])
+                # done_mask[-self.num_agents:] = 0
                 self.send_reward()
+                self.send_successes(infos["successes"][cur_policy_mask])
+                self.send_collisions(infos["collisions"][cur_policy_mask])
+                self.loop_steps = 0
+                self.total_steps = 0
+
+
+                prev_obs = fake_env.reset().squeeze(-2)
+
+
                 # policy_collections.append(copy.deepcopy(self.policy))
                 # policy_idx_dict = {0: list(range(prev_obs.shape[0]))}
                 # rand_idx_list = [random.randrange(0, len(policy_collections)) for _ in range(prev_obs.shape[0] - 1)] + \
@@ -363,6 +431,9 @@ class MOPO():
                 # policy_idx_dict = defaultdict(list)
                 # for idx in range(prev_obs.shape[0]):
                 #     policy_idx_dict[rand_idx_list[idx]].append(idx)
+
+                cur_policy_mask = np.zeros(prev_obs.shape[0], dtype=np.bool)
+                cur_policy_mask[policy_idx_dict[cur_policy_idx]] = True
 
 
 
@@ -382,12 +453,36 @@ class MOPO():
         return glb_stats
 
     def send_reward(self):
+
+
+        # Encode steps
+        output = self.loop_steps * 10000
+        per_step_reward = self.curr_ep_reward / self.total_steps
+        assert per_step_reward < 10
+        output += abs(per_step_reward * 1000)
+        if(per_step_reward < 0):
+            output *= -1
+
         # print(363, 'rank', self.rank, 'send_reward')
         overhead = [self.rank, self.num_steps_since_update,
-            self.curr_ep_reward, self.num_eps_since_update, SIG.RETURNS]
+            output, self.num_eps_since_update, SIG.RETURNS]
         dist.isend(overhead, dst=self.server_rank, tag=SIG.QUERY).wait()
 
         self.curr_ep_reward = 0
+
+    def send_successes(self, successes):
+
+        success_rate = int(100*torch.sum(successes).cpu().item() / len(successes))
+        overhead = [self.rank, self.num_steps_since_update,
+            success_rate, self.num_eps_since_update, SIG.TERM_SUCCESSES]
+        dist.isend(overhead, dst=self.server_rank, tag=SIG.QUERY).wait()
+
+    def send_collisions(self, collisions):
+
+        collisions_rate = int(100*torch.sum(collisions).cpu().item() / len(collisions))
+        overhead = [self.rank, self.num_steps_since_update,
+            collisions_rate, self.num_eps_since_update, SIG.TERM_COLLISIONS]
+        dist.isend(overhead, dst=self.server_rank, tag=SIG.QUERY).wait()
 
 
     def send_buffer(self):
