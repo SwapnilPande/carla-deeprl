@@ -12,13 +12,17 @@ class AutopilotPolicy:
         self.env = env
 
     def __call__(self, obs):
-        return self.env.get_autopilot_action()
+        res = self.env.get_autopilot_action()
+        res[0] += np.random.normal(loc=0.0, scale=0.06, size=1)[0]
+        res[1] += np.random.normal(loc=0.0, scale=0.06, size=1)[0]
+        return res
+        #return self.env.get_autopilot_action()
 
 
 if __name__ == "__main__":
     config = DefaultMainConfig()
     config.populate_config(
-        observation_config = "VehicleDynamicsObstacleLightConfig",
+        observation_config = "LeaderboardObsConfig",
         action_config = "MergedSpeedScaledTanhConfig",
         reward_config = "Simple2RewardConfig",
         scenario_config = "NoCrashDenseTown01Config",
@@ -30,7 +34,11 @@ if __name__ == "__main__":
     env = CarlaEnv(config = config)
     policy = AutopilotPolicy(env)
     data = {}
-    episodes = 100
+    #data['observations'] = np.load('data/noisy_observations.npy')
+    #data['next_observations'] = np.load('data/noisy_next_observations.npy')
+    #data['actions'] = np.load('data/noisy_actions.npy')
+    #data['terminals'] = np.load('data/noisy_terminals.npy')
+    episodes = 600
 
     for eps in range(episodes):
         print('EPISODE ',eps,':')
@@ -61,8 +69,8 @@ if __name__ == "__main__":
             data['terminals'] = np.vstack([data['terminals'],np.array([done[0]])])
 
         print('SAVING DATA FROM EPISODE')
-        np.save('/home/hyperpotato/carla-deeprl/carla-rl/projects/carla_skills/data/observations.npy',data['observations'])
-        np.save('/home/hyperpotato/carla-deeprl/carla-rl/projects/carla_skills/data/actions.npy',data['actions'])
-        np.save('/home/hyperpotato/carla-deeprl/carla-rl/projects/carla_skills/data/next_observations.npy',data['next_observations'])
-        np.save('/home/hyperpotato/carla-deeprl/carla-rl/projects/carla_skills/data/terminals.npy',data['terminals'])
+        np.save('/home/hyperpotato/carla-deeprl/carla-rl/projects/carla_skills/data/observations2.npy',data['observations'])
+        np.save('/home/hyperpotato/carla-deeprl/carla-rl/projects/carla_skills/data/actions2.npy',data['actions'])
+        np.save('/home/hyperpotato/carla-deeprl/carla-rl/projects/carla_skills/data/observations2.npy',data['next_observations'])
+        np.save('/home/hyperpotato/carla-deeprl/carla-rl/projects/carla_skills/data/terminals2.npy',data['terminals'])
         print('DATASET LENGTH: ',data['observations'].shape[0])

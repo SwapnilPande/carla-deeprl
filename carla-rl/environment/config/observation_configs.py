@@ -231,7 +231,7 @@ class VehicleDynamicsObstacleLightConfig(BaseObservationConfig):
         self.vehicle_proximity_threshold = 15
         self.traffic_light_proximity_threshold = 15
         self.obstacle_dist_norm = 60
-        self.disable_lane_invasion_sensor = False
+        self.disable_lane_invasion_sensor = True#False
 
 
 class VehicleDynamicsConfig(BaseObservationConfig):
