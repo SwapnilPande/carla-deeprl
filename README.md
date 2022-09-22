@@ -72,3 +72,11 @@ You should read the following docs to understand how to configure the environmen
 
 INSERT LOGGER DOCS HERE
 
+### Test PPO
+Train/test PPO agent with stable_baselines:
+```
+cd carla_rl/projects/nocrash_ppo 
+mkdir checkpoints
+python3 nocrash_ppo_train.py
+python3 nocrash_ppo_test.py
+```
