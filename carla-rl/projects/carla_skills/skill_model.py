@@ -13,6 +13,67 @@ import torch.distributions.kl as KL
 import matplotlib.pyplot as plt
 from utils import reparameterize
 
+class AbstractRewardModel(nn.Module):
+	'''
+	P(r|s_0,z) is our "abstract reward model", because it predicts the resulting cumulative reward over T timesteps given a skill 
+	(so similar to regular reward model, but in skill space and also temporally extended)
+	'''
+	def __init__(self,state_dim,z_dim,h_dim,init_state_dependent=True,per_element_sigma=True):
+
+		super(AbstractRewardModel,self).__init__()
+		
+		self.init_state_dependent = init_state_dependent
+		if init_state_dependent:
+			self.layers = nn.Sequential(nn.Linear(state_dim+z_dim,h_dim),nn.ReLU(),nn.Linear(h_dim,h_dim),nn.ReLU())
+		else:
+			self.layers = nn.Sequential(nn.Linear(z_dim,h_dim),nn.ReLU(),nn.Linear(h_dim,h_dim),nn.ReLU())
+		#self.mean_layer = nn.Linear(h_dim,state_dim)
+		self.mean_layer = nn.Sequential(nn.Linear(h_dim,h_dim),nn.ReLU(),nn.Linear(h_dim,1))
+		#self.sig_layer  = nn.Sequential(nn.Linear(h_dim,state_dim),nn.Softplus())
+		if per_element_sigma:
+			self.sig_layer  = nn.Sequential(nn.Linear(h_dim,h_dim),nn.ReLU(),nn.Linear(h_dim,1),nn.Softplus())
+		else:
+			self.sig_layer = nn.Sequential(nn.Linear(h_dim,h_dim),nn.ReLU(),nn.Linear(h_dim,1),nn.Softplus())
+
+		self.state_dim = state_dim
+		self.per_element_sigma = per_element_sigma
+
+	def forward(self,s0,z):
+
+		'''
+		INPUTS:
+			s0: batch_size x 1 x state_dim initial state (first state in execution of skill)
+			z:  batch_size x 1 x z_dim "skill"/z
+		OUTPUTS: 
+			r_mean: batch_size x 1 x state_dim tensor of cumulative (time=T) reward means
+			r_sig:  batch_size x 1 x state_dim tensor of cumulative (time=T) reward standard devs
+		'''
+
+		if self.init_state_dependent:
+			# concatenate s0 and z
+			s0_z = torch.cat([s0,z],dim=-1)
+			# pass s0_z through layers
+			feats = self.layers(s0_z)
+		else:
+			feats = self.layers(z)
+		# get mean and stand dev of action distribution
+		r_mean = self.mean_layer(feats)
+		r_sig  = self.sig_layer(feats)
+
+		if not self.per_element_sigma:
+			# sT_sig has shape batch_size x 1 x 1
+			# tile sT_sig along final dimension, return it
+			sT_sig = torch.cat(self.state_dim*[sT_sig],dim=-1)
+
+		return r_mean,r_sig
+
+	def get_loss(self,s0,z,r):
+		r_mean, r_sig = self.forward(s0,z)
+
+		r_dist = Normal.Normal(r_mean,r_sig)
+		return - torch.mean(r_dist.log_prob(r))
+
+
 class AbstractDynamics(nn.Module):
 	'''
 	P(s_T|s_0,z) is our "abstract dynamics model", because it predicts the resulting state transition over T timesteps given a skill 

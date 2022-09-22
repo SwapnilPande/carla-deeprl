@@ -89,7 +89,7 @@ def chunks(obs,next_obs,actions,terminals,H,stride):
 		# 	end_ind = N-1
 		
 		obs_chunk = torch.tensor(obs[start_ind:end_ind,:],dtype=torch.float32)
-		obs_chunk[:,7:] = obs_chunk[:,7:] - obs_chunk[0,7:]
+		#obs_chunk[:,7:] = obs_chunk[:,7:] - obs_chunk[0,7:]
 		action_chunk = torch.tensor(actions[start_ind:end_ind,:],dtype=torch.float32)
 		
 		# print('obs[start_ind+1:end_ind]: ',obs[start_ind+1:end_ind])
@@ -107,3 +107,32 @@ def chunks(obs,next_obs,actions,terminals,H,stride):
 			
 	
 	return torch.stack(obs_chunks),torch.stack(action_chunks)
+
+def reward_chunks(obs,rewards,terminals,H,skill_model):
+	s0_chunks = []
+	z_chunks = []
+	r_chunks = []
+	N = obs.shape[0]
+	for i in range(N - H):
+		start_ind = i
+		end_ind = start_ind + H
+
+		obs_chunk = torch.tensor(obs[start_ind:end_ind,:],dtype=torch.float32)
+		reward_chunk = torch.tensor(rewards[start_ind:end_ind,:],dtype=torch.float32)
+
+		if np.all(terminals[start_ind:end_ind-1] == False): 
+			s0 = torch.reshape(obs_chunk[0],(1,1,obs.shape[1])).float().cuda()
+			z_mean,z_sig = skill_model.prior(s0)
+			r_sum = torch.reshape(torch.sum(reward_chunk),(1,1))
+			s0_chunks.append(obs_chunk[:1,:])
+			z_chunks.append(z_mean[0])
+			r_chunks.append(r_sum)
+		else:
+			pass
+			# print('NOT INCLUDING ',i)
+
+	print('len(s0_chunks): ',len(s0_chunks))
+	print('len(z_chunks): ',len(z_chunks))
+	print('len(r_chunks): ',len(r_chunks))		
+	
+	return torch.stack(s0_chunks),torch.stack(z_chunks),torch.stack(r_chunks)

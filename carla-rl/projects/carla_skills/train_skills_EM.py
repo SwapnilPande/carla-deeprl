@@ -87,7 +87,7 @@ encoder_type = 'state_action_sequence' #'state_sequence'
 state_decoder_type = 'mlp' #'autoregressive'
 init_state_dependent = True
 load_from_checkpoint = False
-per_element_sigma = False
+per_element_sigma = True
 
 dataset = {}
 dataset['observations'] = np.load('data/observations.npy')
