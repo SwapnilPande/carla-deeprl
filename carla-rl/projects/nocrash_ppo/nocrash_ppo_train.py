@@ -5,12 +5,13 @@ import gym
 from algorithms import PPO, SAC
 from environment.env import CarlaEnv
 from environment.config.config import DefaultMainConfig
+from stable_baselines3.common.callbacks import CheckpointCallback
 import time
 
 def main():
     config = DefaultMainConfig()
     config.populate_config(
-        observation_config = "LowDimObservationNoCameraConfig",
+        observation_config = "LowDimObservationConfig",
         action_config = "MergedSpeedScaledTanhConfig",
         reward_config = "Simple2RewardConfig",
         scenario_config = "NoCrashRegularTown01Config",
@@ -19,7 +20,7 @@ def main():
     )
 
     env = CarlaEnv(config = config)
-    checkpoint_callback = CheckpointCallback(save_freq=100, save_path='checkpoints/model',
+    checkpoint_callback = CheckpointCallback(save_freq=100, save_path='checkpoints/',
                                                 name_prefix='policy_checkpoint_')
 
     model = PPO("MlpPolicy", env, verbose=1, device = 0)

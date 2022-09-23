@@ -25,13 +25,12 @@ Currently, this repo supports Carla 9.10. Support for older/future versions is i
 cd ~
 ```
 
-* Install CARLA v0.9.10 (https://carla.org/2020/09/25/release-0.9.10/) for which the binaries are available here: (https://carla-releases.s3.eu-west-3.amazonaws.com/Linux/CARLA_0.9.10.1.tar.gz)
-
+* Get dirty version of CARLA_0.9.10 from the cluster. Some functionality missing in normal install of_CARLA 0.9.10
 ```
-mkdir $HOME/carla910
-cd $HOME/carla910
-wget "https://carla-releases.s3.eu-west-3.amazonaws.com/Linux/CARLA_0.9.10.1.tar.gz"
-tar xvzf CARLA_0.9.10.1.tar.gz
+mkdir $HOME/carla910_dirty
+cd $HOME/carla910_dirty
+cp /zfsauton/datasets/ArgoRL/CARLA_0.9.10.1-dirty.tar.gz .
+tar xvzf CARLA_0.9.10.1-dirty.tar.gz
 ```
 
 ### Cloning This Repo
@@ -77,6 +76,7 @@ Train/test PPO agent with stable_baselines:
 ```
 cd carla_rl/projects/nocrash_ppo 
 mkdir checkpoints
+mkdir videos
 python3 nocrash_ppo_train.py
 python3 nocrash_ppo_test.py
 ```
