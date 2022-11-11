@@ -222,7 +222,7 @@ class CarlaEnv(gym.Env):
                 self.episode_measurements['control_hand_brake'] = carla_obs['control_hand_brake']
 
             # rgb_bev = carla_obs['sensor.camera.rgb/top']['image']
-            # self.episode_measurements['rgb_bev'] = rgb_bev
+            # self.episode_measurements['sensor.camera.rgb/top'] = rgb_bev
             # rgb_front = carla_obs['sensor.camera.rgb/front']['image']
             # self.episode_measurements['rgb_front'] = rgb_front
             # sem_bev = carla_obs['sensor.camera.semantic_segmentation/top']['image']

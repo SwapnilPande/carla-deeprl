@@ -8,6 +8,7 @@ import time
 import random
 import numpy as np
 import numpy.random as nprandom
+import ipdb
 
 
 # print(leaderboard, leaderboard.__file__)
@@ -69,6 +70,7 @@ class Carla910Interface():
         # Get blueprints
         self.blueprint_library = self.world.get_blueprint_library()
         self.spawn_points = self.world.get_map().get_spawn_points()
+        # ipdb.set_trace()
 
         # Instantiate a vehicle manager to handle other actors
         self.actor_fleet = ActorManager910(self.config, self.client, self.log_dir)
@@ -140,6 +142,9 @@ class Carla910Interface():
             # Short straight-right turn-straight scenario (For multi-alpha)
             self.source_transform = self.spawn_points[105]
             self.destination_transform = self.spawn_points[21]
+        elif self.config.scenario_config.scenarios == 'simple_straight_path':
+            self.source_transform = self.spawn_points[70]
+            self.destination_transform = self.spawn_points[72]
         else:
             raise ValueError("Invalid Scenario Type {}. Check scenario config!".format(self.config.scenario_config.scenarios))
 
@@ -315,7 +320,7 @@ class Carla910Interface():
         ego_vehicle = self.actor_fleet.ego_vehicle
         traffic_actor, dist, traffic_light_orientation, nearest_light_transform = ego_vehicle.find_nearest_traffic_light(self.traffic_actors)
 
-        if self.config.scenario_config.scenarios == 'simple_single_turn' and traffic_actor is not None:
+        if self.config.scenario_config.scenarios in ['simple_single_turn','simple_straight_path'] and traffic_actor is not None:
             traffic_actor.set_state(carla.TrafficLightState.Green)
             traffic_actor, dist, traffic_light_orientation, nearest_light_transform = ego_vehicle.find_nearest_traffic_light(self.traffic_actors)
 

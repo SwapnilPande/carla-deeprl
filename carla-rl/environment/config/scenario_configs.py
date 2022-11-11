@@ -213,3 +213,8 @@ class SimpleSingleTurnConfig(NoTrafficLightNoCrashEmptyConfig):
     def __init__(self):
         super().__init__()
         self.scenarios = "simple_single_turn"
+
+class SimpleStraightPathConfig(NoTrafficLightNoCrashEmptyConfig):
+    def __init__(self):
+        super().__init__()
+        self.scenarios = "simple_straight_path"

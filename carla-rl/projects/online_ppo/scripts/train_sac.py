@@ -8,7 +8,7 @@ faulthandler.enable()
 
 from common.loggers.comet_logger import CometLogger
 from projects.online_ppo.config.logger_config import CometLoggerConfig
-from projects.online_ppo.scripts.policy import TanhActorCriticPolicy
+
 import gym
 from algorithms import PPO, SAC
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
@@ -18,12 +18,11 @@ from stable_baselines3.common.env_util import DummyVecEnv
 # Environment
 from environment.env import CarlaEnv
 from environment.config.config import DefaultMainConfig
-
 import time
 
 def main(args):
     logger_conf = CometLoggerConfig()
-    logger_conf.populate(experiment_name = args.exp_name, tags = ["one_turn_speed_dense"])
+    logger_conf.populate(experiment_name = args.exp_name, tags = ["one_turn_sac"])
 
     device = f"cuda:{args.gpu}"
 
@@ -31,12 +30,12 @@ def main(args):
     logger =  CometLogger(logger_conf)
     print(logger.log_dir)
 
-    config = DefaultMainConfig()
+    config = DefaultMainConfig() 
     config.populate_config(
         observation_config = "LowDimObservationNoCameraConfig",
         action_config = "MergedSpeedScaledTanhSpeed40Config",
         reward_config = "Simple2RewardConfig",
-        scenario_config = "SimpleStraightPathConfig",
+        scenario_config = "SimpleSingleTurnConfig",
         testing = False,
         carla_gpu = args.gpu
     )
@@ -59,12 +58,12 @@ def main(args):
 
     if(args.load):
         print(f"LOADING MODEL FROM: {args.load}")
-        model = PPO.load(model_path,
+        model = SAC.load(model_path,
                     env = env,
                     device = device,
                     carla_logger = logger)
     else:
-        model = PPO(TanhActorCriticPolicy, env, verbose=1, carla_logger = logger, device = device)
+        model = SAC("MlpPolicy", env, verbose=1, carla_logger = logger, device = device)
 
 
     callbacks = [checkpoint_callback, eval_callback]

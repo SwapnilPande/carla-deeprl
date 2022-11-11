@@ -50,7 +50,7 @@ class Simple2RewardConfig(BaseRewardConfig):
 
         # Coefficient for dist_to_trajec reward
         # Pass a positive value for this argument
-        self.dist_to_trajectory_coeff = 1
+        self.dist_to_trajectory_coeff = 20
 
         # Penalty for collision
         self.const_collision_penalty = 250
