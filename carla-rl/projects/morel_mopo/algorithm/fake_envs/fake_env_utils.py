@@ -266,7 +266,7 @@ def check_if_waypoint_crossed(vehicle_pose, waypoint1, waypoint2, device):
     vehicle_vector = vehicle_pose[:2] - torch.tensor(waypoint1[0:2]).to(device)
 
     # Check if dot product is positive
-    return torch.dot(wp_vector, vehicle_vector) > 0
+    return torch.dot(wp_vector, vehicle_vector) >= 0
 
 
 

@@ -427,6 +427,7 @@ def visualize_trajectory_distribution(exp_name, logger, real_env, fake_env, poli
 
             img_idx += 1
 
+#TODO: Use this to visualize obs
 def eval_policy_obs(exp_name, logger, fake_env, policies, num_episodes, n = 50):
 
     if(not isinstance(policies, list)):

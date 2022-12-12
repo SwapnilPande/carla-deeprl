@@ -13,7 +13,7 @@ from gym.spaces import Box, Discrete, Tuple
 from projects.morel_mopo.algorithm.reward import compute_reward
 from projects.morel_mopo.algorithm.fake_envs import fake_env_utils as feutils
 from projects.morel_mopo.algorithm.fake_envs import fake_env_scenarios as fescenarios
-DIST = 0.5
+DIST = 7.0
 
 import cv2
 
@@ -135,7 +135,11 @@ class BaseFakeEnv(gym.Env):
         self.norm_stats = self.dynamics.normalization_stats
         self.frame_stack = self.dynamics.frame_stack
 
-        # self.offline_data_module = fescenarios.StraightWithStaticObstacle(self.frame_stack, self.norm_stats)#self.dynamics.data_module
+        self.offline_data_module = fescenarios.TurnWithObstacle(self.frame_stack, self.norm_stats)#self.dynamics.data_module
+        
+        # TODO: Comment out the dataset if you are using fescenarios
+
+        """
         self.policy_data_module_config = policy_data_module_config
         if(self.policy_data_module_config is not None):
             print("FAKE ENV: Loading policy training dataset")
@@ -146,6 +150,7 @@ class BaseFakeEnv(gym.Env):
             self.offline_data_module = self.dynamics.data_module
         if(self.offline_data_module is None):
             print("FAKE_ENV: Data module does not have associated dataset. Reset must be called with an initial state input.")
+         """
 
         ################################################
         # State variables for the fake env
@@ -247,7 +252,7 @@ class BaseFakeEnv(gym.Env):
         remove_indices = []
         # Loop over all poses at the first time step
         for i in range(self.npc_poses.shape[1]):
-            if(torch.all(self.npc_poses[0,i] == torch.zeros(self.npc_poses[0,i].shape)).to(self.device)):
+            if(torch.all(self.npc_poses[0,i].cpu() == torch.zeros(self.npc_poses[0,i].shape))):
                 remove_indices.append(i)
                 # print(f"Removing {i}\t {self.npc_poses[0,i]}")
         if(len(remove_indices) > 0):
@@ -659,7 +664,15 @@ class BaseFakeEnv(gym.Env):
                 side_collision = side_collision or (collision and is_side)
                 front_collision = front_collision or (collision and not is_side)
 
+        
+
             out_of_lane = torch.abs(dist_to_trajectory) > DIST
+
+            """
+            if out_of_lane:
+                import ipdb
+                ipdb.set_trace()
+            """
 
             success = len(self.waypoints) <= 1 or (self.steps_elapsed >= len(self.npc_poses) - 1)
 
@@ -714,30 +727,30 @@ class BaseFakeEnv(gym.Env):
                     side_collision)
 
 
-            # If done, print the termination type
-            # if(done):
-            #     # if(timeout):t
+            #If done, print the termination type
+            if(done):
+                if(timeout):
             #     #     print("Timeout")
-            #     #     info["termination"] = "timeout"
-            #     if(out_of_lane):
+                    info["termination_state"] = "timeout"
+                elif(out_of_lane):
             #         print("Out of lane")
-            #         info["termination"] = "out_of_lane"
-            #     elif(front_collision):
+                    info["termination_state"] = "out_of_lane"
+                elif(front_collision):
             #         print("Collision")
-            #         info["termination"] = "front_collision"
-            #     elif(side_collision):
+                    info["termination_state"] = "front_collision"
+                elif(side_collision):
             #         print("Side Collision")
-            #         info["termination"] = "side_collision"
-            #     elif(success):
+                    info["termination_state"] = "side_collision"
+                elif(success):
             #         print("Success")
-            #         info["termination"] = "Success"
-            #     elif(self.steps_elapsed >= len(self.npc_poses)):
+                    info["termination_state"] = "Success"
+                elif(self.steps_elapsed >= len(self.npc_poses)):
             #         print("Not enough NPC poses")
-            #         info["termination"] = "NPC"
+                    info["termination_state"] = "NPC"
 
-            #     else:
+                else:
             #         print("Unknown")
-            #         info["termination"] = "unknown"
+                    info["termination_state"] = "unknown"
             #         print(len(self.npc_poses))
 
             try:
@@ -765,6 +778,8 @@ class BaseFakeEnv(gym.Env):
         obstacle_dist = 1.0
         obstacle_vel = 1.0
         cur_npc_poses = self.npc_poses[self.steps_elapsed]
+        #import ipdb
+        #ipdb.set_trace()
         for i in range(cur_npc_poses.shape[0]):
             d_bool, norm_target = feutils.is_within_distance_ahead(cur_npc_poses[i], self.vehicle_pose, self.config.obs_config.vehicle_proximity_threshold)
 
