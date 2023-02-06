@@ -28,7 +28,7 @@ from copy import deepcopy
 from environment.reward import compute_reward
 from environment.config.config import episode_measurements
 from environment.carla_interfaces.carla_interface import Carla910Interface
-from environment.carla_interfaces.carla_interface_leaderboard import LeaderboardInterface
+# from environment.carla_interfaces.carla_interface_leaderboard import LeaderboardInterface
 from environment import env_util as util
 from environment.config.config import DefaultMainConfig
 from environment.config.observation_configs import *
@@ -222,7 +222,7 @@ class CarlaEnv(gym.Env):
                 self.episode_measurements['control_hand_brake'] = carla_obs['control_hand_brake']
 
             # rgb_bev = carla_obs['sensor.camera.rgb/top']['image']
-            # self.episode_measurements['sensor.camera.rgb/top'] = rgb_bev
+            # self.episode_measurements['rgb_bev'] = rgb_bev
             # rgb_front = carla_obs['sensor.camera.rgb/front']['image']
             # self.episode_measurements['rgb_front'] = rgb_front
             # sem_bev = carla_obs['sensor.camera.semantic_segmentation/top']['image']
@@ -552,6 +552,11 @@ class CarlaEnv(gym.Env):
 
         for key, val in carla_obs["obstacles"].items():
             episode_measurements[key] = val
+
+        if("obstacle_sensor" in carla_obs):
+            episode_measurements["obstacle_sensor"] = carla_obs["obstacle_sensor"]
+
+
 
         episode_measurements["symbolic_features"] = carla_obs.get("symbolic_features")
 
@@ -897,6 +902,118 @@ class CarlaEnv(gym.Env):
 
             obs_output = np.concatenate((np.array([self.episode_measurements['next_orientation']]), np.array([self.episode_measurements['extended_lookahead_orientation']]), np.array([speed]), np.array([steer]), np.array([ldist])))
 
+        elif self.config.obs_config.input_type == "wp_360_obstacle_speed_steer":
+            speed = self.episode_measurements['speed'] / 10
+            steer = self.episode_measurements['steer_angle']
+            ldist = self.episode_measurements['dist_to_trajectory']
+
+            light = self.episode_measurements['red_light_dist']
+
+            front_obs_vec = np.array([1.5, 1.5])
+            front_obs_vel = np.array([1.5, 1.5])
+            front_min_dist = 10000
+
+            front_right_obs_vec = np.array([1.5, 1.5])
+            front_right_obs_vel = np.array([1.5, 1.5])
+            front_right_min_dist = 10000
+
+            front_left_obs_vec = np.array([1.5, 1.5])
+            front_left_obs_vel = np.array([1.5, 1.5])
+            front_left_min_dist = 10000
+
+            back_right_obs_vec = np.array([1.5, 1.5])
+            back_right_obs_vel = np.array([1.5, 1.5])
+            back_right_min_dist = 10000
+
+            back_left_obs_vec = np.array([1.5, 1.5])
+            back_left_obs_vel = np.array([1.5, 1.5])
+            back_left_min_dist = 10000
+
+
+            for id, obstacle_data in self.episode_measurements['obstacle_sensor']['state'].items():
+                # Compute dot product of obstacle vector with car vector
+                normalized_obstacle_vector = obstacle_data['position'] / np.linalg.norm(obstacle_data['position'])
+                # Dot product is simply the first element of the normalized vector
+                dot_product = normalized_obstacle_vector[0]
+
+                # Obstacle is in front of vehicle
+                if dot_product > 0.995 and obstacle_data['distance'] < front_min_dist:
+                    front_min_dist = obstacle_data['distance']
+                    front_obs_vec = obstacle_data['position'] / self.config.obs_config.vehicle_proximity_threshold
+                    front_obs_vel = obstacle_data['velocity'] / 20
+
+                # Obstacle is in front right
+                elif dot_product > 0 and obstacle_data['position'][1] > 0 and obstacle_data['distance'] < front_right_min_dist:
+                    front_right_min_dist = obstacle_data['distance']
+                    front_right_obs_vec = obstacle_data['position'] / self.config.obs_config.vehicle_proximity_threshold
+                    front_right_obs_vel = obstacle_data['velocity'] / 20
+
+                # Obstacle is in front left
+                elif dot_product > 0 and obstacle_data['position'][1] < 0 and obstacle_data['distance'] < front_left_min_dist:
+                    front_left_min_dist = obstacle_data['distance']
+                    front_left_obs_vec = obstacle_data['position']  / self.config.obs_config.vehicle_proximity_threshold
+                    front_left_obs_vel = obstacle_data['velocity'] / 20
+
+                # Obstacle is in back right
+                elif dot_product <= 0 and obstacle_data['position'][1] > 0 and obstacle_data['distance'] < back_right_min_dist:
+                    back_right_min_dist = obstacle_data['distance']
+                    back_right_obs_vec = obstacle_data['position']  / self.config.obs_config.vehicle_proximity_threshold
+                    back_right_obs_vel = obstacle_data['velocity'] / 20
+
+                # Obstacle is in back left
+                elif dot_product <= 0 and obstacle_data['position'][1] < 0 and obstacle_data['distance'] < back_left_min_dist:
+                    back_left_min_dist = obstacle_data['distance']
+                    back_left_obs_vec = obstacle_data['position']  / self.config.obs_config.vehicle_proximity_threshold
+                    back_left_obs_vel = obstacle_data['velocity'] / 20
+
+
+
+            # normalization
+            if light != -1:
+                light /= 20.0
+            else:
+                light = self.config.obs_config.default_obs_traffic_val
+
+            # We see both an obstacle and the light
+            if(light != self.config.obs_config.default_obs_traffic_val):
+                unnorm_obs_dist = front_obs_vec[0] * self.config.obs_config.vehicle_proximity_threshold
+                unnorm_light = light * 20
+
+                # If the light is further do nothing
+                if(front_obs_vec[0] != self.config.obs_config.default_obs_traffic_val and unnorm_light > unnorm_obs_dist):
+                    pass
+                else:
+                    front_obs_vec = np.array([light, 0]) / 20.0
+                    front_obs_vel = np.array([0,0])
+
+            obs_output = np.concatenate(
+                (
+                    np.array([self.episode_measurements['next_orientation']]),
+                    np.array([speed]),
+                    np.array([steer]),
+                    np.array([ldist]),
+                    np.array([front_obs_vec[0]]),
+                    np.array([front_obs_vec[1]]),
+                    np.array([front_obs_vel[0]]),
+                    np.array([front_obs_vel[1]]),
+                    np.array([front_right_obs_vec[0]]),
+                    np.array([front_right_obs_vec[1]]),
+                    np.array([front_right_obs_vel[0]]),
+                    np.array([front_right_obs_vel[1]]),
+                    np.array([front_left_obs_vec[0]]),
+                    np.array([front_left_obs_vec[1]]),
+                    np.array([front_left_obs_vel[0]]),
+                    np.array([front_left_obs_vel[1]]),
+                    np.array([back_right_obs_vec[0]]),
+                    np.array([back_right_obs_vec[1]]),
+                    np.array([back_right_obs_vel[0]]),
+                    np.array([back_right_obs_vel[1]]),
+                    np.array([back_left_obs_vec[0]]),
+                    np.array([back_left_obs_vec[1]]),
+                    np.array([back_left_obs_vel[0]]),
+                    np.array([back_left_obs_vel[1]]),
+                )
+            )
 
         return obs_output
 
@@ -1409,6 +1526,9 @@ class CarlaEvalEnv(CarlaEnv):
             "unknown" : 0
         }
 
+        self.sum_speed = 0.0
+        self.num_steps = 0
+
     def reset(self):
         if(self.cur_eval_episode == 0):
             print("CARLA EVAL ENVIRONMENT: Starting test scenarios")
@@ -1418,6 +1538,9 @@ class CarlaEvalEnv(CarlaEnv):
 
     def step(self, action):
         obs, reward, done, info = self.env.step(action)
+
+        self.sum_speed += info["speed"]
+        self.num_steps += 1
 
          # Evaluation episode complete
         if done:
@@ -1441,6 +1564,9 @@ class CarlaEvalEnv(CarlaEnv):
                     if self.logger is not None:
                         self.logger.log_scalar('eval/termination_{}'.format(key), val, step)
                 print("--------------------------------------------------------------")
+
+                if self.logger is not None:
+                    self.logger.log_scalar('eval/avg_speed', self.sum_speed / self.num_steps, step)
 
                 # Reset running evaluation counts
                 self.reset_eval_metrics()
