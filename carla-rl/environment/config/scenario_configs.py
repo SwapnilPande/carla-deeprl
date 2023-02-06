@@ -114,7 +114,8 @@ class NoCrashConfig(BaseScenarioConfig):
         self.zero_speed_threshold = 0.05
         self.num_episodes = 25
         self.updated_scenarios = False
-        self.disable_lane_invasion_collision = False
+        self.disable_lane_invasion_collision = True
+        self.disable_lane_invasion_sensor = True
 
 
 class NoCrashEmptyTown01Config(NoCrashConfig):
