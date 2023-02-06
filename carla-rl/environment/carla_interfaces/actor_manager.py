@@ -327,6 +327,7 @@ class ActorManager910():
             #$
             if self.try_spawn_random_vehicle_at(self.vehicle_blueprints, spawn_point):
                 count -= 1
+                print('count for try spawn npc',count)
             if count <= 0:
                 break
 
@@ -339,6 +340,21 @@ class ActorManager910():
             # vehicle spawn_points corresponding to 96, 140
             # spawn_points = [Transform(Location(x=88.61997985839844, y=249.42999267578125, z=1.32), Rotation(yaw=90.00004577636719)),
             # Transform(Location(x=92.10997772216797, y=249.42999267578125, z=1.32), Rotation(yaw=-90.00029754638672))]
+        
+        elif self.config.scenario_config.scenarios == 'simple_single_turn':
+            print('updated spawn points for simple single turn')
+            carla_map = self.world.get_map()
+            waypoint1 = carla_map.get_waypoint(Location(x=331.0, y=195.67,z=1.32))
+            waypoint2 = carla_map.get_waypoint(Location(x=256.00193881988525, y=147.97000122070312,z=1.32))
+            
+            spawn_points = [waypoint1.transform,waypoint2.transform]
+
+            #import ipdb
+            #ipdb.set_trace()
+
+            spawn_points = [Transform(Location(x=330.8559265136719, y=195.46034240722656,z=1.32), Rotation(yaw=-166.65399169921875)),
+                            Transform(Location(x=256.00193881988525, y=147.97000122070312,z=1.32), Rotation(yaw=89.9996109008789))]
+       
         elif self.config.scenario_config.scenarios == "crowded":
             spawn_points = scenarios.get_crowded_npcs(number_of_vehicles)
             print('CROWDED SPAWNING: ', spawn_points)
@@ -393,17 +409,25 @@ class ActorManager910():
             blueprint.set_attribute('color', color)
 
         # TODO: uncomment below to enable autopilot
-        if not self.config.scenario_config.scenarios == "straight_dynamic":
-            blueprint.set_attribute('role_name', 'autopilot')
+        #if not self.config.scenario_config.scenarios == "straight_dynamic":
+        #blueprint.set_attribute('role_name', 'autopilot')
         vehicle = self.world.try_spawn_actor(blueprint, transform)
         tm_port = self.tm.get_port()
+
+        #import ipdb 
+        #ipdb.set_trace()
         if vehicle is not None:
             self.actor_list.append(vehicle)
+            vehicle.set_simulate_physics(False)
             if not self.config.scenario_config.scenarios == "straight_dynamic":
-                vehicle.set_autopilot(True, tm_port)
+                #vehicle.set_autopilot(True, tm_port)
+                #import ipdb
+                #ipdb.set_trace()
+                print('not using autopilot')
 
-            if self.config.verbose:
-                print('spawned %r at %s' % (vehicle.type_id, transform.location.x))
+
+            
+            print('spawned %r at %s' % (vehicle.type_id, transform.location.x))
             return True
         return False
 
@@ -415,7 +439,7 @@ class ActorManager910():
             except Exception as e:
                 print("Error during destroying actor {0}:{1}: {2}".format(actor.type_id, actor.id,traceback.format_exc()))
 
-
+"""
 class ActorManager910_Leaderboard():
     def __init__(self, config, client, log_dir):
         '''
@@ -541,12 +565,13 @@ class ActorManager910_Leaderboard():
         return self.ego_vehicle._vehicle.get_velocity()
 
     def get_control(self, action):
-        """ Get Control object for Carla from action
+        
+        Get Control object for Carla from action
         Input:
             - action: tuple containing (steer, throttle, brake) in [-1, 1]
         Output:
             - control: Control object for Carla
-        """
+        
 
         episode_measurements = {}
 
@@ -696,6 +721,7 @@ class ActorManager910_Leaderboard():
             #$
             if self.try_spawn_random_vehicle_at(self.vehicle_blueprints, spawn_point):
                 count -= 1
+               
             if count <= 0:
                 break
 
@@ -761,8 +787,8 @@ class ActorManager910_Leaderboard():
             color = random.choice(blueprint.get_attribute('color').recommended_values)
             blueprint.set_attribute('color', color)
 
-        if not self.config.scenario_config.scenarios == "straight_dynamic":
-            blueprint.set_attribute('role_name', 'autopilot')
+        #if not self.config.scenario_config.scenarios == "straight_dynamic":
+        #blueprint.set_attribute('role_name', 'autopilot')
         vehicle = self.world.try_spawn_actor(blueprint, transform)
         tm_port = self.tm.get_port()
         if vehicle is not None:
@@ -770,8 +796,8 @@ class ActorManager910_Leaderboard():
             if not self.config.scenario_config.scenarios == "straight_dynamic":
                 vehicle.set_autopilot(True, tm_port)
 
-            if self.config.verbose:
-                print('spawned %r at %s' % (vehicle.type_id, transform.location.x))
+            
+            print('spawned %r at %s' % (vehicle.type_id, transform.location.x))
             return True
         return False
 
@@ -782,3 +808,4 @@ class ActorManager910_Leaderboard():
                 actor.destroy()
             except Exception as e:
                 print("Error during destroying actor {0}:{1}: {2}".format(actor.type_id, actor.id,traceback.format_exc()))
+"""

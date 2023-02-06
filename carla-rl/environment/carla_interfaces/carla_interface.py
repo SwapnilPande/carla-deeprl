@@ -1,7 +1,7 @@
 import environment.carla_interfaces.scenarios_910 as scenarios
 from environment.carla_interfaces.server import CarlaServer
 from environment.carla_interfaces import planner
-from environment.carla_interfaces.actor_manager import ActorManager910, ActorManager910_Leaderboard
+from environment.carla_interfaces.actor_manager import ActorManager910
 from environment import env_util as util
 from abc import ABC
 import time
@@ -147,6 +147,8 @@ class Carla910Interface():
             self.destination_transform = self.spawn_points[72]
         else:
             raise ValueError("Invalid Scenario Type {}. Check scenario config!".format(self.config.scenario_config.scenarios))
+        #import ipdb
+        #ipdb.set_trace()
 
     def reset(self, unseen = False, index = 0):
         ### Delete old actors
@@ -263,12 +265,24 @@ class Carla910Interface():
     def step(self, action):
         control = self.actor_fleet.step(action)
 
+        #import ipdb
+        #ipdb.set_trace()
+
         world_frame = self.world.tick()
 
         self.actor_fleet.check_for_vehicle_elimination()
 
+        npc_car = self.actor_fleet.actor_list[-1]
+        
+        #loc = npc_car.get_transform().location
+        #print('location npc',(loc.x,loc.y,loc.z))
+
+
+
         sensor_readings = self.actor_fleet.sensor_manager.get_sensor_readings(world_frame)
         location = self.actor_fleet.ego_vehicle._vehicle.get_location()
+
+        #print('ego location',(location.x,location.y,location.z))
 
         left_steer = self.actor_fleet.ego_vehicle._vehicle.get_wheel_steer_angle(carla.VehicleWheelLocation.FL_Wheel)
         right_steer = self.actor_fleet.ego_vehicle._vehicle.get_wheel_steer_angle(carla.VehicleWheelLocation.FR_Wheel)
