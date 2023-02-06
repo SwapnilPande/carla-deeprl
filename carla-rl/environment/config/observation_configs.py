@@ -561,6 +561,7 @@ class LeaderboardObsNoCameraConfig(BaseObservationConfig):
                                 'only_dynamics' : True,
                             },
                             "obstacle_sensor_21" : {
+                                "x" : -1.5,
                                 "y" : -1.0,
                                 "z" : 0.3,
                                 "yaw" : 252,
