@@ -51,17 +51,7 @@ def compute_reward(prev, current, config, verbose=False):
     obs_collision = (current["num_collisions"] - prev["num_collisions"]) > 0
     is_collision = obs_collision
 
-    # count out_of_road also as a collision
-    if not config.obs_config.disable_lane_invasion_sensor:
-        is_collision = obs_collision or current["out_of_road"]
-
-        # count any lane change also as a collision
-        # if config.scenario_config.disable_lane_invasion_collision:
-        lane_change = current['num_laneintersections'] > 0
-        is_collision = is_collision or lane_change
-
     current['obs_collision'] = obs_collision
-    current['lane_change'] = lane_change
     current["is_collision"] = is_collision
 
     if(is_collision):
@@ -74,6 +64,28 @@ def compute_reward(prev, current, config, verbose=False):
         collision_reward = 0
     current["collision_reward"] = collision_reward
 
+    # Out of lane reward
+    is_out_of_lane = False
+    lane_change = False
+
+    if not config.obs_config.disable_lane_invasion_sensor:
+        is_out_of_lane = current["out_of_road"]
+
+        # count any lane change also as a collision
+        # if config.scenario_config.disable_lane_invasion_collision:
+        lane_change = current['num_laneintersections'] > 0
+        is_out_of_lane = is_out_of_lane or lane_change
+
+    current['lane_change'] = lane_change
+    current["is_out_of_lane"] = is_out_of_lane
+
+    if(is_out_of_lane):
+        out_of_lane_reward = -1 * (reward_config.const_out_of_lane_penalty + reward_config.out_of_lane_penalty_speed_coeff * prev["speed"])
+    else:
+        out_of_lane_reward = 0
+    current["out_of_lane_reward"] = out_of_lane_reward
+
+
     # Success Reward
     success_reward = 0
     success = current["distance_to_goal"] < config.scenario_config.dist_for_success
@@ -84,6 +96,7 @@ def compute_reward(prev, current, config, verbose=False):
     reward = dist_to_trajectory_reward + \
              speed_reward + steer_reward + \
              collision_reward + \
+             out_of_lane_reward + \
              light_reward + \
              acceleration_reward + \
              success_reward +  \

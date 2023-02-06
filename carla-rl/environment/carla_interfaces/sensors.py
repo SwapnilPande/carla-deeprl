@@ -12,6 +12,7 @@ import os
 import random
 import re
 import sys
+from typing import Set
 import weakref
 import carla
 import queue
@@ -44,6 +45,9 @@ class SensorManager():
             elif 'camera' in sensor_name:
                 sensor_config.update({'name':sensor_name})
                 sensor = CameraSensor(self.parent_actor, sensor_config, self.config.verbose)
+            elif 'obstacle_sensor' in sensor_name:
+                sensor_config.update({'name':sensor_name})
+                sensor = ObstacleSensor(self.parent_actor, sensor_config, self.config.verbose)
             else:
                 raise Exception("Sensor {} not supported".format(sensor_name))
 
@@ -52,6 +56,7 @@ class SensorManager():
     # TODO: Collect the data from each sensor and return them as a dict with key as sensor name(same as the name used in config)
     def get_sensor_readings(self, world_frame=None):
         sensor_readings = {}
+        obstacle_set = set()
         for idx, k in enumerate(self.sensor_names):
             if k=="collision_sensor":
                 sensor_readings[k] = {'num_collisions': self.sensors[k].num_collisions,\
@@ -66,6 +71,55 @@ class SensorManager():
                 else:
                     camera_image = self.sensors[k]._read_data(world_frame)
                     sensor_readings[k] = {'image': camera_image}
+            elif 'obstacle_sensor' in k:
+                if(not 'obstacle_sensor' in sensor_readings):
+
+                    sensor_readings['obstacle_sensor'] = {
+                        "state" : {}
+                    }
+
+
+                other_actor, distance = self.sensors[k]._read_data()
+                if other_actor is not None:
+                    # Get the current number of actors to see if we added a new unique actor
+                    num_actors = len(obstacle_set)
+
+                    # Add actor id to the set of ids
+                    obstacle_set.add(other_actor.id)
+
+                    # If new actor, get transform and velocity
+                    if(len(obstacle_set) > num_actors):
+                        # Get the pose, and velocity of the new actor relative to our vehicle
+
+                        # Get the obstacle sensor readings
+                        ego_actor = self.parent_actor
+                        ego_velocity = ego_actor.get_velocity()
+                        ego_velocity = np.array([ego_velocity.x, ego_velocity.y, ego_velocity.z])
+                        ego_inverse_matrix = np.array(ego_actor.get_transform().get_inverse_matrix())
+
+                        # Get transform of other object
+                        other_transform = other_actor.get_transform()
+                        other_velocity = other_actor.get_velocity()
+                        other_velocity = np.array([other_velocity.x, other_velocity.y, other_velocity.z])
+
+                        # Get the relative transform of the new actor
+                        relative_transform = ego_inverse_matrix @ np.array(other_transform.get_matrix())
+
+                        # Extract relative position
+                        x = relative_transform[0, 3]
+                        y = relative_transform[1, 3]
+
+
+                        # Compute relative velocity
+                        relative_velocity = ego_inverse_matrix[0:3,0:3] @ (other_velocity - ego_velocity)
+                        vel_x = relative_velocity[0]
+                        vel_y = relative_velocity[1]
+
+                        sensor_readings['obstacle_sensor']["state"][other_actor.id] = {
+                            "position" : np.array([x,y]),
+                            "velocity" : np.array([vel_x, vel_y]),
+                            "distance" : distance
+                        }
             else:
                 print("Uninitialized sensor!")
 
@@ -160,7 +214,7 @@ class LaneInvasionSensor(object):
         if not self:
             return
         # TODO : Handle case of lane invasion for dashed vs solid lane markings
-        
+
         lane_changes = set(x.lane_change for x in event.crossed_lane_markings)
         if carla.libcarla.LaneChange.NONE in lane_changes or carla.libcarla.LaneChange.Right in lane_changes:
             self.num_laneintersections += 1
@@ -256,3 +310,68 @@ class CameraSensor(object):
         array = array[:, :, :3]
         array = array[:, :, ::-1]
         return array
+
+
+# ==============================================================================
+# -- ObstacleSensor --------------------------------------------------------
+# ==============================================================================
+
+class ObstacleSensor(object):
+    def __init__(self, parent_actor, config = None, verbose = False):
+        self.sensor = None
+        self._parent = parent_actor
+        self.verbose = verbose
+        self.transform = carla.Transform(carla.Location(x=config['x'], y=config['y'], z=config['z']), \
+                                            carla.Rotation(yaw=config['yaw']))
+
+        self.distance = config['distance']
+        self.hit_radius = config['hit_radius']
+        self.only_dynamics = config['only_dynamics']
+
+        world = self._parent.get_world()
+
+        bp = world.get_blueprint_library().find('sensor.other.obstacle')
+        bp.set_attribute('only_dynamics', 'True' if self.only_dynamics else 'False')
+        bp.set_attribute('debug_linetrace', 'True' if self.verbose else 'False')
+        bp.set_attribute('distance', str(self.distance))
+        bp.set_attribute('hit_radius', str(self.hit_radius))
+
+        self.sensor = world.spawn_actor(bp, self.transform, attach_to=self._parent)
+
+        # We need to pass the lambda a weak reference to self to avoid circular
+        # reference.
+        weak_self = weakref.ref(self)
+        self.sensor.listen(lambda event: ObstacleSensor._on_obstacle(weak_self, event))
+
+        # Variables to
+        self.actor = None
+        self.obstacle_actor = None
+        self.distance = None
+        self.data_new = False
+
+
+
+    @staticmethod
+    def _on_obstacle(weak_self, event):
+        # print(event)
+        self = weak_self()
+        if not self:
+            return
+        # TODO : Handle case of lane invasion for dashed vs solid lane markings
+
+        # Check if other_actor is pedestrian or vehicle
+
+        if 'vehicle' in event.other_actor.type_id:
+            self.obstacle_actor = event.other_actor
+            self.distance = event.distance
+            self.data_new = True
+
+
+    def _read_data(self):
+        if(self.data_new):
+            self.data_new = False
+
+            return self.obstacle_actor, self.distance
+
+        return None, None
+
