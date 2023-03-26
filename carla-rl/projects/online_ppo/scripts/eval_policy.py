@@ -9,18 +9,21 @@ import cv2
 import ipdb
 import numpy as np
 from matplotlib import pyplot as plt
-
+import shutil
+import importlib
 import faulthandler
 faulthandler.enable()
 
 from common.loggers.comet_logger import CometLogger
-from projects.online_ppo.config.logger_config import ExistingCometLoggerConfig
+from projects.online_ppo.config.logger_config import ExistingCometLoggerConfig,MOPOExistingCometLoggerConfig
 
 from algorithms import PPO, SAC
 
 # Environment
 from environment.env import CarlaEnv
 from environment.config.config import DefaultMainConfig
+
+#mopo_configs = importlib.import_module("projects.morel_mopo.config.morel_mopo_config")
 
 class AutopilotPolicy:
     def __init__(self, env):
@@ -32,8 +35,8 @@ class AutopilotPolicy:
 
 class PPOEvaluationConf:
     def __init__(self):
-        self.policy_model_name = "best_model_200000.zip"
-        self.experiment_key = "350278db44d34b4a9e90d80b0241a267"
+        self.policy_model_name = 'best_model_800000.zip' #'best_model_1200000.zip' #
+        self.experiment_key = '888ffcaea5254c9c847d2ff88550d282'#"0c1740bef6584e5abb6186f643925cdc" #'c818e4ea10c246bdaf6e50f3fee7ed2c' 
 
 def generate_video(logger, image_path, save_path, name):
     vid_path = os.path.join(save_path, name + '.mp4')
@@ -53,7 +56,7 @@ def generate_video(logger, image_path, save_path, name):
 
 
 
-def generate_rollouts(logger, env, policy, n_rollouts = 25, timeout = 5000):
+def generate_rollouts(logger, env, policy, n_rollouts = 25, timeout = 5000,prefix='exp'):
     image_save_dir = logger.prep_dir("policy_eval/images")
     video_save_dir = logger.prep_dir("policy_eval/videos")
 
@@ -63,6 +66,7 @@ def generate_rollouts(logger, env, policy, n_rollouts = 25, timeout = 5000):
         print(f"Rollout #{rollout}")
 
         obs = env.reset(unseen = True, index = rollout)
+        print('obs shape',obs.shape)
         for i in tqdm(range(timeout)):
             action, _ = policy.predict(obs,deterministic=True)
 
@@ -87,6 +91,11 @@ def generate_rollouts(logger, env, policy, n_rollouts = 25, timeout = 5000):
                     save_path = video_save_dir,
                     name = "rollouts.mp4")
 
+    
+    if os.path.isdir('/zfsauton2/home/ishaans/output/videos/' + prefix):
+        shutil.rmtree('/zfsauton2/home/ishaans/output/videos/' + prefix)
+
+    shutil.move(video_save_dir,'/zfsauton2/home/ishaans/output/videos/' + prefix)
 
 def generate_rewards(env, policy, n_rollouts = 25, timeout = 5000):
     global_idx = 0
@@ -126,7 +135,8 @@ def get_discounted_returns(reward_array,gamma=0.99):
     return discounted_rewards
 
 def plot_histogram(agent_actions,agent_rewards,prefix='agent_40_single_turn'):
-    path = os.path.join('/zfsauton2/home/ishaans','output/images')
+    path = os.path.join('/zfsauton2/home/ishaans','output/images',prefix)
+    os.makedirs(path,exist_ok=True)
     titles = ['steering','target_speed','rewards']
     for i in range(len(titles)):
         if i < 2:
@@ -136,8 +146,9 @@ def plot_histogram(agent_actions,agent_rewards,prefix='agent_40_single_turn'):
         counts, bins = np.histogram(ep_data)
         plt.stairs(counts,bins)
         plt.title(titles[i])
-        plt.savefig(os.path.join(path,prefix + '_' + titles[i] + '.png'))
+        plt.savefig(os.path.join(path,titles[i] + '.png'))
         plt.clf()
+    
 
 def main(args):
     ppo_evaluation_conf = PPOEvaluationConf()
@@ -156,7 +167,7 @@ def main(args):
 
     config = DefaultMainConfig()
     config.populate_config(
-        observation_config = "LowDimObservationConfig",
+        observation_config = "LeaderboardObsConfig",
         action_config = "MergedSpeedScaledTanhSpeed40Config",
         reward_config = "Simple2RewardConfig",
         scenario_config = "SimpleSingleTurnConfig",
@@ -173,14 +184,13 @@ def main(args):
                 logger.other_load("policy/models", ppo_evaluation_conf.policy_model_name),
                 device = device)
 
-
-    
+    #mopo_policy = get_mopo_policy(args.gpu)
     autopilot_policy = AutopilotPolicy(env=env)
-    generate_rollouts(logger = logger, env = env, policy = policy, n_rollouts = 4)
-    autopilot_rewards,autopilot_actions = generate_rewards(env = env, policy = autopilot_policy, n_rollouts = 1)
-    agent_rewards,agent_actions = generate_rewards(env = env, policy = policy, n_rollouts = 1)
-    plot_histogram(agent_actions,agent_rewards,prefix='one_turn_ppo_40_speed')
-    plot_histogram(autopilot_actions,autopilot_rewards,prefix='autopilot')
+    generate_rollouts(logger = logger, env = env, policy = policy, n_rollouts = 2,prefix='obstacle_exp14')
+    #autopilot_rewards,autopilot_actions = generate_rewards(env = env, policy = autopilot_policy, n_rollouts = 1)
+    #agent_rewards,agent_actions = generate_rewards(env = env, policy = policy, n_rollouts = 1)
+    #plot_histogram(agent_actions,agent_rewards,prefix='gamma_7')
+    #plot_histogram(autopilot_actions,autopilot_rewards,prefix='autopilot_7')
     #np.save('/zfsauton2/home/ishaans/output/images/agent_rewards.npy',agent_rewards)
     #np.save('/zfsauton2/home/ishaans/output/images/autopilot_rewards.npy',autopilot_rewards)
     #np.save('/zfsauton2/home/ishaans/output/images/agent_actions.npy',agent_actions)

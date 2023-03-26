@@ -56,7 +56,7 @@ class Simple2RewardConfig(BaseRewardConfig):
 
         # Coefficient for dist_to_trajec reward
         # Pass a positive value for this argument
-        self.dist_to_trajectory_coeff = 1
+        self.dist_to_trajectory_coeff = 1.0
 
         # Penalty for collision
         self.const_collision_penalty = 250
@@ -65,9 +65,9 @@ class Simple2RewardConfig(BaseRewardConfig):
         self.collision_penalty_speed_coeff = 0
 
         # Penalty for exiting the lane
-        self.const_out_of_lane_penalty = 250
+        self.const_out_of_lane_penalty = 1.0
 
-        self.out_of_lane_penalty_speed_coeff = 0
+        self.out_of_lane_penalty_speed_coeff = 1.0
 
         # Penalty for red light violation
         self.const_light_penalty = 250
@@ -79,7 +79,7 @@ class Simple2RewardConfig(BaseRewardConfig):
         self.steer_penalty_coeff =  0
 
         # Reward for success completion of trajectory
-        self.success_reward = 0
+        self.success_reward = 10.0
 
         # Constant reward given at every time step
         self.constant_positive_reward = 0

@@ -344,7 +344,7 @@ class ActorManager910():
         elif self.config.scenario_config.scenarios == 'simple_single_turn':
             print('updated spawn points for simple single turn')
             carla_map = self.world.get_map()
-            waypoint1 = carla_map.get_waypoint(Location(x=331.0, y=195.67,z=1.32))
+            waypoint1 = carla_map.get_waypoint(Location(x=328.0, y=192.67,z=1.32))
             waypoint2 = carla_map.get_waypoint(Location(x=256.00193881988525, y=147.97000122070312,z=1.32))
             
             spawn_points = [waypoint1.transform,waypoint2.transform]
@@ -352,7 +352,7 @@ class ActorManager910():
             #import ipdb
             #ipdb.set_trace()
 
-            spawn_points = [Transform(Location(x=330.8559265136719, y=195.46034240722656,z=1.32), Rotation(yaw=-166.65399169921875)),
+            spawn_points = [Transform(Location(x=328.1174011230469, y=195.15704345703125,z=1.32), Rotation(yaw=-166.65399169921875)),
                             Transform(Location(x=256.00193881988525, y=147.97000122070312,z=1.32), Rotation(yaw=89.9996109008789))]
        
         elif self.config.scenario_config.scenarios == "crowded":

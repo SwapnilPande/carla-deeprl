@@ -1,4 +1,4 @@
-export CARLA_RL=$HOME/carla-deeprl
+export CARLA_RL=$HOME/carla-eval/carla-deeprl
 if [ ! -d "/home/scratch/$USER/tmpdir" ]
 then
     mkdir /home/scratch/$USER/tmpdir
@@ -12,4 +12,4 @@ export CPLUS_INCLUDE_PATH=$LIBS/libjpeg8/include:$LIBS/libpng/include:$LIBS/libj
 export CARLA_9_4_PATH=$HOME/carla910_dirty
 export SDL_AUDIODRIVER='dsp'
 export CARLA_ROOT=$HOME/carla910_dirty
-export PYTHONPATH=$PYTHONPATH:$HOME/carla910_dirty/PythonAPI/carla/dist/carla-0.9.10-py3.7-linux-x86_64.egg:$HOME/carla-deeprl/carla-rl/:$HOME/carla-deeprl/scenario_runner:$HOME/carla-deeprl/leaderboard
+export PYTHONPATH=$PYTHONPATH:$HOME/carla910_dirty/PythonAPI/carla/dist/carla-0.9.10-py3.7-linux-x86_64.egg:$HOME/carla-eval/carla-deeprl/carla-rl/:$HOME/carla-eval/carla-deeprl/scenario_runner:$HOME/carla-eval/carla-deeprl/leaderboard

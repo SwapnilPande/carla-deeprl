@@ -23,7 +23,7 @@ import time
 
 def main(args):
     logger_conf = CometLoggerConfig()
-    logger_conf.populate(experiment_name = args.exp_name, tags = ["one_turn_speed_dense"])
+    logger_conf.populate(experiment_name = args.exp_name, tags = ["one_turn_obstacle"])
 
     device = f"cuda:{args.gpu}"
 
@@ -33,10 +33,10 @@ def main(args):
 
     config = DefaultMainConfig()
     config.populate_config(
-        observation_config = "LowDimObservationNoCameraConfig",
+        observation_config = "LeaderboardObsNoCameraConfig",
         action_config = "MergedSpeedScaledTanhSpeed40Config",
         reward_config = "Simple2RewardConfig",
-        scenario_config = "SimpleStraightPathConfig",
+        scenario_config = "SimpleSingleTurnConfig",
         testing = False,
         carla_gpu = args.gpu
     )

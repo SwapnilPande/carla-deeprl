@@ -8,6 +8,10 @@ def compute_reward(prev, current, config, verbose=False):
     cur_dist = current["distance_to_goal"]
     prev_dist = prev["distance_to_goal"]
 
+    dist_to_goal_reward = prev_dist - cur_dist
+
+    
+
     # Steer Reward
     steer = np.abs(current['control_steer'])
     steer_reward = -reward_config.steer_penalty_coeff * steer
@@ -69,6 +73,7 @@ def compute_reward(prev, current, config, verbose=False):
     lane_change = False
 
     if not config.obs_config.disable_lane_invasion_sensor:
+        print('lane invasion sensor is not disabled')
         is_out_of_lane = current["out_of_road"]
 
         # count any lane change also as a collision
@@ -100,7 +105,11 @@ def compute_reward(prev, current, config, verbose=False):
              light_reward + \
              acceleration_reward + \
              success_reward +  \
-             reward_config.constant_positive_reward
+             reward_config.constant_positive_reward +  \
+             dist_to_goal_reward
+
+    #print('dist_to_goal_reward',dist_to_goal_reward)
+    #print('dist to trajectory',dist_to_trajectory_reward)
 
     # normalize reward
     reward = reward / reward_config.reward_normalize_factor

@@ -78,7 +78,7 @@ class LowDimObservationConfig(BaseObservationConfig):
         self.vehicle_proximity_threshold = 15
         self.traffic_light_proximity_threshold = 15
         self.obstacle_dist_norm = 60
-        self.disable_lane_invasion_sensor = False
+        self.disable_lane_invasion_sensor = True
 
 class LowDimObservationNoCameraConfig(BaseObservationConfig):
     def __init__(self):
@@ -105,7 +105,7 @@ class LowDimObservationNoCameraConfig(BaseObservationConfig):
         self.vehicle_proximity_threshold = 15
         self.traffic_light_proximity_threshold = 15
         self.obstacle_dist_norm = 60
-        self.disable_lane_invasion_sensor = False
+        self.disable_lane_invasion_sensor = True
 
 class VehicleDynamicsObstacleNoCameraConfig(BaseObservationConfig):
     def __init__(self):
@@ -1075,4 +1075,4 @@ class PerspectiveRGBObservationConfig(BaseObservationConfig):
         self.vehicle_proximity_threshold = 15
         self.traffic_light_proximity_threshold = 15
         self.obstacle_dist_norm = 60
-        self.disable_lane_invasion_sensor = False
+        self.disable_lane_invasion_sensor = True
